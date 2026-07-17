@@ -10,6 +10,7 @@
   },
   "license": "MIT",
   "mcpServers": "./.claude-plugin/mcp.json",
+  "hooks": "./.claude-plugin/hooks.json",
   "keywords": [
     "mcp",
     "codex",

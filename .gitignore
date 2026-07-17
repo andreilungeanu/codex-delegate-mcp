@@ -4,6 +4,7 @@ npm-debug.log*
 *.tgz
 .coverage/
 .firecrawl/
+.codex/
 /docs/
 tmp/
 temp/

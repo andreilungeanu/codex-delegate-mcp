@@ -3,6 +3,14 @@
   "version": "1.5.0",
   "description": "Delegate implementation to the OpenAI Codex CLI from Claude Code and other MCP hosts.",
   "author": {
-    "name": "Andrei Lungeanu"
-  }
+    "name": "Andrei Lungeanu",
+    "email": "andrei@lungeanu.ro",
+    "url": "https://github.com/andreilungeanu"
+  },
+  "homepage": "https://github.com/andreilungeanu/codex-delegate-mcp",
+  "repository": "https://github.com/andreilungeanu/codex-delegate-mcp",
+  "license": "MIT",
+  "keywords": ["mcp", "codex", "openai", "copilot", "delegation", "coding-agent"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.copilot.json"
 }

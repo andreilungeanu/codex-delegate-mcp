@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "codex-delegate-mcp",
+  "owner": {
+    "name": "Andrei Lungeanu",
+    "email": "andrei@lungeanu.ro"
+  },
+  "description": "Marketplace hosting the Codex Delegate MCP plugin.",
+  "plugins": [
+    {
+      "name": "codex-delegate-mcp",
+      "source": "./",
+      "description": "MCP server bridging AI coding hosts to the OpenAI Codex CLI.",
+      "license": "MIT",
+      "keywords": ["mcp", "codex", "openai", "claude-code", "delegation"]
+    }
+  ]
+}

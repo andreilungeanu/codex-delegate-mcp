@@ -13,8 +13,20 @@ test("package and plugin manifest versions stay in sync", () => {
     read("../.codex-plugin/plugin.json"),
     read("../plugin.json"),
   ];
+  const copilotMarketplace = read("../.github/plugin/marketplace.json");
 
   assert.equal(lock.version, pkg.version);
   assert.equal(lock.packages[""].version, pkg.version);
   for (const manifest of manifests) assert.equal(manifest.version, pkg.version);
+  assert.equal(copilotMarketplace.metadata.version, pkg.version);
+  assert.equal(copilotMarketplace.plugins[0].version, pkg.version);
+
+  const pin = `codex-delegate-mcp@${pkg.version}`;
+  for (const path of ["../.mcp.copilot.json"]) {
+    assert.ok(JSON.stringify(read(path)).includes(pin), `${path} must pin ${pin}`);
+  }
+  assert.ok(
+    JSON.stringify(manifests[1].mcpServers).includes(pin),
+    "Codex inline MCP config must pin the package version"
+  );
 });

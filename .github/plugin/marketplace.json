@@ -1,0 +1,19 @@
+{
+  "name": "codex-delegate-mcp",
+  "owner": {
+    "name": "Andrei Lungeanu",
+    "email": "andrei@lungeanu.ro"
+  },
+  "metadata": {
+    "description": "Plugins for delegating coding work to the OpenAI Codex CLI through MCP.",
+    "version": "1.5.0"
+  },
+  "plugins": [
+    {
+      "name": "codex-delegate-mcp",
+      "description": "Delegate local coding work to the OpenAI Codex CLI through MCP.",
+      "version": "1.5.0",
+      "source": "./"
+    }
+  ]
+}
