@@ -194,6 +194,74 @@ test("runCodexProcess abort signal marks interrupted and cancelled", async () =>
   assert.equal(result.finalMessageAvailable, false);
 });
 
+test("runCodexProcess does not spawn for a pre-aborted signal", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-preabort-"));
+  const resultFile = path.join(dir, "last.txt");
+  const controller = new AbortController();
+  controller.abort(new Error("cancelled"));
+  let spawnCalls = 0;
+
+  const result = await runCodexProcess({
+    command: "codex",
+    args: ["exec"],
+    cwd: dir,
+    resultFile,
+    signal: controller.signal,
+    spawnImpl: () => {
+      spawnCalls += 1;
+      return fakeChild();
+    },
+  });
+
+  assert.equal(spawnCalls, 0);
+  assert.equal(result.status, "interrupted");
+  assert.equal(result.cancelled, true);
+  assert.equal(result.timedOut, false);
+  assert.equal(result.finalMessageAvailable, false);
+  assert.equal(result.result, "");
+  assert.equal(result.stderrBytes, 0);
+  assert.equal(result.stderrTail, "");
+  assert.match(result.warnings[0], /Final result unavailable/);
+});
+
+test("runCodexProcess removes abort listener after a spawn error", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-spawn-error-"));
+  const resultFile = path.join(dir, "last.txt");
+  const listeners = new Set();
+  const signal = {
+    aborted: false,
+    addEventListener(_type, listener) {
+      listeners.add(listener);
+    },
+    removeEventListener(_type, listener) {
+      listeners.delete(listener);
+    },
+  };
+
+  await assert.rejects(
+    () =>
+      runCodexProcess({
+        command: "codex",
+        args: ["exec"],
+        cwd: dir,
+        resultFile,
+        signal,
+        timeoutMs: 30_000,
+        idleMs: 30_000,
+        spawnImpl: () => {
+          const child = new EventEmitter();
+          child.pid = undefined;
+          child.stdout = Readable.from([]);
+          child.stderr = Readable.from([]);
+          queueMicrotask(() => child.emit("error", new Error("ENOENT")));
+          return child;
+        },
+      }),
+    /ENOENT/
+  );
+  assert.equal(listeners.size, 0);
+});
+
 test("runCodexProcess collects file_change paths", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-fc-"));
   const resultFile = path.join(dir, "last.txt");
@@ -274,6 +342,37 @@ test("runCodexProcess appends stderr tail on failure", async () => {
   assert.equal(result.status, "failed");
   assert.match(result.stderrTail, /permission denied/);
   assert.ok(result.warnings.some((w) => /stderr:.*permission denied/i.test(w)));
+});
+
+test("runCodexProcess caps stderr by UTF-8 bytes", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-stderr-bytes-"));
+  const resultFile = path.join(dir, "last.txt");
+  const stderr = "€".repeat(30_000);
+
+  const result = await runCodexProcess({
+    command: "codex",
+    args: ["exec"],
+    cwd: dir,
+    resultFile,
+    spawnImpl: () => {
+      const child = new EventEmitter();
+      child.pid = 4242;
+      child.stdout = Readable.from([]);
+      child.stderr = Readable.from([stderr]);
+      child.exitCode = null;
+      child.signalCode = null;
+      child.stderr.on("end", () => {
+        child.exitCode = 1;
+        child.emit("close", 1);
+      });
+      return child;
+    },
+    platform: "linux",
+    timeoutMs: 5000,
+  });
+
+  assert.equal(result.status, "failed");
+  assert.equal(result.stderrBytes, 64 * 1024);
 });
 
 test("runCodexProcess idle timeout trips before hard cap", async () => {

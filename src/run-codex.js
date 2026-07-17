@@ -41,8 +41,36 @@ export async function runCodexProcess({
   let cancelled = false;
   let threadId = null;
   let turnStatus = "running";
-  let stderr = "";
+  const stderrChunks = [];
+  let stderrBytes = 0;
   const reportedPaths = new Set();
+
+  const interruptedBeforeSpawn = async () => {
+    const status = "interrupted";
+    const exitCode = 1;
+    const final = await readFinalResult({
+      filePath: resultFile,
+      status,
+      exitCode,
+      maxResultBytes,
+    });
+    return {
+      status,
+      exitCode,
+      threadId,
+      timedOut,
+      timeoutReason,
+      cancelled: true,
+      result: final.result,
+      finalMessageAvailable: final.finalMessageAvailable,
+      warnings: final.warnings,
+      stderrBytes: 0,
+      stderrTail: "",
+      filesReportedByAgent: [],
+    };
+  };
+
+  if (signal?.aborted) return interruptedBeforeSpawn();
 
   const childEnv = { ...env };
   // Recursion marker for nested delegate detection by the parent server.
@@ -61,6 +89,7 @@ export async function runCodexProcess({
   };
   if (platform !== "win32") spawnOpts.detached = true;
 
+  if (signal?.aborted) return interruptedBeforeSpawn();
   child = spawnImpl(command, args, spawnOpts);
 
   const abort = async ({ userCancel = false } = {}) => {
@@ -71,10 +100,6 @@ export async function runCodexProcess({
   const onAbort = () => {
     abort({ userCancel: true }).catch(() => {});
   };
-  if (signal) {
-    if (signal.aborted) await abort({ userCancel: true });
-    else signal.addEventListener("abort", onAbort, { once: true });
-  }
 
   const hardCapMs = timeoutMs > 0 ? timeoutMs : 0;
   let idleTimer;
@@ -100,12 +125,6 @@ export async function runCodexProcess({
     idleTimer = setTimeout(() => tripTimeout("idle-timeout"), idleMs);
     if (!process.env.NODE_TEST_CONTEXT) idleTimer.unref?.();
   };
-
-  if (hardCapMs > 0) {
-    hardCapTimer = setTimeout(() => tripTimeout("hard-cap"), hardCapMs);
-    if (!process.env.NODE_TEST_CONTEXT) hardCapTimer.unref?.();
-  }
-  resetIdle();
 
   const noteActivity = () => {
     resetIdle();
@@ -167,33 +186,46 @@ export async function runCodexProcess({
 
   child.stderr.on("data", (chunk) => {
     noteActivity();
-    if (stderr.length >= DEFAULT_STDERR_BYTES) return;
-    stderr += chunk.toString("utf8");
-    if (stderr.length > DEFAULT_STDERR_BYTES) stderr = stderr.slice(0, DEFAULT_STDERR_BYTES);
+    if (stderrBytes >= DEFAULT_STDERR_BYTES) return;
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    const remaining = DEFAULT_STDERR_BYTES - stderrBytes;
+    const cappedChunk = buffer.subarray(0, remaining);
+    stderrChunks.push(cappedChunk);
+    stderrBytes += cappedChunk.length;
   });
 
-  const exitCode = await new Promise((resolve, reject) => {
-    child.on("error", reject);
-    child.on("close", (code) => resolve(code ?? 1));
-  });
+  let exitCode;
+  try {
+    if (signal) signal.addEventListener("abort", onAbort, { once: true });
+    if (hardCapMs > 0) {
+      hardCapTimer = setTimeout(() => tripTimeout("hard-cap"), hardCapMs);
+      if (!process.env.NODE_TEST_CONTEXT) hardCapTimer.unref?.();
+    }
+    resetIdle();
 
-  clearTimers();
-  if (signal) signal.removeEventListener("abort", onAbort);
-  rl.close();
+    exitCode = await new Promise((resolve, reject) => {
+      child.on("error", reject);
+      child.on("close", (code) => resolve(code ?? 1));
+    });
+  } finally {
+    clearTimers();
+    if (signal) signal.removeEventListener("abort", onAbort);
+    rl.close();
+  }
 
   const interrupted = cancelled || timedOut || signal?.aborted;
   let status = "failed";
   if (interrupted) status = "interrupted";
   else if (turnStatus === "failed") status = "failed";
-  else if (exitCode === 0 && turnStatus === "completed") status = "completed";
-  else if (exitCode === 0 && turnStatus === "running") {
-    // Some review paths exit cleanly without turn events; still require exit 0.
-    status = "completed";
-  } else if (exitCode === 0 && turnStatus === "in_progress") {
+  else if (exitCode === 0 && turnStatus === "in_progress") {
     // Process died mid-turn: do not treat a partial --output-last-message as final.
     status = "failed";
-  } else if (exitCode === 0) status = "completed";
-  else status = "failed";
+  } else if (exitCode === 0 && (turnStatus === "completed" || turnStatus === "running")) {
+    // Some review paths exit cleanly without turn events; still require exit 0.
+    status = "completed";
+  }
+
+  const stderr = Buffer.concat(stderrChunks, stderrBytes).toString("utf8");
 
   const final = await readFinalResult({
     filePath: resultFile,
@@ -223,7 +255,7 @@ export async function runCodexProcess({
     result: final.result,
     finalMessageAvailable: final.finalMessageAvailable,
     warnings,
-    stderrBytes: Buffer.byteLength(stderr, "utf8"),
+    stderrBytes,
     stderrTail: status !== "completed" ? stderrTail : "",
     filesReportedByAgent: [...reportedPaths],
   };
