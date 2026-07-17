@@ -391,4 +391,22 @@ test("build resume args", () => {
   assert.equal(kind, "resume");
   assert.ok(args.includes("resume"));
   assert.ok(args.includes("019f64c2-4592-7213-ab3c-253dd1a1c42c"));
+  assert.ok(args.includes("--skip-git-repo-check"));
+});
+
+test("buildCodexArgs rejects oversized specs", () => {
+  const huge = "x".repeat(30_000);
+  assert.throws(
+    () =>
+      buildCodexArgs(
+        {
+          spec: huge,
+          mode: "ask",
+          workspace: "/tmp/repo",
+          network: false,
+        },
+        { resultFile: "/tmp/out.txt", platform: "linux" }
+      ),
+    (err) => err.code === "argv_too_long"
+  );
 });

@@ -112,7 +112,7 @@ async function runDeepSmoke({ codex }) {
       ok: result.status === 0,
       exitCode: result.status,
       hasJson: /--json/.test(`${result.stdout}${result.stderr}`),
-      hasOutputLastMessage: /output-last-message|--output-last-message|-o/.test(
+      hasOutputLastMessage: /--output-last-message/.test(
         `${result.stdout}${result.stderr}`
       ),
     };

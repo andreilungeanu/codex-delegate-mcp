@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { buildCodexArgs, validateDelegateInput, PLAN_SCHEMA } from "./command.js";
 import { resolveCodex } from "./resolve-codex.js";
-import { runCodexProcess } from "./run-codex.js";
-import { gitChangedSet, computeTouched } from "./touched-files.js";
+import { runCodexProcess, DEFAULT_HARD_CAP_MS } from "./run-codex.js";
+import { normalizeAgentReportedFiles } from "./agent-reported-files.js";
 import { createOperationRegistry } from "./ops.js";
 
 export async function executeDelegate(rawArgs, options = {}) {
@@ -59,7 +59,6 @@ export async function executeDelegate(rawArgs, options = {}) {
     },
   });
 
-  const before = gitChangedSet(request.workspace);
   let processResult;
   try {
     processResult = await runProcess({
@@ -69,7 +68,7 @@ export async function executeDelegate(rawArgs, options = {}) {
       env,
       resultFile,
       signal: controller.signal,
-      timeoutMs: request.timeoutMs ?? 900_000,
+      timeoutMs: request.timeoutMs ?? DEFAULT_HARD_CAP_MS,
       onProgress,
       onThreadId: (id) => lease.updateThreadId(id),
     });
@@ -80,8 +79,6 @@ export async function executeDelegate(rawArgs, options = {}) {
   }
 
   warnings.push(...(processResult.warnings || []));
-  const after = gitChangedSet(request.workspace);
-  const touched = computeTouched({ before, after, workspace: request.workspace });
 
   let plan;
   if (request.mode === "plan" && processResult.finalMessageAvailable) {
@@ -107,8 +104,10 @@ export async function executeDelegate(rawArgs, options = {}) {
     mode: request.mode,
     workspace: request.workspace,
     cliVersion: codex.version,
-    touchedFiles: touched.files,
-    touchedFilesSource: touched.source,
+    filesReportedByAgent: normalizeAgentReportedFiles(
+      processResult.filesReportedByAgent || [],
+      request.workspace
+    ),
     plan,
     warnings,
     timedOut: processResult.timedOut,

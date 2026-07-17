@@ -3,9 +3,13 @@ import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { readFile, unlink } from "node:fs/promises";
 import { isChildAlive, treeKill } from "./proc.js";
+import { pathsFromFileChangeItem } from "./agent-reported-files.js";
 
 const DEFAULT_MAX_RESULT_BYTES = 10 * 1024 * 1024;
 const DEFAULT_STDERR_BYTES = 64 * 1024;
+const STDERR_TAIL_CHARS = 2000;
+export const DEFAULT_IDLE_MS = 90_000;
+export const DEFAULT_HARD_CAP_MS = 3_600_000;
 
 /**
  * Spawn `codex …`, reduce JSONL for threadId + coarse progress, accept only
@@ -20,7 +24,8 @@ export async function runCodexProcess({
   signal,
   onProgress,
   onThreadId,
-  timeoutMs = 900_000,
+  timeoutMs = DEFAULT_HARD_CAP_MS,
+  idleMs = DEFAULT_IDLE_MS,
   maxResultBytes = DEFAULT_MAX_RESULT_BYTES,
   spawnImpl = spawn,
   treeKillImpl = treeKill,
@@ -32,10 +37,12 @@ export async function runCodexProcess({
 
   let child;
   let timedOut = false;
+  let timeoutReason = null;
   let cancelled = false;
   let threadId = null;
   let turnStatus = "running";
   let stderr = "";
+  const reportedPaths = new Set();
 
   const childEnv = { ...env };
   // Recursion marker for nested delegate detection by the parent server.
@@ -69,19 +76,44 @@ export async function runCodexProcess({
     else signal.addEventListener("abort", onAbort, { once: true });
   }
 
-  let timer;
-  if (timeoutMs > 0) {
-    timer = setTimeout(() => {
-      timedOut = true;
-      abort({ userCancel: false }).catch(() => {});
-    }, timeoutMs);
-    // Keep the timer referenced under node:test so mocked children (no real
-    // process handles) cannot drain the event loop before timeout fires.
-    if (!process.env.NODE_TEST_CONTEXT) timer.unref?.();
+  const hardCapMs = timeoutMs > 0 ? timeoutMs : 0;
+  let idleTimer;
+  let hardCapTimer;
+
+  const clearTimers = () => {
+    clearTimeout(idleTimer);
+    clearTimeout(hardCapTimer);
+    idleTimer = undefined;
+    hardCapTimer = undefined;
+  };
+
+  const tripTimeout = (reason) => {
+    if (timedOut || cancelled) return;
+    timedOut = true;
+    timeoutReason = reason;
+    abort({ userCancel: false }).catch(() => {});
+  };
+
+  const resetIdle = () => {
+    clearTimeout(idleTimer);
+    if (idleMs <= 0 || timedOut || cancelled) return;
+    idleTimer = setTimeout(() => tripTimeout("idle-timeout"), idleMs);
+    if (!process.env.NODE_TEST_CONTEXT) idleTimer.unref?.();
+  };
+
+  if (hardCapMs > 0) {
+    hardCapTimer = setTimeout(() => tripTimeout("hard-cap"), hardCapMs);
+    if (!process.env.NODE_TEST_CONTEXT) hardCapTimer.unref?.();
   }
+  resetIdle();
+
+  const noteActivity = () => {
+    resetIdle();
+  };
 
   const rl = createInterface({ input: child.stdout, crlfDelay: Infinity });
   rl.on("line", (line) => {
+    noteActivity();
     let event;
     try {
       event = JSON.parse(line);
@@ -120,6 +152,7 @@ export async function runCodexProcess({
           onProgress?.(cmd ? `running: ${cmd}` : "running command");
         } catch {}
       } else if (item.type === "file_change") {
+        for (const p of pathsFromFileChangeItem(item)) reportedPaths.add(p);
         const n = Array.isArray(item.changes) ? item.changes.length : 0;
         try {
           onProgress?.(n ? `editing ${n} file(s)` : "editing files");
@@ -133,6 +166,7 @@ export async function runCodexProcess({
   });
 
   child.stderr.on("data", (chunk) => {
+    noteActivity();
     if (stderr.length >= DEFAULT_STDERR_BYTES) return;
     stderr += chunk.toString("utf8");
     if (stderr.length > DEFAULT_STDERR_BYTES) stderr = stderr.slice(0, DEFAULT_STDERR_BYTES);
@@ -143,7 +177,7 @@ export async function runCodexProcess({
     child.on("close", (code) => resolve(code ?? 1));
   });
 
-  clearTimeout(timer);
+  clearTimers();
   if (signal) signal.removeEventListener("abort", onAbort);
   rl.close();
 
@@ -168,16 +202,30 @@ export async function runCodexProcess({
     maxResultBytes,
   });
 
+  const warnings = [...final.warnings];
+  if (timedOut && timeoutReason === "idle-timeout") {
+    warnings.push(`Idle timeout after ${idleMs}ms with no Codex activity.`);
+  } else if (timedOut && timeoutReason === "hard-cap") {
+    warnings.push(`Hard-cap timeout after ${hardCapMs}ms.`);
+  }
+  const stderrTail = stderr.slice(-STDERR_TAIL_CHARS);
+  if (status !== "completed" && stderrTail.trim()) {
+    warnings.push(`stderr: ${stderrTail.trim()}`);
+  }
+
   return {
     status,
     exitCode,
     threadId,
     timedOut,
+    timeoutReason,
     cancelled,
     result: final.result,
     finalMessageAvailable: final.finalMessageAvailable,
-    warnings: final.warnings,
+    warnings,
     stderrBytes: Buffer.byteLength(stderr, "utf8"),
+    stderrTail: status !== "completed" ? stderrTail : "",
+    filesReportedByAgent: [...reportedPaths],
   };
 }
 

@@ -14,7 +14,7 @@ test("executeDelegate refuses nested recursion", async () => {
   );
 });
 
-test("executeDelegate wires resolve + process + touched files", async () => {
+test("executeDelegate wires resolve + process + agent-reported files", async () => {
   const registry = createOperationRegistry();
   const result = await executeDelegate(
     { spec: "add a comment", mode: "ask", workspace: process.cwd() },
@@ -39,6 +39,7 @@ test("executeDelegate wires resolve + process + touched files", async () => {
           finalMessageAvailable: true,
           warnings: [],
           stderrBytes: 0,
+          filesReportedByAgent: [],
         };
       },
     }
@@ -49,7 +50,7 @@ test("executeDelegate wires resolve + process + touched files", async () => {
   assert.equal(result.mode, "ask");
   assert.equal(result.result, "looks fine");
   assert.equal(result.finalMessageAvailable, true);
-  assert.ok(Array.isArray(result.touchedFiles));
+  assert.ok(Array.isArray(result.filesReportedByAgent));
   assert.ok(Array.isArray(result.warnings));
 });
 
@@ -81,7 +82,7 @@ test("executeDelegate plan mode warns when final message is not JSON", async () 
           result: "not-json{{{",
           finalMessageAvailable: true,
           warnings: [],
-          stderrBytes: 0,
+          filesReportedByAgent: [],
         };
       },
     }
@@ -117,7 +118,7 @@ test("executeDelegate plan mode parses valid plan JSON", async () => {
         result: JSON.stringify(plan),
         finalMessageAvailable: true,
         warnings: [],
-        stderrBytes: 0,
+        filesReportedByAgent: [],
       }),
     }
   );

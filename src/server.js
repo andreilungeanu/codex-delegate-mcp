@@ -16,7 +16,7 @@ if (nodeMajor < 18) {
   process.exit(1);
 }
 
-export const SERVER_INSTRUCTIONS = `Delegate coding work to the OpenAI Codex CLI through the delegate tool. You orchestrate (brief + review); Codex implements. Defaults: model=gpt-5.6-terra, reasoningEffort=high, network=false, fast=false. Override model/reasoningEffort/fast only when the user asks. Use mode="agent" for edits, mode="plan" for a structured plan, mode="ask" for read-only Q&A, mode="review" for native code review. Scope workspace tightly. Review touchedFiles and the git diff after write-capable runs. Use doctor for setup diagnostics.`;
+export const SERVER_INSTRUCTIONS = `Delegate coding work to the OpenAI Codex CLI through the delegate tool. You orchestrate (brief + review); Codex implements. Defaults: model=gpt-5.6-terra, reasoningEffort=high, network=false, fast=false. Override model/reasoningEffort/fast only when the user asks. Use mode="agent" for edits, mode="plan" for a structured plan, mode="ask" for read-only Q&A, mode="review" for native code review. Scope workspace tightly. Review filesReportedByAgent and the git diff after write-capable runs. Use doctor for setup diagnostics.`;
 
 const reviewTargetSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("uncommitted") }).strict(),
@@ -33,8 +33,23 @@ const delegateOutputSchema = z
     resumed: z.boolean(),
     mode: z.enum(["agent", "plan", "ask", "review"]),
     workspace: z.string(),
-    touchedFiles: z.array(z.string()),
+    cliVersion: z.string().optional(),
+    filesReportedByAgent: z.array(z.string()),
+    plan: z
+      .object({
+        overview: z.string(),
+        steps: z.array(
+          z.object({
+            title: z.string(),
+            detail: z.string(),
+          })
+        ),
+      })
+      .optional(),
     warnings: z.array(z.string()),
+    timedOut: z.boolean().optional(),
+    cancelled: z.boolean().optional(),
+    exitCode: z.number().int().optional(),
   })
   .passthrough();
 
@@ -143,7 +158,7 @@ export function buildServer({
           .min(1000)
           .max(86_400_000)
           .optional()
-          .describe("Overall turn timeout in milliseconds"),
+          .describe("Hard-cap timeout in milliseconds (default 1h; idle timeout is 90s)"),
         reviewTarget: reviewTargetSchema
           .optional()
           .describe("Required in review mode: uncommitted, base branch, or commit sha"),

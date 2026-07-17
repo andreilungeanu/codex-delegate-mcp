@@ -42,22 +42,17 @@ function linesChild(lines, { exitCode = 0, afterEnd } = {}) {
 
 // --- Subtle input / argv ---
 
-test("whitespace-only model/reasoningEffort fall back to defaults", () => {
+test("whitespace-only model is rejected; blank reasoningEffort falls back", () => {
+  assert.throws(
+    () => validateDelegateInput({ spec: "x", model: "   " }),
+    (err) => err.code === "invalid_model"
+  );
   const req = validateDelegateInput({
     spec: "x",
-    model: "   ",
     reasoningEffort: "\t",
   });
   assert.equal(req.model, "gpt-5.6-terra");
   assert.equal(req.reasoningEffort, "high");
-
-  const { args } = buildCodexArgs(
-    { ...req, workspace: "/tmp/r", network: false },
-    { resultFile: "/tmp/o.txt", platform: "linux" }
-  );
-  assert.ok(args.includes("--model"));
-  assert.ok(args.includes("gpt-5.6-terra"));
-  assert.ok(args.some((a) => String(a).includes('model_reasoning_effort="high"')));
 });
 
 test("spec that looks like CLI flags stays after -- separator", () => {
@@ -91,6 +86,7 @@ test("resume does not pass --cd (cwd is the workspace contract)", () => {
   assert.equal(kind, "resume");
   assert.ok(!args.includes("--cd"));
   assert.ok(!args.includes("D:\\other\\workspace"));
+  assert.ok(args.includes("--skip-git-repo-check"));
 });
 
 test("ask must not receive --output-schema even if a schema path is passed", () => {
@@ -173,6 +169,7 @@ test("timeout marks timedOut but not user-cancelled", async () => {
 
   assert.equal(result.status, "interrupted");
   assert.equal(result.timedOut, true);
+  assert.equal(result.timeoutReason, "hard-cap");
   assert.equal(result.cancelled, false);
 });
 
@@ -362,6 +359,7 @@ test("plan mode accepts JSON but warns when schema shape is wrong", async () => 
           finalMessageAvailable: true,
           warnings: [],
           stderrBytes: 0,
+          filesReportedByAgent: [],
         };
       },
     }
@@ -397,6 +395,7 @@ test("pre-aborted outer signal interrupts before/during run", async () => {
           finalMessageAvailable: false,
           warnings: ["interrupted"],
           stderrBytes: 0,
+          filesReportedByAgent: [],
         };
       },
     }

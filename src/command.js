@@ -9,6 +9,9 @@ export const DEFAULT_MODEL = "gpt-5.6-terra";
 /** Default reasoning effort — quality over speed unless the user asks otherwise. */
 export const DEFAULT_REASONING_EFFORT = "high";
 
+/** Leave headroom under Windows CreateProcess ~32k limit. */
+export const MAX_ARGV_CHARS = 28_000;
+
 export const REASONING_EFFORTS = Object.freeze([
   "minimal",
   "low",
@@ -47,20 +50,45 @@ export function buildCodexArgs(request, { resultFile, outputSchemaFile, platform
   if (!resultFile || typeof resultFile !== "string") throw new TypeError("resultFile required");
   if (!MODES.includes(request.mode)) throw new Error(`unsupported mode: ${request.mode}`);
 
+  let built;
   if (request.mode === "review") {
     if (outputSchemaFile) throw new Error("output schema is not supported in review mode");
-    return buildReviewArgs(request, { resultFile, platform });
-  }
-  if (request.mode === "ask" && outputSchemaFile) {
+    built = buildReviewArgs(request, { resultFile, platform });
+  } else if (request.mode === "ask" && outputSchemaFile) {
     throw new Error("output schema is not supported in ask mode");
-  }
-  if (request.mode === "plan" && !outputSchemaFile) {
+  } else if (request.mode === "plan" && !outputSchemaFile) {
     throw new Error("plan mode requires outputSchemaFile");
+  } else if (request.resumeThreadId) {
+    built = buildResumeArgs(request, { resultFile, outputSchemaFile, platform });
+  } else {
+    built = buildInitialArgs(request, { resultFile, outputSchemaFile, platform });
   }
-  if (request.resumeThreadId) {
-    return buildResumeArgs(request, { resultFile, outputSchemaFile, platform });
+  assertArgvLength(built.args);
+  return built;
+}
+
+/** Approximate CreateProcess command-line length (quoted tokens + spaces). */
+export function estimateArgvChars(args) {
+  let total = 0;
+  for (const raw of args) {
+    const token = String(raw);
+    const needsQuotes = /[\s"]/.test(token);
+    const escaped = token.replace(/"/g, '\\"');
+    total += needsQuotes ? escaped.length + 2 : escaped.length;
+    total += 1; // separator
   }
-  return buildInitialArgs(request, { resultFile, outputSchemaFile, platform });
+  return total;
+}
+
+function assertArgvLength(args) {
+  const chars = estimateArgvChars(args);
+  if (chars > MAX_ARGV_CHARS) {
+    const err = new Error(
+      `Codex argv is too long (${chars} chars; limit ${MAX_ARGV_CHARS}). Shorten the spec brief.`
+    );
+    err.code = "argv_too_long";
+    throw err;
+  }
 }
 
 function buildInitialArgs(request, { resultFile, outputSchemaFile, platform }) {
@@ -87,6 +115,7 @@ function buildResumeArgs(request, { resultFile, outputSchemaFile, platform }) {
     ...commonFlags(request, resultFile, outputSchemaFile, platform),
     "-c",
     `sandbox_mode=${tomlString(sandbox)}`,
+    "--skip-git-repo-check",
     request.resumeThreadId,
     "--",
     request.spec,
@@ -197,7 +226,15 @@ export function validateDelegateInput(raw, { cwd = process.cwd() } = {}) {
     }
   }
 
-  let model = normalizeOptionalText(raw.model) ?? DEFAULT_MODEL;
+  let model;
+  if (raw.model == null) {
+    model = DEFAULT_MODEL;
+  } else {
+    const trimmed = String(raw.model).trim();
+    if (!trimmed) throw bad("invalid_model", "model must be a non-empty string when provided");
+    model = trimmed;
+  }
+
   let reasoningEffort =
     normalizeOptionalText(raw.reasoningEffort) ?? DEFAULT_REASONING_EFFORT;
   if (reasoningEffort && !REASONING_EFFORTS.includes(reasoningEffort)) {

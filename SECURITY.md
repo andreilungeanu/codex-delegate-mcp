@@ -8,12 +8,12 @@ chosen `workspace` directory (Codex sandbox: `workspace-write`).
 
 Treat every `delegate` call like handing an engineer write access to that tree. Your MCP
 host (Claude Code, etc.) is the orchestrator: it should scope the brief, then review
-`touchedFiles` and the git diff.
+`filesReportedByAgent` and the git diff.
 
 ## Recommendations
 
 - Point `workspace` at the smallest directory that contains the task.
-- Review `touchedFiles` and the git diff before committing.
+- Review `filesReportedByAgent` and the git diff before committing.
 - Use `mode: "plan"` or `mode: "ask"` when you do not want writes.
 - Keep `network` false unless the task needs it.
 - Run verification (tests, lint) after delegation — the delegate skill asks the host to do this.

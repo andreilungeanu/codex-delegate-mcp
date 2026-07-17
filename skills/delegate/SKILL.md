@@ -28,7 +28,7 @@ You orchestrate; Codex implements. Use the **codex-delegate-mcp** MCP server —
    - **Done when** — verifiable acceptance criteria.
    Point at files to read; don't paste large code blocks.
 2. **Call `delegate`** on codex-delegate-mcp.
-3. **Review** — read `touchedFiles`, inspect the git diff, run tests/lint.
+3. **Review** — read `filesReportedByAgent`, inspect the git diff, run tests/lint.
    - If criteria fail: resume the **same thread** with `resumeThreadId` and a specific fix brief.
    - After 2 failed resumes, start a fresh thread with a rewritten brief.
 4. **Report** — summarize what changed and whether acceptance criteria are met.

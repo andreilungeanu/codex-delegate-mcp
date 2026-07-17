@@ -186,9 +186,129 @@ test("runCodexProcess abort signal marks interrupted and cancelled", async () =>
     },
     platform: "linux",
     timeoutMs: 30_000,
+    idleMs: 30_000,
   });
 
   assert.equal(result.status, "interrupted");
   assert.equal(result.cancelled, true);
   assert.equal(result.finalMessageAvailable, false);
+});
+
+test("runCodexProcess collects file_change paths", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-fc-"));
+  const resultFile = path.join(dir, "last.txt");
+  const absA = path.join(dir, "a.txt");
+  const absB = path.join(dir, "b.txt");
+
+  const result = await runCodexProcess({
+    command: "codex",
+    args: ["exec"],
+    cwd: dir,
+    resultFile,
+    spawnImpl: () =>
+      fakeChild({
+        lines: [
+          JSON.stringify({ type: "thread.started", thread_id: "tid-fc" }),
+          JSON.stringify({ type: "turn.started" }),
+          JSON.stringify({
+            type: "item.completed",
+            item: {
+              type: "file_change",
+              changes: [
+                { path: absA, kind: "add" },
+                { path: absB, kind: "update" },
+              ],
+            },
+          }),
+          JSON.stringify({ type: "turn.completed" }),
+        ],
+        writeResult: () => writeFile(resultFile, "ok", "utf8"),
+      }),
+    platform: "linux",
+    timeoutMs: 5000,
+    idleMs: 5000,
+  });
+
+  assert.equal(result.status, "completed");
+  assert.deepEqual(result.filesReportedByAgent.sort(), [absA, absB].sort());
+});
+
+test("runCodexProcess appends stderr tail on failure", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-err-"));
+  const resultFile = path.join(dir, "last.txt");
+
+  const spawnImpl = () => {
+    const child = new EventEmitter();
+    child.pid = 4242;
+    child.stdout = Readable.from([
+      JSON.stringify({ type: "thread.started", thread_id: "tid-err" }) + "\n",
+    ]);
+    child.stderr = new Readable({
+      read() {
+        this.push("sandbox boom: permission denied\n");
+        this.push(null);
+      },
+    });
+    child.exitCode = null;
+    child.signalCode = null;
+    child.stderr.on("end", () => {
+      setImmediate(() => {
+        child.exitCode = 1;
+        child.emit("close", 1);
+      });
+    });
+    return child;
+  };
+
+  const result = await runCodexProcess({
+    command: "codex",
+    args: ["exec"],
+    cwd: dir,
+    resultFile,
+    spawnImpl,
+    platform: "linux",
+    timeoutMs: 5000,
+    idleMs: 5000,
+  });
+
+  assert.equal(result.status, "failed");
+  assert.match(result.stderrTail, /permission denied/);
+  assert.ok(result.warnings.some((w) => /stderr:.*permission denied/i.test(w)));
+});
+
+test("runCodexProcess idle timeout trips before hard cap", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-idle-"));
+  const resultFile = path.join(dir, "last.txt");
+  let childRef = null;
+
+  const result = await runCodexProcess({
+    command: "codex",
+    args: ["exec"],
+    cwd: dir,
+    resultFile,
+    spawnImpl: () => {
+      const child = new EventEmitter();
+      child.pid = 7777;
+      child.stdout = new Readable({ read() {} });
+      child.stderr = Readable.from([]);
+      child.exitCode = null;
+      child.signalCode = null;
+      childRef = child;
+      return child;
+    },
+    treeKillImpl: async () => {
+      childRef.stdout.push(null);
+      childRef.exitCode = 1;
+      childRef.emit("close", 1);
+    },
+    platform: "linux",
+    timeoutMs: 30_000,
+    idleMs: 40,
+  });
+
+  assert.equal(result.status, "interrupted");
+  assert.equal(result.timedOut, true);
+  assert.equal(result.timeoutReason, "idle-timeout");
+  assert.equal(result.cancelled, false);
+  assert.ok(result.warnings.some((w) => /Idle timeout/i.test(w)));
 });
