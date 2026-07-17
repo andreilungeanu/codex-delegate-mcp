@@ -1,12 +1,15 @@
 import process from "node:process";
-import { spawnSync } from "node:child_process";
-import { resolveCodex, MIN_VERSION, clearCodexCache } from "./resolve-codex.js";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { refreshCodex, MIN_VERSION, clearCodexCache } from "./resolve-codex.js";
 import { VERSION } from "./version.js";
+
+const execFileAsync = promisify(execFile);
 
 export async function runDoctor({
   deep = false,
   workspace = process.cwd(),
-  resolve = resolveCodex,
+  resolve = refreshCodex,
   env = process.env,
   getClientInfo,
 } = {}) {
@@ -42,7 +45,7 @@ export async function runDoctor({
     }
   })();
 
-  const login = probeLogin(codex.found ? codex.command : null);
+  const login = await probeLogin(codex.found ? codex.command : null);
   const recursion = {
     depth: env.CODEX_DELEGATE_DEPTH ?? null,
     active: Boolean(env.CODEX_DELEGATE_DEPTH && String(env.CODEX_DELEGATE_DEPTH).trim()),
@@ -73,23 +76,28 @@ export async function runDoctor({
   return out;
 }
 
-function probeLogin(command) {
+async function probeLogin(command) {
   if (!command) return { status: "skipped", reason: "codex_not_found" };
   try {
-    const result = spawnSync(command, ["login", "status"], {
+    const { stdout, stderr } = await execFileAsync(command, ["login", "status"], {
       encoding: "utf8",
       timeout: 8000,
       windowsHide: true,
       shell: false,
     });
-    const text = `${result.stdout || ""}${result.stderr || ""}`.trim();
+    const text = `${stdout || ""}${stderr || ""}`.trim();
     return {
-      status: result.status === 0 ? "ok" : "failed",
-      exitCode: result.status,
+      status: "ok",
+      exitCode: 0,
       detail: text.slice(0, 400) || null,
     };
   } catch (err) {
-    return { status: "error", detail: err?.message || String(err) };
+    const text = `${err.stdout || ""}${err.stderr || ""}`.trim();
+    return {
+      status: "failed",
+      exitCode: typeof err?.code === "number" ? err.code : null,
+      detail: text.slice(0, 400) || err?.message || null,
+    };
   }
 }
 
@@ -102,18 +110,27 @@ async function runDeepSmoke({ codex }) {
   const results = {};
   for (const surface of surfaces) {
     const args = surface.split(" ").concat(["--help"]);
-    const result = spawnSync(codex.command, args, {
-      encoding: "utf8",
-      timeout: 8000,
-      windowsHide: true,
-      shell: false,
-    });
+    let stdout = "";
+    let stderr = "";
+    let exitCode = 0;
+    try {
+      ({ stdout, stderr } = await execFileAsync(codex.command, args, {
+        encoding: "utf8",
+        timeout: 8000,
+        windowsHide: true,
+        shell: false,
+      }));
+    } catch (err) {
+      stdout = err.stdout || "";
+      stderr = err.stderr || "";
+      exitCode = typeof err?.code === "number" ? err.code : null;
+    }
     results[surface] = {
-      ok: result.status === 0,
-      exitCode: result.status,
-      hasJson: /--json/.test(`${result.stdout}${result.stderr}`),
+      ok: exitCode === 0,
+      exitCode,
+      hasJson: /--json/.test(`${stdout}${stderr}`),
       hasOutputLastMessage: /--output-last-message/.test(
-        `${result.stdout}${result.stderr}`
+        `${stdout}${stderr}`
       ),
     };
   }

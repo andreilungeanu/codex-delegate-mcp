@@ -28,6 +28,17 @@ export function resolveCodex(options = {}) {
   return cached;
 }
 
+export function refreshCodex(options = {}) {
+  try {
+    const resolved = resolveCodexUncached(options);
+    cached = resolved;
+    return resolved;
+  } catch (err) {
+    cached = null;
+    throw err;
+  }
+}
+
 export function resolveCodexUncached({
   env = process.env,
   platform = process.platform,

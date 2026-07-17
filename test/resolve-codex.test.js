@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   parseVersion,
   compareSemver,
+  refreshCodex,
+  resolveCodex,
   resolveCodexUncached,
   clearCodexCache,
 } from "../src/resolve-codex.js";
@@ -66,4 +68,44 @@ test("resolveCodexUncached not_found when no candidates", () => {
       }),
     (err) => err.code === "not_found"
   );
+});
+
+test("refreshCodex bypasses and updates the cache", () => {
+  clearCodexCache();
+  const options = {
+    env: { CODEX_DELEGATE_COMMAND: process.execPath },
+    platform: "linux",
+    homeDir: "/nonexistent-home",
+  };
+
+  resolveCodex({ ...options, runVersion: () => "codex-cli 0.144.4" });
+  const refreshed = refreshCodex({ ...options, runVersion: () => "codex-cli 0.144.5" });
+
+  assert.equal(refreshed.version, "0.144.5");
+  assert.equal(
+    resolveCodex({ ...options, runVersion: () => "codex-cli 9.9.9" }).version,
+    "0.144.5"
+  );
+  clearCodexCache();
+});
+
+test("refreshCodex clears the cache when its fresh probe fails", () => {
+  clearCodexCache();
+  const options = {
+    env: { CODEX_DELEGATE_COMMAND: process.execPath },
+    platform: "linux",
+    homeDir: "/nonexistent-home",
+  };
+
+  resolveCodex({ ...options, runVersion: () => "codex-cli 0.144.4" });
+  assert.throws(
+    () => refreshCodex({ ...options, runVersion: () => "codex-cli 0.100.0" }),
+    /below required/
+  );
+
+  assert.equal(
+    resolveCodex({ ...options, runVersion: () => "codex-cli 0.144.6" }).version,
+    "0.144.6"
+  );
+  clearCodexCache();
 });
