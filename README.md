@@ -94,7 +94,7 @@ codex mcp add codex-delegate-mcp -- node D:\codex-delegate-mcp2\src\server.js
 | `timeoutMs` | Optional overall timeout |
 | `reviewTarget` | Required for `review`: `uncommitted` \| `{kind:"base",branch}` \| `{kind:"commit",sha}` |
 
-Fast mode is always off (not exposed), same idea as Cursor Delegate's `fast=false` default.
+Fast mode is always forced off (`service_tier="default"`, `features.fast_mode=false`) — Codex's equivalent of Cursor's `fast=false`.
 
 ### `cancel`
 

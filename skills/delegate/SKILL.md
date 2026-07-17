@@ -43,7 +43,7 @@ You orchestrate; Codex implements. Use the **codex-delegate-mcp** MCP server —
 | `network` | `false` | Enable only when the task needs network |
 | `workspace` | current cwd | Smallest directory that fits the task |
 
-Fast mode is **always off** (not exposed). Do not invent a fast flag.
+Fast mode is **always off**. Codex names this `service_tier` / `features.fast_mode` (CLI `/fast`); the bridge forces `service_tier="default"` and `features.fast_mode=false` on every run. Do not invent a fast flag.
 
 Other models (e.g. `gpt-5.6-sol`, `gpt-5.6-luna`) are available — pass `model` when the user requests one.
 

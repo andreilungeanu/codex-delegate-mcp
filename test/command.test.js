@@ -252,7 +252,25 @@ test("build initial agent args", () => {
   assert.ok(args.includes("workspace-write"));
   assert.ok(args.includes("--ignore-user-config"));
   assert.ok(args.includes("--skip-git-repo-check"));
+  assert.ok(args.includes('service_tier="default"'));
+  assert.ok(args.includes("features.fast_mode=false"));
   assert.equal(args.at(-1), "fix it");
+});
+
+test("every mode forces Codex Fast mode off via service_tier", () => {
+  for (const mode of ["agent", "ask", "plan"]) {
+    const { args } = buildCodexArgs(
+      { spec: "x", mode, workspace: "/repo", network: false, model: "gpt-5.6-terra", reasoningEffort: "high" },
+      {
+        resultFile: "/tmp/out.txt",
+        outputSchemaFile: mode === "plan" ? "/tmp/schema.json" : undefined,
+        platform: "linux",
+      }
+    );
+    assert.ok(args.includes('service_tier="default"'), mode);
+    assert.ok(args.includes("features.fast_mode=false"), mode);
+    assert.ok(!args.some((a) => String(a).includes('service_tier="fast"')), mode);
+  }
 });
 
 test("agent network true/false flags appear in argv", () => {

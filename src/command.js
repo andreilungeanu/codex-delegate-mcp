@@ -121,6 +121,11 @@ function commonFlags(request, resultFile, outputSchemaFile, platform) {
     "hooks",
     "-c",
     'approval_policy="never"',
+    // Codex "Fast mode" (/fast) is service_tier + features.fast_mode — force Standard off.
+    "-c",
+    'service_tier="default"',
+    "-c",
+    "features.fast_mode=false",
     "-c",
     `sandbox_workspace_write.network_access=${network ? "true" : "false"}`,
     "-c",
