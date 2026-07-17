@@ -1,0 +1,113 @@
+import process from "node:process";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { buildCodexArgs, validateDelegateInput, PLAN_SCHEMA } from "./command.js";
+import { resolveCodex } from "./resolve-codex.js";
+import { runCodexProcess } from "./run-codex.js";
+import { gitChangedSet, computeTouched } from "./touched-files.js";
+import { createOperationRegistry } from "./ops.js";
+
+export async function executeDelegate(rawArgs, options = {}) {
+  const {
+    cwd = process.cwd(),
+    env = process.env,
+    resolve = resolveCodex,
+    runProcess = runCodexProcess,
+    operationRegistry = createOperationRegistry(),
+    onProgress,
+    signal: outerSignal,
+  } = options;
+
+  if (env.CODEX_DELEGATE_DEPTH && String(env.CODEX_DELEGATE_DEPTH).trim() !== "") {
+    const err = new Error(
+      "Refusing nested delegation (CODEX_DELEGATE_DEPTH is already set). The orchestrator should call this MCP server, not nest workers."
+    );
+    err.code = "recursion_refused";
+    throw err;
+  }
+
+  const request = validateDelegateInput(rawArgs, { cwd });
+  const codex = resolve({ env });
+  const warnings = [...(codex.warnings || [])];
+
+  const tmp = await mkdtemp(path.join(tmpdir(), "codex-delegate-"));
+  const resultFile = path.join(tmp, "last-message.txt");
+  let outputSchemaFile = null;
+  if (request.mode === "plan") {
+    outputSchemaFile = path.join(tmp, "plan.schema.json");
+    await writeFile(outputSchemaFile, JSON.stringify(PLAN_SCHEMA), "utf8");
+  }
+
+  const built = buildCodexArgs(request, {
+    resultFile,
+    outputSchemaFile,
+    platform: process.platform,
+  });
+
+  const controller = new AbortController();
+  const forward = () => controller.abort(outerSignal?.reason);
+  if (outerSignal) {
+    if (outerSignal.aborted) controller.abort(outerSignal.reason);
+    else outerSignal.addEventListener("abort", forward, { once: true });
+  }
+
+  const lease = operationRegistry.acquire({
+    threadId: request.resumeThreadId || null,
+    cancel: async () => {
+      controller.abort(new Error("cancelled"));
+    },
+  });
+
+  const before = gitChangedSet(request.workspace);
+  let processResult;
+  try {
+    processResult = await runProcess({
+      command: codex.command,
+      args: built.args,
+      cwd: request.workspace,
+      env,
+      resultFile,
+      signal: controller.signal,
+      timeoutMs: request.timeoutMs ?? 900_000,
+      onProgress,
+      onThreadId: (id) => lease.updateThreadId(id),
+    });
+  } finally {
+    lease.release();
+    if (outerSignal) outerSignal.removeEventListener("abort", forward);
+    await rm(tmp, { recursive: true, force: true }).catch(() => {});
+  }
+
+  warnings.push(...(processResult.warnings || []));
+  const after = gitChangedSet(request.workspace);
+  const touched = computeTouched({ before, after, workspace: request.workspace });
+
+  let plan;
+  if (request.mode === "plan" && processResult.finalMessageAvailable) {
+    try {
+      plan = JSON.parse(processResult.result);
+    } catch {
+      warnings.push("Plan mode final message was not valid JSON.");
+    }
+  }
+
+  const cancellation = lease.getCancellation();
+  return {
+    result: processResult.result,
+    finalMessageAvailable: processResult.finalMessageAvailable,
+    status: processResult.status,
+    threadId: processResult.threadId || request.resumeThreadId || undefined,
+    resumed: Boolean(request.resumeThreadId),
+    mode: request.mode,
+    workspace: request.workspace,
+    cliVersion: codex.version,
+    touchedFiles: touched.files,
+    touchedFilesSource: touched.source,
+    plan,
+    warnings,
+    timedOut: processResult.timedOut,
+    cancelled: processResult.cancelled || cancellation?.status === "cancelled",
+    exitCode: processResult.exitCode,
+  };
+}

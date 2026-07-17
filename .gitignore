@@ -1,0 +1,13 @@
+node_modules/
+npm-debug.log*
+.DS_Store
+*.tgz
+.coverage/
+.firecrawl/
+research/
+tmp/
+temp/
+*.log
+.env
+.env.*
+!.env.example

@@ -1,0 +1,42 @@
+{
+  "name": "codex-delegate-mcp",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "MCP bridge that lets Claude Code and other hosts delegate implementation to the OpenAI Codex CLI.",
+  "license": "MIT",
+  "author": "Andrei Lungeanu <andrei@lungeanu.ro>",
+  "keywords": [
+    "mcp",
+    "codex",
+    "openai",
+    "claude-code",
+    "chatgpt",
+    "github-copilot",
+    "vscode",
+    "delegate"
+  ],
+  "main": "src/server.js",
+  "bin": {
+    "codex-delegate-mcp": "src/server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "PRIVACY.md",
+    "SECURITY.md",
+    "TERMS.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.22.0",
+    "zod": "^3.23.8"
+  }
+}
