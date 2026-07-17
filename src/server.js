@@ -5,6 +5,12 @@ import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import {
+  DEFAULT_MODEL,
+  DEFAULT_REASONING_EFFORT,
+  MODES,
+  REASONING_EFFORTS,
+} from "./command.js";
 import { executeDelegate as executeDelegateDefault } from "./delegate.js";
 import { runDoctor as runDoctorDefault } from "./doctor.js";
 import { createOperationRegistry } from "./ops.js";
@@ -16,7 +22,7 @@ if (nodeMajor < 18) {
   process.exit(1);
 }
 
-export const SERVER_INSTRUCTIONS = `Delegate coding work to the OpenAI Codex CLI through the delegate tool. You orchestrate (brief + review); Codex implements. Defaults: model=gpt-5.6-terra, reasoningEffort=high, network=false, fast=false. Override model/reasoningEffort/fast only when the user asks. Use mode="agent" for edits, mode="plan" for a structured plan, mode="ask" for read-only Q&A, mode="review" for native code review. Scope workspace tightly. Review filesReportedByAgent and the git diff after write-capable runs. Use doctor for setup diagnostics.`;
+export const SERVER_INSTRUCTIONS = `Delegate coding work to the OpenAI Codex CLI through the delegate tool. You orchestrate (brief + review); Codex implements. Defaults: model=${DEFAULT_MODEL}, reasoningEffort=${DEFAULT_REASONING_EFFORT}, network=false, fast=false. Override model/reasoningEffort/fast only when the user asks. Use mode="agent" for edits, mode="plan" for a structured plan, mode="ask" for read-only Q&A, mode="review" for native code review. Scope workspace tightly. Review filesReportedByAgent and the git diff after write-capable runs. Use doctor for setup diagnostics.`;
 
 const reviewTargetSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("uncommitted") }).strict(),
@@ -31,7 +37,7 @@ const delegateOutputSchema = z
     status: z.enum(["completed", "failed", "interrupted"]),
     threadId: z.string().optional(),
     resumed: z.boolean(),
-    mode: z.enum(["agent", "plan", "ask", "review"]),
+    mode: z.enum([...MODES]),
     workspace: z.string(),
     cliVersion: z.string().optional(),
     filesReportedByAgent: z.array(z.string()),
@@ -54,14 +60,25 @@ const delegateOutputSchema = z
   .passthrough();
 
 export async function runCancelTool({ args = {}, operationRegistry }) {
-  const result = await operationRegistry.cancel({
-    threadId: args?.threadId,
-    cause: "user",
-  });
-  return {
-    content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-    structuredContent: result,
-  };
+  try {
+    const result = await operationRegistry.cancel({
+      threadId: args?.threadId,
+      cause: "user",
+    });
+    return {
+      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+      structuredContent: result,
+    };
+  } catch (err) {
+    const payload = {
+      error: err?.code || "cancel_failed",
+      message: err?.message || String(err),
+    };
+    return {
+      content: [{ type: "text", text: JSON.stringify(payload, null, 2) }],
+      isError: true,
+    };
+  }
 }
 
 export async function runDelegateTool({
@@ -121,14 +138,14 @@ export function buildServer({
     "delegate",
     {
       description:
-        "Delegate a coding task to the OpenAI Codex CLI. Never shell out to codex — use this tool. Pass a precise brief in spec. Defaults: mode=agent, model=gpt-5.6-terra, reasoningEffort=high, network=false, fast=false. Override model/reasoningEffort/fast only when the user asks. Plan workflow: mode=plan then resume with mode=agent and resumeThreadId. Returns the authoritative final message, thread id, changed files, and warnings. See the delegate skill for orchestration.",
+        `Delegate a coding task to the OpenAI Codex CLI. Never shell out to codex — use this tool. Pass a precise brief in spec. Defaults: mode=agent, model=${DEFAULT_MODEL}, reasoningEffort=${DEFAULT_REASONING_EFFORT}, network=false, fast=false. Override model/reasoningEffort/fast only when the user asks. Plan workflow: mode=plan then resume with mode=agent and resumeThreadId. Returns the authoritative final message, thread id, changed files, and warnings. See the delegate skill for orchestration.`,
       inputSchema: {
         spec: z
           .string()
           .describe(
             "Task brief: goal, scope, decisions already made (quote the user's exact values), acceptance criteria. Point at files to read rather than pasting code."
           ),
-        mode: z.enum(["agent", "plan", "ask", "review"]).default("agent"),
+        mode: z.enum([...MODES]).default("agent"),
         workspace: z.string().optional().describe("Working directory for Codex (defaults to cwd)"),
         resumeThreadId: z
           .string()
@@ -136,12 +153,14 @@ export function buildServer({
           .describe("Resume an existing Codex thread instead of starting a new one"),
         model: z
           .string()
-          .default("gpt-5.6-terra")
-          .describe("Codex model id. Default gpt-5.6-terra; override only when the user asks"),
+          .default(DEFAULT_MODEL)
+          .describe(`Codex model id. Default ${DEFAULT_MODEL}; override only when the user asks`),
         reasoningEffort: z
-          .enum(["minimal", "low", "medium", "high", "xhigh"])
-          .default("high")
-          .describe("Reasoning effort. Default high; override only when the user asks"),
+          .enum([...REASONING_EFFORTS])
+          .default(DEFAULT_REASONING_EFFORT)
+          .describe(
+            `Reasoning effort. Default ${DEFAULT_REASONING_EFFORT}; override only when the user asks`
+          ),
         fast: z
           .boolean()
           .default(false)

@@ -1,6 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildServer, runDelegateTool, runCancelTool } from "../src/server.js";
+import {
+  buildServer,
+  runDelegateTool,
+  runCancelTool,
+  SERVER_INSTRUCTIONS,
+} from "../src/server.js";
+import {
+  DEFAULT_MODEL,
+  DEFAULT_REASONING_EFFORT,
+} from "../src/command.js";
 import { createOperationRegistry } from "../src/ops.js";
 
 test("buildServer registers delegate, cancel, doctor", () => {
@@ -9,6 +18,19 @@ test("buildServer registers delegate, cancel, doctor", () => {
     doctorRunner: async () => ({ ok: true }),
   });
   assert.ok(server);
+});
+
+test("delegate tool derives defaults and descriptions from command constants", () => {
+  const server = buildServer();
+  const delegate = server._registeredTools.delegate;
+  const parsed = delegate.inputSchema.parse({ spec: "x" });
+
+  assert.equal(parsed.model, DEFAULT_MODEL);
+  assert.equal(parsed.reasoningEffort, DEFAULT_REASONING_EFFORT);
+  assert.match(delegate.description, new RegExp(DEFAULT_MODEL));
+  assert.match(delegate.description, new RegExp(DEFAULT_REASONING_EFFORT));
+  assert.match(SERVER_INSTRUCTIONS, new RegExp(DEFAULT_MODEL));
+  assert.match(SERVER_INSTRUCTIONS, new RegExp(DEFAULT_REASONING_EFFORT));
 });
 
 test("runDelegateTool returns structuredContent on success", async () => {
@@ -73,5 +95,24 @@ test("runCancelTool statuses: nothing-active, cancelled, not-owned", async () =>
   assert.equal(cancelled.structuredContent.threadId, "owned-tid");
   assert.match(cancelled.content[0].text, /cancelled/);
 
+  lease.release();
+});
+
+test("runCancelTool returns an error payload when cancellation fails", async () => {
+  const registry = createOperationRegistry();
+  const lease = registry.acquire({
+    threadId: "owned-tid",
+    cancel: async () => {
+      throw new Error("cancel boom");
+    },
+  });
+
+  const response = await runCancelTool({ args: {}, operationRegistry: registry });
+
+  assert.equal(response.isError, true);
+  assert.deepEqual(JSON.parse(response.content[0].text), {
+    error: "cancel_failed",
+    message: "cancel boom",
+  });
   lease.release();
 });
