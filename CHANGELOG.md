@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] - 2026-07-16
+
+### Changed
+
+- Default worker model is `gpt-5.6-terra` with `reasoningEffort=high` (needed because `--ignore-user-config` skips `~/.codex/config.toml`)
+- Fast mode stays always off / not exposed; orchestrator overrides model or effort only when the user asks
+
 ## [1.2.0] - 2026-07-16
 
 ### Fixed
