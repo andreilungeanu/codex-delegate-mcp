@@ -95,12 +95,19 @@ export async function executeDelegate(rawArgs, options = {}) {
   }
 
   const cancellation = lease.getCancellation();
+  const resumed =
+    Boolean(request.resumeThreadId) && processResult.threadId === request.resumeThreadId;
+  if (request.resumeThreadId && processResult.threadId && !resumed) {
+    warnings.push(
+      `Requested resume of thread ${request.resumeThreadId} but the agent started new thread ${processResult.threadId}; prior context did not carry over.`
+    );
+  }
   return {
     result: processResult.result,
     finalMessageAvailable: processResult.finalMessageAvailable,
     status: processResult.status,
-    threadId: processResult.threadId || request.resumeThreadId || undefined,
-    resumed: Boolean(request.resumeThreadId),
+    threadId: processResult.threadId || undefined,
+    resumed,
     mode: request.mode,
     workspace: request.workspace,
     cliVersion: codex.version,

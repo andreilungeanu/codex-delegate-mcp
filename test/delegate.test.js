@@ -3,6 +3,30 @@ import assert from "node:assert/strict";
 import { executeDelegate } from "../src/delegate.js";
 import { createOperationRegistry } from "../src/ops.js";
 
+function delegateOptions(threadId) {
+  return {
+    env: {},
+    operationRegistry: createOperationRegistry(),
+    resolve: () => ({
+      command: "/bin/codex",
+      version: "0.144.4",
+      source: "test",
+      warnings: [],
+    }),
+    runProcess: async () => ({
+      status: "completed",
+      exitCode: 0,
+      threadId,
+      timedOut: false,
+      cancelled: false,
+      result: "done",
+      finalMessageAvailable: true,
+      warnings: [],
+      filesReportedByAgent: [],
+    }),
+  };
+}
+
 test("executeDelegate refuses nested recursion", async () => {
   await assert.rejects(
     () =>
@@ -52,6 +76,54 @@ test("executeDelegate wires resolve + process + agent-reported files", async () 
   assert.equal(result.finalMessageAvailable, true);
   assert.ok(Array.isArray(result.filesReportedByAgent));
   assert.ok(Array.isArray(result.warnings));
+});
+
+test("executeDelegate reports a resume only when the observed thread matches", async () => {
+  const result = await executeDelegate(
+    { spec: "continue", resumeThreadId: "thread-existing", workspace: process.cwd() },
+    delegateOptions("thread-existing")
+  );
+
+  assert.equal(result.resumed, true);
+  assert.equal(result.threadId, "thread-existing");
+  assert.equal(result.warnings.length, 0);
+});
+
+test("executeDelegate warns when a requested resume starts a new thread", async () => {
+  const result = await executeDelegate(
+    { spec: "continue", resumeThreadId: "thread-stale", workspace: process.cwd() },
+    delegateOptions("thread-new")
+  );
+
+  assert.equal(result.resumed, false);
+  assert.equal(result.threadId, "thread-new");
+  assert.ok(
+    result.warnings.includes(
+      "Requested resume of thread thread-stale but the agent started new thread thread-new; prior context did not carry over."
+    )
+  );
+});
+
+test("executeDelegate does not infer a thread when a requested resume has no observed id", async () => {
+  const result = await executeDelegate(
+    { spec: "continue", resumeThreadId: "thread-stale", workspace: process.cwd() },
+    delegateOptions(null)
+  );
+
+  assert.equal(result.resumed, false);
+  assert.equal(result.threadId, undefined);
+  assert.equal(result.warnings.length, 0);
+});
+
+test("executeDelegate reports a fresh run as not resumed", async () => {
+  const result = await executeDelegate(
+    { spec: "start", workspace: process.cwd() },
+    delegateOptions("thread-new")
+  );
+
+  assert.equal(result.resumed, false);
+  assert.equal(result.threadId, "thread-new");
+  assert.equal(result.warnings.length, 0);
 });
 
 test("executeDelegate plan mode warns when final message is not JSON", async () => {

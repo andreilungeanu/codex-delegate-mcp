@@ -30,6 +30,7 @@ You orchestrate; Codex implements. Use the **codex-delegate-mcp** MCP server —
 2. **Call `delegate`** on codex-delegate-mcp.
 3. **Review** — read `filesReportedByAgent`, inspect the git diff, run tests/lint.
    - If criteria fail: resume the **same thread** with `resumeThreadId` and a specific fix brief.
+   - If a resume returns `resumed: false` with a new `threadId`, Codex minted a fresh thread and prior context did not carry over.
    - After 2 failed resumes, start a fresh thread with a rewritten brief.
 4. **Report** — summarize what changed and whether acceptance criteria are met.
 
