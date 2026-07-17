@@ -86,7 +86,12 @@ export async function executeDelegate(rawArgs, options = {}) {
   let plan;
   if (request.mode === "plan" && processResult.finalMessageAvailable) {
     try {
-      plan = JSON.parse(processResult.result);
+      const parsed = JSON.parse(processResult.result);
+      if (!isValidPlanShape(parsed)) {
+        warnings.push("Plan mode final message JSON did not match the expected plan schema shape.");
+      } else {
+        plan = parsed;
+      }
     } catch {
       warnings.push("Plan mode final message was not valid JSON.");
     }
@@ -110,4 +115,17 @@ export async function executeDelegate(rawArgs, options = {}) {
     cancelled: processResult.cancelled || cancellation?.status === "cancelled",
     exitCode: processResult.exitCode,
   };
+}
+
+function isValidPlanShape(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  if (typeof value.overview !== "string") return false;
+  if (!Array.isArray(value.steps)) return false;
+  return value.steps.every(
+    (step) =>
+      step &&
+      typeof step === "object" &&
+      typeof step.title === "string" &&
+      typeof step.detail === "string"
+  );
 }

@@ -37,6 +37,9 @@ export function buildCodexArgs(request, { resultFile, outputSchemaFile, platform
     if (outputSchemaFile) throw new Error("output schema is not supported in review mode");
     return buildReviewArgs(request, { resultFile, platform });
   }
+  if (request.mode === "ask" && outputSchemaFile) {
+    throw new Error("output schema is not supported in ask mode");
+  }
   if (request.mode === "plan" && !outputSchemaFile) {
     throw new Error("plan mode requires outputSchemaFile");
   }
@@ -180,12 +183,18 @@ export function validateDelegateInput(raw, { cwd = process.cwd() } = {}) {
     mode,
     workspace,
     resumeThreadId,
-    model: raw.model ? String(raw.model).trim() : undefined,
-    reasoningEffort: raw.reasoningEffort ? String(raw.reasoningEffort).trim() : undefined,
+    model: normalizeOptionalText(raw.model),
+    reasoningEffort: normalizeOptionalText(raw.reasoningEffort),
     network,
     timeoutMs,
     reviewTarget,
   };
+}
+
+function normalizeOptionalText(value) {
+  if (value == null) return undefined;
+  const text = String(value).trim();
+  return text ? text : undefined;
 }
 
 function normalizeReviewTarget(value) {

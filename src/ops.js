@@ -33,8 +33,12 @@ export class OperationRegistry {
   async cancel({ threadId, cause = "user" } = {}) {
     const active = this.#active;
     if (!active) return { status: "nothing-active" };
-    if (threadId && active.threadId && active.threadId !== threadId) {
-      return { status: "not-owned", threadId, activeThreadId: active.threadId };
+    if (threadId) {
+      // Require an exact match. If the active turn has not published a thread id
+      // yet, a caller-supplied id cannot be trusted (could be stale from a prior turn).
+      if (active.threadId !== threadId) {
+        return { status: "not-owned", threadId, activeThreadId: active.threadId };
+      }
     }
     if (!active.cancelPromise) {
       active.cancellation = { status: "cancelling", cause };

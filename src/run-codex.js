@@ -56,16 +56,16 @@ export async function runCodexProcess({
 
   child = spawnImpl(command, args, spawnOpts);
 
-  const abort = async () => {
-    cancelled = true;
+  const abort = async ({ userCancel = false } = {}) => {
+    if (userCancel) cancelled = true;
     if (isChildAlive(child)) await treeKillImpl(child.pid);
   };
 
   const onAbort = () => {
-    abort().catch(() => {});
+    abort({ userCancel: true }).catch(() => {});
   };
   if (signal) {
-    if (signal.aborted) await abort();
+    if (signal.aborted) await abort({ userCancel: true });
     else signal.addEventListener("abort", onAbort, { once: true });
   }
 
@@ -73,7 +73,7 @@ export async function runCodexProcess({
   if (timeoutMs > 0) {
     timer = setTimeout(() => {
       timedOut = true;
-      abort().catch(() => {});
+      abort({ userCancel: false }).catch(() => {});
     }, timeoutMs);
     timer.unref?.();
   }
@@ -151,8 +151,11 @@ export async function runCodexProcess({
   else if (turnStatus === "failed") status = "failed";
   else if (exitCode === 0 && turnStatus === "completed") status = "completed";
   else if (exitCode === 0 && turnStatus === "running") {
-    // Some review paths may exit cleanly without turn.completed; still require exit 0.
+    // Some review paths exit cleanly without turn events; still require exit 0.
     status = "completed";
+  } else if (exitCode === 0 && turnStatus === "in_progress") {
+    // Process died mid-turn: do not treat a partial --output-last-message as final.
+    status = "failed";
   } else if (exitCode === 0) status = "completed";
   else status = "failed";
 
