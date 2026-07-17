@@ -1,0 +1,8 @@
+{
+  "name": "codex-delegate-mcp",
+  "version": "1.0.0",
+  "description": "Delegate implementation to the OpenAI Codex CLI from Claude Code and other MCP hosts.",
+  "author": {
+    "name": "Andrei Lungeanu"
+  }
+}

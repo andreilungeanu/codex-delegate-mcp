@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "codex-delegate-mcp": {
+      "command": "node",
+      "args": ["src/server.js"]
+    }
+  }
+}

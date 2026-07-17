@@ -1,0 +1,9 @@
+{
+  "servers": {
+    "codex-delegate-mcp": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["src/server.js"]
+    }
+  }
+}

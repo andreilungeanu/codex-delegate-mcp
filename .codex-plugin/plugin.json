@@ -1,0 +1,14 @@
+{
+  "name": "codex-delegate-mcp",
+  "version": "1.0.0",
+  "description": "Delegate implementation to the OpenAI Codex CLI.",
+  "author": {
+    "name": "Andrei Lungeanu"
+  },
+  "mcpServers": {
+    "codex-delegate-mcp": {
+      "command": "node",
+      "args": ["${PLUGIN_ROOT}/src/server.js"]
+    }
+  }
+}
