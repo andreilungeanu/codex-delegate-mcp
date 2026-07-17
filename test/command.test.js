@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import path from "node:path";
 import {
   buildCodexArgs,
   validateDelegateInput,
@@ -8,14 +9,15 @@ import {
 } from "../src/command.js";
 
 test("validateDelegateInput defaults and resolves workspace", () => {
+  const cwd = path.resolve("work-repo");
   const req = validateDelegateInput(
     { spec: "do the thing" },
-    { cwd: "D:\\work\\repo" }
+    { cwd }
   );
   assert.equal(req.mode, "agent");
   assert.equal(req.network, false);
   assert.equal(req.fast, false);
-  assert.equal(req.workspace, "D:\\work\\repo");
+  assert.equal(req.workspace, cwd);
   assert.equal(req.model, "gpt-5.6-terra");
   assert.equal(req.reasoningEffort, "high");
 });

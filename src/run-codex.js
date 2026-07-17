@@ -75,7 +75,9 @@ export async function runCodexProcess({
       timedOut = true;
       abort({ userCancel: false }).catch(() => {});
     }, timeoutMs);
-    timer.unref?.();
+    // Keep the timer referenced under node:test so mocked children (no real
+    // process handles) cannot drain the event loop before timeout fires.
+    if (!process.env.NODE_TEST_CONTEXT) timer.unref?.();
   }
 
   const rl = createInterface({ input: child.stdout, crlfDelay: Infinity });
