@@ -90,11 +90,10 @@ codex mcp add codex-delegate-mcp -- node D:\codex-delegate-mcp2\src\server.js
 | `workspace` | Optional working directory |
 | `resumeThreadId` | Resume a prior Codex thread |
 | `model` / `reasoningEffort` | Defaults: `gpt-5.6-terra` / `high`. Override only when the user asks |
+| `fast` | Default `false` (Standard). Set `true` only when the user asks for Fast (`/fast`) |
 | `network` | Default `false`; only in `agent` |
 | `timeoutMs` | Optional overall timeout |
 | `reviewTarget` | Required for `review`: `uncommitted` \| `{kind:"base",branch}` \| `{kind:"commit",sha}` |
-
-Fast mode is always forced off (`service_tier="default"`, `features.fast_mode=false`) — Codex's equivalent of Cursor's `fast=false`.
 
 ### `cancel`
 

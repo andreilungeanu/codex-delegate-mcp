@@ -16,7 +16,7 @@ if (nodeMajor < 18) {
   process.exit(1);
 }
 
-export const SERVER_INSTRUCTIONS = `Delegate coding work to the OpenAI Codex CLI through the delegate tool. You orchestrate (brief + review); Codex implements. Defaults: model=gpt-5.6-terra, reasoningEffort=high, network=false (fast is always off). Override model/reasoningEffort only when the user asks. Use mode="agent" for edits, mode="plan" for a structured plan, mode="ask" for read-only Q&A, mode="review" for native code review. Scope workspace tightly. Review touchedFiles and the git diff after write-capable runs. Use doctor for setup diagnostics.`;
+export const SERVER_INSTRUCTIONS = `Delegate coding work to the OpenAI Codex CLI through the delegate tool. You orchestrate (brief + review); Codex implements. Defaults: model=gpt-5.6-terra, reasoningEffort=high, network=false, fast=false. Override model/reasoningEffort/fast only when the user asks. Use mode="agent" for edits, mode="plan" for a structured plan, mode="ask" for read-only Q&A, mode="review" for native code review. Scope workspace tightly. Review touchedFiles and the git diff after write-capable runs. Use doctor for setup diagnostics.`;
 
 const reviewTargetSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("uncommitted") }).strict(),
@@ -106,7 +106,7 @@ export function buildServer({
     "delegate",
     {
       description:
-        "Delegate a coding task to the OpenAI Codex CLI. Never shell out to codex — use this tool. Pass a precise brief in spec. Defaults: mode=agent, model=gpt-5.6-terra, reasoningEffort=high, network=false (fast is always off). Override model/reasoningEffort only when the user asks. Plan workflow: mode=plan then resume with mode=agent and resumeThreadId. Returns the authoritative final message, thread id, changed files, and warnings. See the delegate skill for orchestration.",
+        "Delegate a coding task to the OpenAI Codex CLI. Never shell out to codex — use this tool. Pass a precise brief in spec. Defaults: mode=agent, model=gpt-5.6-terra, reasoningEffort=high, network=false, fast=false. Override model/reasoningEffort/fast only when the user asks. Plan workflow: mode=plan then resume with mode=agent and resumeThreadId. Returns the authoritative final message, thread id, changed files, and warnings. See the delegate skill for orchestration.",
       inputSchema: {
         spec: z
           .string()
@@ -127,6 +127,12 @@ export function buildServer({
           .enum(["minimal", "low", "medium", "high", "xhigh"])
           .default("high")
           .describe("Reasoning effort. Default high; override only when the user asks"),
+        fast: z
+          .boolean()
+          .default(false)
+          .describe(
+            "Codex Fast mode (service_tier=fast) — higher credit use; enable only when the user asks"
+          ),
         network: z
           .boolean()
           .default(false)

@@ -6,7 +6,7 @@ export const MODES = Object.freeze(["agent", "plan", "ask", "review"]);
 /** Default worker model — orchestrator overrides only when the user asks. */
 export const DEFAULT_MODEL = "gpt-5.6-terra";
 
-/** Default reasoning effort — same principle as Cursor's fast=false (quality over speed). */
+/** Default reasoning effort — quality over speed unless the user asks otherwise. */
 export const DEFAULT_REASONING_EFFORT = "high";
 
 export const REASONING_EFFORTS = Object.freeze([
@@ -121,16 +121,16 @@ function commonFlags(request, resultFile, outputSchemaFile, platform) {
     "hooks",
     "-c",
     'approval_policy="never"',
-    // Codex "Fast mode" (/fast) is service_tier + features.fast_mode — force Standard off.
-    "-c",
-    'service_tier="default"',
-    "-c",
-    "features.fast_mode=false",
     "-c",
     `sandbox_workspace_write.network_access=${network ? "true" : "false"}`,
     "-c",
     `web_search=${tomlString(network ? "live" : "disabled")}`,
   ];
+
+  // Codex Fast mode (/fast): leave unset by default; enable only when request.fast === true.
+  if (request.fast === true) {
+    args.push("-c", 'service_tier="fast"', "-c", "features.fast_mode=true");
+  }
 
   if (outputSchemaFile) args.push("--output-schema", outputSchemaFile);
   if (platform === "win32") args.push("-c", 'windows.sandbox="elevated"');
@@ -207,13 +207,7 @@ export function validateDelegateInput(raw, { cwd = process.cwd() } = {}) {
     );
   }
 
-  // Fast tier is intentionally not exposed: always off (Cursor-style default).
-  if (raw.fast === true) {
-    throw bad(
-      "invalid_fast",
-      "fast mode is not supported; leave unset (always off). Pass model/reasoningEffort only when the user asks."
-    );
-  }
+  const fast = raw.fast === true;
 
   return {
     spec,
@@ -222,6 +216,7 @@ export function validateDelegateInput(raw, { cwd = process.cwd() } = {}) {
     resumeThreadId,
     model,
     reasoningEffort,
+    fast,
     network,
     timeoutMs,
     reviewTarget,

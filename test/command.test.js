@@ -14,16 +14,30 @@ test("validateDelegateInput defaults and resolves workspace", () => {
   );
   assert.equal(req.mode, "agent");
   assert.equal(req.network, false);
+  assert.equal(req.fast, false);
   assert.equal(req.workspace, "D:\\work\\repo");
   assert.equal(req.model, "gpt-5.6-terra");
   assert.equal(req.reasoningEffort, "high");
 });
 
-test("validateDelegateInput rejects fast=true (always off)", () => {
-  assert.throws(
-    () => validateDelegateInput({ spec: "x", fast: true }),
-    (err) => err.code === "invalid_fast"
-  );
+test("fast defaults off; only sets Codex service_tier when true", () => {
+  const off = validateDelegateInput({ spec: "x" });
+  assert.equal(off.fast, false);
+  const offArgs = buildCodexArgs(
+    { ...off, workspace: "/repo", network: false },
+    { resultFile: "/tmp/out.txt", platform: "linux" }
+  ).args;
+  assert.ok(!offArgs.some((a) => String(a).includes("service_tier")));
+  assert.ok(!offArgs.some((a) => String(a).includes("fast_mode")));
+
+  const on = validateDelegateInput({ spec: "x", fast: true });
+  assert.equal(on.fast, true);
+  const onArgs = buildCodexArgs(
+    { ...on, workspace: "/repo", network: false },
+    { resultFile: "/tmp/out.txt", platform: "linux" }
+  ).args;
+  assert.ok(onArgs.includes('service_tier="fast"'));
+  assert.ok(onArgs.includes("features.fast_mode=true"));
 });
 
 test("model and reasoningEffort overrides are preserved when user-provided", () => {
@@ -252,25 +266,7 @@ test("build initial agent args", () => {
   assert.ok(args.includes("workspace-write"));
   assert.ok(args.includes("--ignore-user-config"));
   assert.ok(args.includes("--skip-git-repo-check"));
-  assert.ok(args.includes('service_tier="default"'));
-  assert.ok(args.includes("features.fast_mode=false"));
   assert.equal(args.at(-1), "fix it");
-});
-
-test("every mode forces Codex Fast mode off via service_tier", () => {
-  for (const mode of ["agent", "ask", "plan"]) {
-    const { args } = buildCodexArgs(
-      { spec: "x", mode, workspace: "/repo", network: false, model: "gpt-5.6-terra", reasoningEffort: "high" },
-      {
-        resultFile: "/tmp/out.txt",
-        outputSchemaFile: mode === "plan" ? "/tmp/schema.json" : undefined,
-        platform: "linux",
-      }
-    );
-    assert.ok(args.includes('service_tier="default"'), mode);
-    assert.ok(args.includes("features.fast_mode=false"), mode);
-    assert.ok(!args.some((a) => String(a).includes('service_tier="fast"')), mode);
-  }
 });
 
 test("agent network true/false flags appear in argv", () => {
