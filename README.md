@@ -12,7 +12,7 @@
 
 Use your best coding agent where its judgment matters most: understanding the task, shaping the plan, and reviewing the result.
 
-Codex Delegate is the MCP bridge that lets Claude Code, ChatGPT/Codex, Copilot — or any MCP client — hand implementation to the **OpenAI Codex CLI**, then get a clean, structured result back for review.
+Codex Delegate is the MCP bridge that lets Claude Code, Cursor, Copilot — or any MCP client — hand implementation to the **OpenAI Codex CLI**, then get a clean, structured result back for review.
 
 <br clear="left">
 
@@ -26,7 +26,7 @@ Codex tears through multi-file edits while a frontier chat model would still be 
 
 ## Your limits stop being the bottleneck
 
-Delegated work runs on the **OpenAI Codex CLI** and its own usage — separate from your orchestrator's chat quota. Your Claude or Copilot subscription spends tokens on the brief and the review; Codex does the grinding. On API? That's the per-token grind moved off your main bill.
+Delegated work runs on the **OpenAI Codex CLI** and its own usage — separate from your orchestrator's chat quota. Your Claude, Cursor, or Copilot subscription spends tokens on the brief and the review; Codex does the grinding. On API? That's the per-token grind moved off your main bill.
 
 ```
 You  →  your agent (plans & reviews)
@@ -40,7 +40,7 @@ You  →  your agent (plans & reviews)
 
 ## Features
 
-- **Native plugins** — install into Claude Code, ChatGPT/Codex, or GitHub Copilot CLI and just say *"delegate this to Codex"*. The shared skill teaches your agent how to delegate well.
+- **Native plugins** — install into Claude Code, Cursor, or GitHub Copilot CLI and just say *"delegate this to Codex"*. The shared skill teaches your agent how to delegate well.
 - **Truthful finals** — only `--output-last-message` after a clean exit counts as the answer. No JSONL guesswork.
 - **Clean, typed results** — final answer, `filesReportedByAgent`, session/`threadId`, plan JSON, warnings, and status.
 - **Plan / ask / review** — structured `plan` mode, read-only `ask`, and Codex-native `review`.
@@ -66,12 +66,22 @@ Then just ask:
 
 That's the whole loop — Claude writes the brief, Codex grinds through the files, Claude walks you through the diff.
 
-### ChatGPT desktop / Codex
+### Cursor
 
-```shell
-codex plugin marketplace add andreilungeanu/codex-delegate-mcp
-codex plugin add codex-delegate-mcp@codex-delegate-mcp
+Add an MCP server in **Cursor Settings → MCP** (or project `.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "codex-delegate-mcp": {
+      "command": "npx",
+      "args": ["-y", "codex-delegate-mcp"]
+    }
+  }
+}
 ```
+
+Then ask Cursor to delegate implementation to Codex the same way.
 
 ### GitHub Copilot CLI
 

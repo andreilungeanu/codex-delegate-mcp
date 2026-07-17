@@ -40,7 +40,7 @@ try {
   }
   // Plugin manifests and skills are Git-install concerns; the npm artifact is
   // runtime-only. Guard against them creeping back into the tarball.
-  for (const rel of ["plugin.json", ".mcp.copilot.json", ".codex-plugin", "skills"]) {
+  for (const rel of ["plugin.json", ".mcp.copilot.json", ".codex-plugin", ".agents", "skills"]) {
     assert.ok(!existsSync(join(installed, rel)), `packed artifact must not ship ${rel}`);
   }
 
