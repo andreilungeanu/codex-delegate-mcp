@@ -5,6 +5,14 @@
   "description": "MCP bridge that lets Claude Code and other hosts delegate implementation to the OpenAI Codex CLI.",
   "license": "MIT",
   "author": "Andrei Lungeanu <andrei@lungeanu.ro>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/andreilungeanu/codex-delegate-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/andreilungeanu/codex-delegate-mcp/issues"
+  },
+  "homepage": "https://github.com/andreilungeanu/codex-delegate-mcp#readme",
   "keywords": [
     "mcp",
     "codex",
@@ -33,6 +41,7 @@
   ],
   "scripts": {
     "test": "node --test test/*.test.js",
+    "test:pack": "node test/npm-package-smoke.mjs",
     "start": "node src/server.js"
   },
   "dependencies": {
