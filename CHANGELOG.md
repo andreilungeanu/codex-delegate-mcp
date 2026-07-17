@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-07-16
+
+### Fixed
+
+- Timeout no longer sets `cancelled=true` (only `timedOut`)
+- Cancel with a caller `threadId` requires an exact match — stale ids cannot cancel a turn that has not published its thread id yet
+- Whitespace-only `model` / `reasoningEffort` no longer become empty CLI flags
+- Ask mode rejects `--output-schema` (plan-only)
+- Exit 0 while turn is still `in_progress` is failed, not completed (no partial final)
+- Plan mode validates plan JSON shape before exposing `plan`
+
+### Tests
+
+- Added sneaky unhappy-path suite for races, ownership, argv edge cases, and fail-closed finals
+
 ## [1.1.0] - 2026-07-16
 
 ### Fixed
