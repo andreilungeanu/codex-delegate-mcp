@@ -8,7 +8,9 @@
   "mcpServers": {
     "codex-delegate-mcp": {
       "command": "node",
-      "args": ["${PLUGIN_ROOT}/src/server.js"]
+      "args": [
+        "${PLUGIN_ROOT}/src/server.js"
+      ]
     }
   }
 }
