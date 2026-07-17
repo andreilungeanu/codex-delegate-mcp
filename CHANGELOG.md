@@ -4,6 +4,12 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.4.0] - 2026-07-16
+
+### Fixed
+
+- Explicitly force Codex Fast mode off on every run (`service_tier="default"`, `features.fast_mode=false`). Leaving it unset is not enough under catalog-driven Fast tiers.
+
 ## [1.3.0] - 2026-07-16
 
 ### Changed
