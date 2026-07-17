@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.7.0] - 2026-07-17
+
+### Changed
+
+- README positions Claude Code, Cursor, and Copilot as orchestrator hosts; dropped unused Codex-as-host plugin packaging
+- Doctor resolves the Codex CLI fresh on every run and probes login/help surfaces asynchronously
+- Delegate input/output schemas, tool descriptions, and server instructions derive from shared command constants (no more hardcoded default drift)
+- stderr capture is capped by bytes (not UTF-16 chars) and decoded once after exit
+
+### Fixed
+
+- Process cleanup (timers, abort listener, readline) now runs even when spawn fails
+- Already-cancelled requests no longer spawn Codex just to kill it
+- Windows PATH resolution skips unspawnable `.cmd` shims with a clear warning instead of failing later with EINVAL
+- Cancel tool returns a structured error instead of crashing if cancellation fails
+
 ## [1.6.0] - 2026-07-17
 
 ### Changed
