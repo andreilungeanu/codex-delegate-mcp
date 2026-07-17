@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.6.0] - 2026-07-17
+
+### Changed
+
+- Replaced git porcelain `touchedFiles` with native JSONL `filesReportedByAgent`
+- Timeout model is now 90s idle (activity-reset) + 1h hard cap (`timeoutMs`)
+- Resume argv includes `--skip-git-repo-check`
+- Failures include a stderr tail in warnings
+- Empty/whitespace `model` is rejected instead of silently defaulting
+- README, plugin packaging, marketplace manifests, and slash command
+
+### Fixed
+
+- Doctor deep-check no longer matches bare `-o` in help text
+- Oversized specs are rejected before hitting the Windows argv limit
+
 ## [1.5.0] - 2026-07-16
 
 ### Changed

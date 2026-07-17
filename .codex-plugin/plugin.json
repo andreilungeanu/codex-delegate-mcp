@@ -1,6 +1,6 @@
 {
   "name": "codex-delegate-mcp",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Delegate implementation to the OpenAI Codex CLI.",
   "author": {
     "name": "Andrei Lungeanu",
@@ -15,7 +15,7 @@
   "mcpServers": {
     "codex-delegate-mcp": {
       "command": "npx",
-      "args": ["-y", "codex-delegate-mcp@1.5.0"]
+      "args": ["-y", "codex-delegate-mcp@1.6.0"]
     }
   },
   "interface": {
