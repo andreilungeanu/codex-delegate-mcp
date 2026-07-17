@@ -42,21 +42,22 @@ function linesChild(lines, { exitCode = 0, afterEnd } = {}) {
 
 // --- Subtle input / argv ---
 
-test("whitespace-only model/reasoningEffort must not become empty CLI flags", () => {
+test("whitespace-only model/reasoningEffort fall back to defaults", () => {
   const req = validateDelegateInput({
     spec: "x",
     model: "   ",
     reasoningEffort: "\t",
   });
-  assert.equal(req.model, undefined);
-  assert.equal(req.reasoningEffort, undefined);
+  assert.equal(req.model, "gpt-5.6-terra");
+  assert.equal(req.reasoningEffort, "high");
 
   const { args } = buildCodexArgs(
     { ...req, workspace: "/tmp/r", network: false },
     { resultFile: "/tmp/o.txt", platform: "linux" }
   );
-  assert.ok(!args.includes("--model"));
-  assert.ok(!args.some((a) => String(a).startsWith("model_reasoning_effort=")));
+  assert.ok(args.includes("--model"));
+  assert.ok(args.includes("gpt-5.6-terra"));
+  assert.ok(args.some((a) => String(a).includes('model_reasoning_effort="high"')));
 });
 
 test("spec that looks like CLI flags stays after -- separator", () => {

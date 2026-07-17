@@ -38,8 +38,14 @@ You orchestrate; Codex implements. Use the **codex-delegate-mcp** MCP server —
 | Parameter | Default | Notes |
 |---|---|---|
 | `mode` | `agent` | `plan` / `ask` / `review` as needed |
+| `model` | `gpt-5.6-terra` | Override **only** when the user asks for another model |
+| `reasoningEffort` | `high` | Override **only** when the user asks (minimal\|low\|medium\|high\|xhigh) |
 | `network` | `false` | Enable only when the task needs network |
 | `workspace` | current cwd | Smallest directory that fits the task |
+
+Fast mode is **always off** (not exposed). Do not invent a fast flag.
+
+Other models (e.g. `gpt-5.6-sol`, `gpt-5.6-luna`) are available — pass `model` when the user requests one.
 
 ## Plan mode
 

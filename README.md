@@ -89,10 +89,12 @@ codex mcp add codex-delegate-mcp -- node D:\codex-delegate-mcp2\src\server.js
 | `mode` | `agent` (default) \| `plan` \| `ask` \| `review` |
 | `workspace` | Optional working directory |
 | `resumeThreadId` | Resume a prior Codex thread |
-| `model` / `reasoningEffort` | Optional overrides |
+| `model` / `reasoningEffort` | Defaults: `gpt-5.6-terra` / `high`. Override only when the user asks |
 | `network` | Default `false`; only in `agent` |
 | `timeoutMs` | Optional overall timeout |
 | `reviewTarget` | Required for `review`: `uncommitted` \| `{kind:"base",branch}` \| `{kind:"commit",sha}` |
+
+Fast mode is always off (not exposed), same idea as Cursor Delegate's `fast=false` default.
 
 ### `cancel`
 

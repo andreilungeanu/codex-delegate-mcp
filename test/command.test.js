@@ -15,6 +15,25 @@ test("validateDelegateInput defaults and resolves workspace", () => {
   assert.equal(req.mode, "agent");
   assert.equal(req.network, false);
   assert.equal(req.workspace, "D:\\work\\repo");
+  assert.equal(req.model, "gpt-5.6-terra");
+  assert.equal(req.reasoningEffort, "high");
+});
+
+test("validateDelegateInput rejects fast=true (always off)", () => {
+  assert.throws(
+    () => validateDelegateInput({ spec: "x", fast: true }),
+    (err) => err.code === "invalid_fast"
+  );
+});
+
+test("model and reasoningEffort overrides are preserved when user-provided", () => {
+  const req = validateDelegateInput({
+    spec: "x",
+    model: "gpt-5.6-sol",
+    reasoningEffort: "xhigh",
+  });
+  assert.equal(req.model, "gpt-5.6-sol");
+  assert.equal(req.reasoningEffort, "xhigh");
 });
 
 test("validateDelegateInput rejects empty spec", () => {

@@ -3,6 +3,20 @@ import path from "node:path";
 
 export const MODES = Object.freeze(["agent", "plan", "ask", "review"]);
 
+/** Default worker model — orchestrator overrides only when the user asks. */
+export const DEFAULT_MODEL = "gpt-5.6-terra";
+
+/** Default reasoning effort — same principle as Cursor's fast=false (quality over speed). */
+export const DEFAULT_REASONING_EFFORT = "high";
+
+export const REASONING_EFFORTS = Object.freeze([
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+]);
+
 export const PLAN_SCHEMA = Object.freeze({
   type: "object",
   additionalProperties: false,
@@ -178,13 +192,31 @@ export function validateDelegateInput(raw, { cwd = process.cwd() } = {}) {
     }
   }
 
+  let model = normalizeOptionalText(raw.model) ?? DEFAULT_MODEL;
+  let reasoningEffort =
+    normalizeOptionalText(raw.reasoningEffort) ?? DEFAULT_REASONING_EFFORT;
+  if (reasoningEffort && !REASONING_EFFORTS.includes(reasoningEffort)) {
+    throw bad(
+      "invalid_reasoning_effort",
+      `reasoningEffort must be one of ${REASONING_EFFORTS.join(", ")}`
+    );
+  }
+
+  // Fast tier is intentionally not exposed: always off (Cursor-style default).
+  if (raw.fast === true) {
+    throw bad(
+      "invalid_fast",
+      "fast mode is not supported; leave unset (always off). Pass model/reasoningEffort only when the user asks."
+    );
+  }
+
   return {
     spec,
     mode,
     workspace,
     resumeThreadId,
-    model: normalizeOptionalText(raw.model),
-    reasoningEffort: normalizeOptionalText(raw.reasoningEffort),
+    model,
+    reasoningEffort,
     network,
     timeoutMs,
     reviewTarget,
