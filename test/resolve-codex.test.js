@@ -7,6 +7,7 @@ import {
   resolveCodex,
   resolveCodexUncached,
   clearCodexCache,
+  whichOnPath,
 } from "../src/resolve-codex.js";
 
 test("parseVersion and compareSemver", () => {
@@ -68,6 +69,45 @@ test("resolveCodexUncached not_found when no candidates", () => {
       }),
     (err) => err.code === "not_found"
   );
+});
+
+test("whichOnPath on Windows skips a .cmd shim in favor of codex.exe", () => {
+  const command = whichOnPath("codex", "win32", {}, () => ({
+    status: 0,
+    stdout: "C:\\Users\\me\\AppData\\Roaming\\npm\\codex.cmd\r\nC:\\Codex\\codex.EXE\r\n",
+  }));
+
+  assert.equal(command, "C:\\Codex\\codex.EXE");
+});
+
+test("resolveCodexUncached skips and warns about Windows PATH shims", () => {
+  const pathLookup = whichOnPath("codex", "win32", {}, () => ({
+    status: 0,
+    stdout: "C:\\Users\\me\\AppData\\Roaming\\npm\\codex.cmd\r\n",
+  }));
+  assert.deepEqual(pathLookup, { command: null, unusable: true });
+
+  const resolved = resolveCodexUncached({
+    env: { CODEX_DELEGATE_COMMAND: process.execPath, PATH: "", Path: "" },
+    platform: "win32",
+    homeDir: "D:\\nonexistent-home-no-codex",
+    lookupOnPath: () => pathLookup,
+    runVersion: () => "codex-cli 0.144.4",
+  });
+
+  assert.equal(resolved.source, "override");
+  assert.deepEqual(resolved.warnings, [
+    "Codex on PATH is a .cmd shim that cannot be spawned directly; install the standalone Codex or set CODEX_DELEGATE_COMMAND to codex.exe.",
+  ]);
+});
+
+test("whichOnPath retains non-Windows first-result behavior", () => {
+  const command = whichOnPath("codex", "linux", {}, () => ({
+    status: 0,
+    stdout: "/usr/local/bin/codex\n/usr/bin/codex\n",
+  }));
+
+  assert.equal(command, "/usr/local/bin/codex");
 });
 
 test("refreshCodex bypasses and updates the cache", () => {

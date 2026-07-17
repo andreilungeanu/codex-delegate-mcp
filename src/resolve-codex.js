@@ -68,7 +68,13 @@ export function resolveCodexUncached({
   const standalone = findNewestStandalone(homeDir, platform);
   if (standalone) candidates.push({ command: standalone, source: "standalone" });
 
-  const which = lookupOnPath(platform === "win32" ? "codex" : "codex", platform, env);
+  const pathLookup = lookupOnPath("codex", platform, env);
+  const which = typeof pathLookup === "string" ? pathLookup : pathLookup?.command;
+  if (pathLookup?.unusable) {
+    warnings.push(
+      "Codex on PATH is a .cmd shim that cannot be spawned directly; install the standalone Codex or set CODEX_DELEGATE_COMMAND to codex.exe."
+    );
+  }
   if (which) {
     if (platform === "win32" && standalone) {
       warnings.push(
@@ -145,20 +151,24 @@ function findNewestStandalone(homeDir, platform) {
   return best;
 }
 
-function whichOnPath(command, platform, env) {
+export function whichOnPath(command, platform, env, run = spawnSync) {
   const probe = platform === "win32" ? "where" : "which";
-  const result = spawnSync(probe, [command], {
+  const result = run(probe, [command], {
     encoding: "utf8",
     env,
     windowsHide: true,
     shell: false,
   });
   if (result.status !== 0) return null;
-  const line = String(result.stdout || "")
+  const lines = String(result.stdout || "")
     .split(/\r?\n/)
     .map((s) => s.trim())
-    .find(Boolean);
-  return line || null;
+    .filter(Boolean);
+  if (platform !== "win32") return lines[0] || null;
+
+  const executable = lines.find((line) => /\.exe$/i.test(line));
+  if (executable) return executable;
+  return lines.length ? { command: null, unusable: true } : null;
 }
 
 function defaultRunVersion(command) {
