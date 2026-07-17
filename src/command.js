@@ -34,7 +34,11 @@ export function buildCodexArgs(request, { resultFile, outputSchemaFile, platform
   if (!MODES.includes(request.mode)) throw new Error(`unsupported mode: ${request.mode}`);
 
   if (request.mode === "review") {
+    if (outputSchemaFile) throw new Error("output schema is not supported in review mode");
     return buildReviewArgs(request, { resultFile, platform });
+  }
+  if (request.mode === "plan" && !outputSchemaFile) {
+    throw new Error("plan mode requires outputSchemaFile");
   }
   if (request.resumeThreadId) {
     return buildResumeArgs(request, { resultFile, outputSchemaFile, platform });

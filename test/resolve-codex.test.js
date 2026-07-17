@@ -38,3 +38,32 @@ test("resolveCodexUncached rejects old versions", () => {
     /below required/
   );
 });
+
+test("resolveCodexUncached rejects relative override", () => {
+  clearCodexCache();
+  assert.throws(
+    () =>
+      resolveCodexUncached({
+        env: { CODEX_DELEGATE_COMMAND: "codex" },
+        platform: "linux",
+        homeDir: "/nonexistent-home",
+        runVersion: () => "codex-cli 0.144.4",
+      }),
+    (err) => err.code === "override_not_absolute"
+  );
+});
+
+test("resolveCodexUncached not_found when no candidates", () => {
+  clearCodexCache();
+  assert.throws(
+    () =>
+      resolveCodexUncached({
+        env: { PATH: "", Path: "" },
+        platform: "win32",
+        homeDir: "D:\\nonexistent-home-no-codex",
+        lookupOnPath: () => null,
+        runVersion: () => "codex-cli 0.144.4",
+      }),
+    (err) => err.code === "not_found"
+  );
+});

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildServer, runDelegateTool } from "../src/server.js";
+import { buildServer, runDelegateTool, runCancelTool } from "../src/server.js";
 import { createOperationRegistry } from "../src/ops.js";
 
 test("buildServer registers delegate, cancel, doctor", () => {
@@ -45,4 +45,33 @@ test("runDelegateTool returns isError payload on failure", async () => {
   });
   assert.equal(response.isError, true);
   assert.match(response.content[0].text, /boom/);
+});
+
+test("runCancelTool statuses: nothing-active, cancelled, not-owned", async () => {
+  const registry = createOperationRegistry();
+
+  const idle = await runCancelTool({ args: {}, operationRegistry: registry });
+  assert.equal(idle.structuredContent.status, "nothing-active");
+
+  const lease = registry.acquire({
+    threadId: "owned-tid",
+    cancel: async () => {},
+  });
+
+  const wrong = await runCancelTool({
+    args: { threadId: "other-tid" },
+    operationRegistry: registry,
+  });
+  assert.equal(wrong.structuredContent.status, "not-owned");
+  assert.equal(wrong.structuredContent.activeThreadId, "owned-tid");
+
+  const cancelled = await runCancelTool({
+    args: { threadId: "owned-tid" },
+    operationRegistry: registry,
+  });
+  assert.equal(cancelled.structuredContent.status, "cancelled");
+  assert.equal(cancelled.structuredContent.threadId, "owned-tid");
+  assert.match(cancelled.content[0].text, /cancelled/);
+
+  lease.release();
 });

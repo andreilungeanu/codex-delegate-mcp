@@ -38,6 +38,17 @@ const delegateOutputSchema = z
   })
   .passthrough();
 
+export async function runCancelTool({ args = {}, operationRegistry }) {
+  const result = await operationRegistry.cancel({
+    threadId: args?.threadId,
+    cause: "user",
+  });
+  return {
+    content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    structuredContent: result,
+  };
+}
+
 export async function runDelegateTool({
   args,
   extra,
@@ -162,16 +173,7 @@ export function buildServer({
         openWorldHint: false,
       },
     },
-    async (args) => {
-      const result = await operationRegistry.cancel({
-        threadId: args?.threadId,
-        cause: "user",
-      });
-      return {
-        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-        structuredContent: result,
-      };
-    }
+    async (args) => runCancelTool({ args, operationRegistry })
   );
 
   server.registerTool(

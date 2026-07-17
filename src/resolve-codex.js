@@ -33,6 +33,7 @@ export function resolveCodexUncached({
   platform = process.platform,
   homeDir = os.homedir(),
   runVersion = defaultRunVersion,
+  lookupOnPath = whichOnPath,
 } = {}) {
   const warnings = [];
   const candidates = [];
@@ -56,8 +57,7 @@ export function resolveCodexUncached({
   const standalone = findNewestStandalone(homeDir, platform);
   if (standalone) candidates.push({ command: standalone, source: "standalone" });
 
-  const pathCmd = platform === "win32" ? "codex.cmd" : "codex";
-  const which = whichOnPath(pathCmd === "codex.cmd" ? "codex" : "codex", platform, env);
+  const which = lookupOnPath(platform === "win32" ? "codex" : "codex", platform, env);
   if (which) {
     if (platform === "win32" && standalone) {
       warnings.push(

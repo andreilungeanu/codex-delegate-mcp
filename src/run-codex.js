@@ -23,6 +23,7 @@ export async function runCodexProcess({
   timeoutMs = 900_000,
   maxResultBytes = DEFAULT_MAX_RESULT_BYTES,
   spawnImpl = spawn,
+  treeKillImpl = treeKill,
   platform = process.platform,
 } = {}) {
   if (!command) throw new TypeError("command required");
@@ -57,7 +58,7 @@ export async function runCodexProcess({
 
   const abort = async () => {
     cancelled = true;
-    if (isChildAlive(child)) await treeKill(child.pid);
+    if (isChildAlive(child)) await treeKillImpl(child.pid);
   };
 
   const onAbort = () => {
@@ -147,11 +148,13 @@ export async function runCodexProcess({
   const interrupted = cancelled || timedOut || signal?.aborted;
   let status = "failed";
   if (interrupted) status = "interrupted";
+  else if (turnStatus === "failed") status = "failed";
   else if (exitCode === 0 && turnStatus === "completed") status = "completed";
   else if (exitCode === 0 && turnStatus === "running") {
     // Some review paths may exit cleanly without turn.completed; still require exit 0.
     status = "completed";
-  } else if (turnStatus === "failed") status = "failed";
+  } else if (exitCode === 0) status = "completed";
+  else status = "failed";
 
   const final = await readFinalResult({
     filePath: resultFile,
