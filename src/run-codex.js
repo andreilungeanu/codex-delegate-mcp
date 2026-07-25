@@ -14,6 +14,8 @@ export const DEFAULT_IDLE_MS = 0;
 /** Spawn to first JSONL event. Silence here does mean a wedged launcher. */
 export const DEFAULT_STARTUP_MS = 60_000;
 export const DEFAULT_HEARTBEAT_MS = 30_000;
+/** How long to wait for the process to actually die after a kill is requested. */
+export const DEFAULT_KILL_DEADLINE_MS = 10_000;
 export const DEFAULT_HARD_CAP_MS = 3_600_000;
 
 /**
@@ -33,6 +35,7 @@ export async function runCodexProcess({
   idleMs = DEFAULT_IDLE_MS,
   startupMs = DEFAULT_STARTUP_MS,
   heartbeatMs = DEFAULT_HEARTBEAT_MS,
+  killDeadlineMs = DEFAULT_KILL_DEADLINE_MS,
   maxResultBytes = DEFAULT_MAX_RESULT_BYTES,
   spawnImpl = spawn,
   treeKillImpl = treeKill,
@@ -104,8 +107,31 @@ export async function runCodexProcess({
   if (signal?.aborted) return interruptedBeforeSpawn();
   child = spawnImpl(command, args, spawnOpts);
 
+  let settleClose;
+  const closed = new Promise((resolve, reject) => {
+    settleClose = resolve;
+    child.on("error", reject);
+    child.on("close", (code) => resolve(code ?? 1));
+  });
+
+  let killTimer;
+  let killEscaped = false;
+  /**
+   * treeKill is best effort — taskkill can report success and leave the tree up.
+   * Without this the close we await never arrives and the delegation, and the
+   * single-slot registry behind it, wedge for the life of the process.
+   */
+  const armKillDeadline = () => {
+    if (killTimer || killDeadlineMs <= 0) return;
+    killTimer = setTimeout(() => {
+      killEscaped = true;
+      settleClose(null);
+    }, killDeadlineMs);
+  };
+
   const abort = async ({ userCancel = false } = {}) => {
     if (userCancel) cancelled = true;
+    armKillDeadline();
     if (isChildAlive(child)) await treeKillImpl(child.pid);
   };
 
@@ -127,6 +153,7 @@ export async function runCodexProcess({
     clearTimeout(idleTimer);
     clearTimeout(hardCapTimer);
     clearTimeout(startupTimer);
+    clearTimeout(killTimer);
     clearInterval(heartbeatTimer);
     idleTimer = undefined;
     hardCapTimer = undefined;
@@ -236,10 +263,7 @@ export async function runCodexProcess({
     if (heartbeatMs > 0) heartbeatTimer = setInterval(heartbeat, heartbeatMs);
     resetIdle();
 
-    exitCode = await new Promise((resolve, reject) => {
-      child.on("error", reject);
-      child.on("close", (code) => resolve(code ?? 1));
-    });
+    exitCode = await closed;
     // close can land with lines still queued; a dropped turn.failed would read as success.
     await drained;
   } finally {
@@ -282,6 +306,11 @@ export async function runCodexProcess({
     );
   } else if (timedOut && timeoutReason === "hard-cap") {
     warnings.push(`Hard-cap timeout after ${hardCapMs}ms. Raise timeoutMs for longer tasks.`);
+  }
+  if (killEscaped) {
+    warnings.push(
+      `Codex did not exit within ${killDeadlineMs}ms of being killed; a process may still be running. Check for stray codex processes.`
+    );
   }
   const stderrTail = meaningfulStderr(stderr).slice(-STDERR_TAIL_CHARS);
   if (status !== "completed" && stderrTail.trim()) {

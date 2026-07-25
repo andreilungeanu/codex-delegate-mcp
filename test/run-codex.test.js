@@ -123,6 +123,38 @@ test("runCodexProcess trips the startup deadline when Codex never speaks", async
   assert.ok(result.warnings.some((w) => /no output within 30ms/.test(w)));
 });
 
+test("a kill that never reaps the tree still settles the delegation", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-kill-"));
+  const resultFile = path.join(dir, "last.txt");
+
+  const result = await runCodexProcess({
+    command: "codex",
+    args: ["exec"],
+    cwd: dir,
+    resultFile,
+    spawnImpl: () => {
+      const child = new EventEmitter();
+      child.pid = 777;
+      child.stdout = new Readable({ read() {} });
+      child.stderr = new Readable({ read() {} });
+      child.exitCode = null;
+      child.signalCode = null;
+      return child;
+    },
+    // taskkill reports success and the tree survives — the close never arrives.
+    treeKillImpl: async () => {},
+    platform: "linux",
+    startupMs: 20,
+    heartbeatMs: 0,
+    killDeadlineMs: 40,
+    timeoutMs: 10_000,
+  });
+
+  assert.equal(result.status, "interrupted");
+  assert.equal(result.timeoutReason, "startup-timeout");
+  assert.ok(result.warnings.some((w) => /did not exit within 40ms/.test(w)));
+});
+
 test("a first event cancels the startup deadline", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-startup-ok-"));
   const resultFile = path.join(dir, "last.txt");
