@@ -183,7 +183,6 @@ Timeouts. Codex emits nothing while a shell command runs or the model reasons, s
 |---|---|---|
 | `CODEX_DELEGATE_STARTUP_MS` | `60000` | Spawn to first JSONL event. `0` disables. |
 | `CODEX_DELEGATE_HARD_CAP_MS` | `3600000` | Whole run; `timeoutMs` overrides per call. |
-| `CODEX_DELEGATE_IDLE_MS` | `0` (off) | Opt-in mid-turn idle guard. Enable only if you know the task stays chatty. |
 | `CODEX_DELEGATE_HEARTBEAT_MS` | `30000` | Progress heartbeat while quiet. `0` disables. |
 
 ## License

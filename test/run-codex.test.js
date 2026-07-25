@@ -451,7 +451,6 @@ test("runCodexProcess abort signal marks interrupted and cancelled", async () =>
     },
     platform: "linux",
     timeoutMs: 30_000,
-    idleMs: 30_000,
   });
 
   assert.equal(result.status, "interrupted");
@@ -512,7 +511,6 @@ test("runCodexProcess removes abort listener after a spawn error", async () => {
         resultFile,
         signal,
         timeoutMs: 30_000,
-        idleMs: 30_000,
         spawnImpl: () => {
           const child = new EventEmitter();
           child.pid = undefined;
@@ -559,7 +557,6 @@ test("runCodexProcess collects file_change paths", async () => {
       }),
     platform: "linux",
     timeoutMs: 5000,
-    idleMs: 5000,
   });
 
   assert.equal(result.status, "completed");
@@ -601,7 +598,6 @@ test("runCodexProcess appends stderr tail on failure", async () => {
     spawnImpl,
     platform: "linux",
     timeoutMs: 5000,
-    idleMs: 5000,
   });
 
   assert.equal(result.status, "failed");
@@ -640,8 +636,8 @@ test("runCodexProcess caps stderr by UTF-8 bytes", async () => {
   assert.equal(result.stderrBytes, 64 * 1024);
 });
 
-test("runCodexProcess idle timeout trips before hard cap", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "cdm-idle-"));
+test("runCodexProcess does not time out a silent mid-turn run", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-quiet-"));
   const resultFile = path.join(dir, "last.txt");
   let childRef = null;
 
@@ -658,21 +654,24 @@ test("runCodexProcess idle timeout trips before hard cap", async () => {
       child.exitCode = null;
       child.signalCode = null;
       childRef = child;
+      // One event, then a long silence, then a clean finish.
+      childRef.stdout.push(JSON.stringify({ type: "turn.started" }) + "\n");
+      setTimeout(async () => {
+        childRef.stdout.push(JSON.stringify({ type: "turn.completed" }) + "\n");
+        childRef.stdout.push(null);
+        await writeFile(resultFile, "quiet but fine", "utf8");
+        childRef.exitCode = 0;
+        childRef.emit("close", 0);
+      }, 120);
       return child;
-    },
-    treeKillImpl: async () => {
-      childRef.stdout.push(null);
-      childRef.exitCode = 1;
-      childRef.emit("close", 1);
     },
     platform: "linux",
     timeoutMs: 30_000,
-    idleMs: 40,
+    startupMs: 5000,
+    heartbeatMs: 0,
   });
 
-  assert.equal(result.status, "interrupted");
-  assert.equal(result.timedOut, true);
-  assert.equal(result.timeoutReason, "idle-timeout");
-  assert.equal(result.cancelled, false);
-  assert.ok(result.warnings.some((w) => /Idle timeout/i.test(w)));
+  assert.equal(result.status, "completed");
+  assert.equal(result.reason, undefined);
+  assert.equal(result.result, "quiet but fine");
 });

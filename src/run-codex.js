@@ -9,8 +9,6 @@ const DEFAULT_MAX_RESULT_BYTES = 10 * 1024 * 1024;
 const DEFAULT_STDERR_BYTES = 64 * 1024;
 const STDERR_TAIL_CHARS = 2000;
 const DRAIN_MS = 2000;
-/** Mid-turn idle detection is off by default; silence is normal mid-turn. */
-export const DEFAULT_IDLE_MS = 0;
 /** Spawn to first JSONL event. Silence here does mean a wedged launcher. */
 export const DEFAULT_STARTUP_MS = 60_000;
 export const DEFAULT_HEARTBEAT_MS = 30_000;
@@ -32,7 +30,6 @@ export async function runCodexProcess({
   onProgress,
   onThreadId,
   timeoutMs = DEFAULT_HARD_CAP_MS,
-  idleMs = DEFAULT_IDLE_MS,
   startupMs = DEFAULT_STARTUP_MS,
   heartbeatMs = DEFAULT_HEARTBEAT_MS,
   killDeadlineMs = DEFAULT_KILL_DEADLINE_MS,
@@ -148,18 +145,15 @@ export async function runCodexProcess({
   let lastActivityAt = startedAt;
   let lastCommand = null;
   let sawFirstEvent = false;
-  let idleTimer;
   let hardCapTimer;
   let startupTimer;
   let heartbeatTimer;
 
   const clearTimers = () => {
-    clearTimeout(idleTimer);
     clearTimeout(hardCapTimer);
     clearTimeout(startupTimer);
     clearTimeout(killTimer);
     clearInterval(heartbeatTimer);
-    idleTimer = undefined;
     hardCapTimer = undefined;
     startupTimer = undefined;
     heartbeatTimer = undefined;
@@ -172,14 +166,9 @@ export async function runCodexProcess({
     abort({ userCancel: false }).catch(() => {});
   };
 
-  // Opt-in: Codex emits nothing for the body of a shell command or a long
-  // reasoning pass, so a mid-turn idle guard cannot tell quiet from wedged.
-  const resetIdle = () => {
-    clearTimeout(idleTimer);
-    if (idleMs <= 0 || timedOut || cancelled) return;
-    idleTimer = setTimeout(() => tripTimeout("idle-timeout"), idleMs);
-  };
-
+  // No mid-turn idle guard: Codex emits nothing for the body of a shell command
+  // or a long reasoning pass, so silence cannot be told apart from wedged.
+  // Only the startup deadline and the hard cap bound a run.
   const noteActivity = () => {
     lastActivityAt = Date.now();
     if (!sawFirstEvent) {
@@ -187,7 +176,6 @@ export async function runCodexProcess({
       clearTimeout(startupTimer);
       startupTimer = undefined;
     }
-    resetIdle();
   };
 
   const heartbeat = () => {
@@ -276,7 +264,6 @@ export async function runCodexProcess({
     if (hardCapMs > 0) hardCapTimer = setTimeout(() => tripTimeout("hard-cap"), hardCapMs);
     if (startupMs > 0) startupTimer = setTimeout(() => tripTimeout("startup-timeout"), startupMs);
     if (heartbeatMs > 0) heartbeatTimer = setInterval(heartbeat, heartbeatMs);
-    resetIdle();
 
     exitCode = await closed;
     // close can land with lines still queued; a dropped turn.failed would read as success.
@@ -331,11 +318,7 @@ export async function runCodexProcess({
   const warnings = [];
   if (agentError) warnings.push(`Codex error: ${agentError}`);
   warnings.push(...final.warnings);
-  if (timedOut && timeoutReason === "idle-timeout") {
-    warnings.push(
-      `Idle timeout after ${idleMs}ms with no Codex activity. Raise or unset CODEX_DELEGATE_IDLE_MS if the task runs long silent commands.`
-    );
-  } else if (timedOut && timeoutReason === "startup-timeout") {
+  if (timedOut && timeoutReason === "startup-timeout") {
     warnings.push(
       `Codex produced no output within ${startupMs}ms of spawning. Run doctor to check the CLI resolves and is logged in; raise CODEX_DELEGATE_STARTUP_MS on a slow machine.`
     );

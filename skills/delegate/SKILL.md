@@ -73,8 +73,7 @@ Fields that carry no signal are omitted, so anything present is worth reading.
 |---|---|---|
 | `result` | always | The final answer. Empty only when nothing could be salvaged. |
 | `status` | always | `completed` \| `failed` \| `interrupted` |
-| `reason` | not `completed` | `cancelled`, `startup-timeout`, `idle-timeout`, `hard-cap`, `agent-error`, `died-mid-turn`, `exit-nonzero` |
-| `finalMessageAvailable` | always | `false` on a `completed` run means the answer was lost, not that the run failed |
+| `reason` | not `completed` | `cancelled`, `startup-timeout`, `hard-cap`, `agent-error`, `died-mid-turn`, `exit-nonzero` |
 | `resultSource` | salvage only | `stream-fallback` — `result` is the last thing Codex said, not a final answer |
 | `warnings` | non-empty only | Real diagnostics. Read first. |
 | `filesReportedByAgent` | non-empty only | Codex's own `file_change` events. The git diff is still authoritative. |

@@ -39,7 +39,6 @@ const delegateOutputSchema = z
       .enum([
         "cancelled",
         "startup-timeout",
-        "idle-timeout",
         "hard-cap",
         "agent-error",
         "died-mid-turn",

@@ -13,7 +13,6 @@ import {
   runCodexProcess,
   DEFAULT_HARD_CAP_MS,
   DEFAULT_HEARTBEAT_MS,
-  DEFAULT_IDLE_MS,
   DEFAULT_STARTUP_MS,
 } from "./run-codex.js";
 import { normalizeAgentReportedFiles } from "./agent-reported-files.js";
@@ -97,7 +96,6 @@ export async function executeDelegate(rawArgs, options = {}) {
         resultFile,
         signal: controller.signal,
         timeoutMs: request.timeoutMs ?? envMs(env.CODEX_DELEGATE_HARD_CAP_MS, DEFAULT_HARD_CAP_MS),
-        idleMs: envMs(env.CODEX_DELEGATE_IDLE_MS, DEFAULT_IDLE_MS),
         startupMs: envMs(env.CODEX_DELEGATE_STARTUP_MS, DEFAULT_STARTUP_MS),
         heartbeatMs: envMs(env.CODEX_DELEGATE_HEARTBEAT_MS, DEFAULT_HEARTBEAT_MS),
         onProgress,
