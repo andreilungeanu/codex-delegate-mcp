@@ -13,6 +13,9 @@ export const DEFAULT_REASONING_EFFORT = "high";
 /** Leave headroom under Windows CreateProcess ~32k limit. */
 export const MAX_ARGV_CHARS = 28_000;
 
+/** Windows sandbox mode; "off" omits the flag entirely. */
+export const DEFAULT_WINDOWS_SANDBOX = "elevated";
+
 /**
  * Which values a model accepts is not discoverable up front and differs by model:
  * gpt-5.6-* take none|low|medium|high|xhigh and reject minimal, which older
@@ -52,7 +55,15 @@ export const PLAN_SCHEMA = Object.freeze({
  * Build argv for one `codex exec` invocation.
  * Codex binary is resolved separately; this only returns args after the executable.
  */
-export function buildCodexArgs(request, { resultFile, outputSchemaFile, platform = process.platform } = {}) {
+export function buildCodexArgs(
+  request,
+  {
+    resultFile,
+    outputSchemaFile,
+    platform = process.platform,
+    windowsSandbox = DEFAULT_WINDOWS_SANDBOX,
+  } = {}
+) {
   if (!request || typeof request !== "object") throw new TypeError("request required");
   if (!resultFile || typeof resultFile !== "string") throw new TypeError("resultFile required");
   if (!MODES.includes(request.mode)) throw new Error(`unsupported mode: ${request.mode}`);
@@ -60,15 +71,15 @@ export function buildCodexArgs(request, { resultFile, outputSchemaFile, platform
   let built;
   if (request.mode === "review") {
     if (outputSchemaFile) throw new Error("output schema is not supported in review mode");
-    built = buildReviewArgs(request, { resultFile, platform });
+    built = buildReviewArgs(request, { resultFile, platform, windowsSandbox });
   } else if (request.mode === "ask" && outputSchemaFile) {
     throw new Error("output schema is not supported in ask mode");
   } else if (request.mode === "plan" && !outputSchemaFile) {
     throw new Error("plan mode requires outputSchemaFile");
   } else if (request.resumeThreadId) {
-    built = buildResumeArgs(request, { resultFile, outputSchemaFile, platform });
+    built = buildResumeArgs(request, { resultFile, outputSchemaFile, platform, windowsSandbox });
   } else {
-    built = buildInitialArgs(request, { resultFile, outputSchemaFile, platform });
+    built = buildInitialArgs(request, { resultFile, outputSchemaFile, platform, windowsSandbox });
   }
   assertArgvLength(built.args);
   return built;
@@ -98,11 +109,11 @@ function assertArgvLength(args) {
   }
 }
 
-function buildInitialArgs(request, { resultFile, outputSchemaFile, platform }) {
+function buildInitialArgs(request, { resultFile, outputSchemaFile, platform, windowsSandbox }) {
   const sandbox = sandboxForMode(request.mode);
   const args = [
     "exec",
-    ...commonFlags(request, resultFile, outputSchemaFile, platform),
+    ...commonFlags(request, resultFile, outputSchemaFile, platform, windowsSandbox),
     "--sandbox",
     sandbox,
     "--cd",
@@ -114,12 +125,12 @@ function buildInitialArgs(request, { resultFile, outputSchemaFile, platform }) {
   return { kind: "initial", args, sandbox };
 }
 
-function buildResumeArgs(request, { resultFile, outputSchemaFile, platform }) {
+function buildResumeArgs(request, { resultFile, outputSchemaFile, platform, windowsSandbox }) {
   const sandbox = sandboxForMode(request.mode);
   const args = [
     "exec",
     "resume",
-    ...commonFlags(request, resultFile, outputSchemaFile, platform),
+    ...commonFlags(request, resultFile, outputSchemaFile, platform, windowsSandbox),
     "-c",
     `sandbox_mode=${tomlString(sandbox)}`,
     "--skip-git-repo-check",
@@ -130,12 +141,12 @@ function buildResumeArgs(request, { resultFile, outputSchemaFile, platform }) {
   return { kind: "resume", args, sandbox };
 }
 
-function buildReviewArgs(request, { resultFile, platform }) {
+function buildReviewArgs(request, { resultFile, platform, windowsSandbox }) {
   if (!request.reviewTarget) throw new Error("reviewTarget required in review mode");
   const args = [
     "exec",
     "review",
-    ...commonFlags(request, resultFile, null, platform),
+    ...commonFlags(request, resultFile, null, platform, windowsSandbox),
     "-c",
     'sandbox_mode="read-only"',
     "-c",
@@ -146,7 +157,7 @@ function buildReviewArgs(request, { resultFile, platform }) {
   return { kind: "review", args, sandbox: "read-only" };
 }
 
-function commonFlags(request, resultFile, outputSchemaFile, platform) {
+function commonFlags(request, resultFile, outputSchemaFile, platform, windowsSandbox) {
   const network = request.mode === "agent" && request.network === true;
   const args = [
     "--json",
@@ -169,7 +180,13 @@ function commonFlags(request, resultFile, outputSchemaFile, platform) {
   }
 
   if (outputSchemaFile) args.push("--output-schema", outputSchemaFile);
-  if (platform === "win32") args.push("-c", 'windows.sandbox="elevated"');
+  // --ignore-user-config strips the user's [windows] sandbox setting, and without
+  // it workspace-write degrades to read-only. "elevated" needs an elevated
+  // session though: on a normal one Codex cannot spawn the sandbox helper at all
+  // (CreateProcessAsUserW failed: 5), so every shell command fails. Overridable.
+  if (platform === "win32" && windowsSandbox !== "off") {
+    args.push("-c", `windows.sandbox=${tomlString(windowsSandbox)}`);
+  }
   if (request.model) args.push("--model", request.model);
   if (request.reasoningEffort) {
     args.push("-c", `model_reasoning_effort=${tomlString(request.reasoningEffort)}`);

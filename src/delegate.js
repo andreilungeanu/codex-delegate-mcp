@@ -2,7 +2,12 @@ import process from "node:process";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { buildCodexArgs, validateDelegateInput, PLAN_SCHEMA } from "./command.js";
+import {
+  buildCodexArgs,
+  validateDelegateInput,
+  DEFAULT_WINDOWS_SANDBOX,
+  PLAN_SCHEMA,
+} from "./command.js";
 import { resolveCodex } from "./resolve-codex.js";
 import {
   runCodexProcess,
@@ -55,6 +60,7 @@ export async function executeDelegate(rawArgs, options = {}) {
       resultFile,
       outputSchemaFile,
       platform: process.platform,
+      windowsSandbox: normalizeText(env.CODEX_DELEGATE_WINDOWS_SANDBOX) ?? DEFAULT_WINDOWS_SANDBOX,
     });
 
     const controller = new AbortController();
@@ -153,6 +159,12 @@ export function envMs(raw, fallback) {
   const value = Number(raw);
   if (!Number.isInteger(value) || value < 0) return fallback;
   return value;
+}
+
+function normalizeText(value) {
+  if (value == null) return undefined;
+  const text = String(value).trim();
+  return text ? text : undefined;
 }
 
 function isValidPlanShape(value) {

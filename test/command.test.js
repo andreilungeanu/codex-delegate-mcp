@@ -442,3 +442,23 @@ test("buildCodexArgs rejects oversized specs", () => {
     (err) => err.code === "argv_too_long"
   );
 });
+
+test("the Windows sandbox mode is overridable and can be omitted", () => {
+  const req = validateDelegateInput({ spec: "x", workspace: process.cwd() });
+  const on = buildCodexArgs(req, { resultFile: "/tmp/o.txt", platform: "win32" }).args;
+  assert.ok(on.includes('windows.sandbox="elevated"'));
+
+  const off = buildCodexArgs(req, {
+    resultFile: "/tmp/o.txt",
+    platform: "win32",
+    windowsSandbox: "off",
+  }).args;
+  assert.ok(!off.some((a) => String(a).startsWith("windows.sandbox")));
+
+  const custom = buildCodexArgs(req, {
+    resultFile: "/tmp/o.txt",
+    platform: "win32",
+    windowsSandbox: "unelevated",
+  }).args;
+  assert.ok(custom.includes('windows.sandbox="unelevated"'));
+});
