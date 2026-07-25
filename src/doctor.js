@@ -12,6 +12,7 @@ export async function runDoctor({
   resolve = refreshCodex,
   env = process.env,
   getClientInfo,
+  execFileImpl = execFileAsync,
 } = {}) {
   const warnings = [];
   let codex = { found: false };
@@ -45,7 +46,7 @@ export async function runDoctor({
     }
   })();
 
-  const login = await probeLogin(codex.found ? codex.command : null);
+  const login = await probeLogin(codex.found ? codex.command : null, execFileImpl);
   const recursion = {
     depth: env.CODEX_DELEGATE_DEPTH ?? null,
     active: Boolean(env.CODEX_DELEGATE_DEPTH && String(env.CODEX_DELEGATE_DEPTH).trim()),
@@ -70,16 +71,16 @@ export async function runDoctor({
   };
 
   if (deep) {
-    out.deep = await runDeepSmoke({ codex, workspace, env });
+    out.deep = await runDeepSmoke({ codex, execFileImpl });
   }
 
   return out;
 }
 
-async function probeLogin(command) {
+async function probeLogin(command, execFileImpl = execFileAsync) {
   if (!command) return { status: "skipped", reason: "codex_not_found" };
   try {
-    const { stdout, stderr } = await execFileAsync(command, ["login", "status"], {
+    const { stdout, stderr } = await execFileImpl(command, ["login", "status"], {
       encoding: "utf8",
       timeout: 8000,
       windowsHide: true,
@@ -102,7 +103,7 @@ async function probeLogin(command) {
 }
 
 /** Lightweight deep check: help surfaces exist. No model quota. */
-async function runDeepSmoke({ codex }) {
+async function runDeepSmoke({ codex, execFileImpl = execFileAsync }) {
   if (!codex.found) {
     return { ran: false, reason: "codex_not_found" };
   }
@@ -114,7 +115,7 @@ async function runDeepSmoke({ codex }) {
     let stderr = "";
     let exitCode = 0;
     try {
-      ({ stdout, stderr } = await execFileAsync(codex.command, args, {
+      ({ stdout, stderr } = await execFileImpl(codex.command, args, {
         encoding: "utf8",
         timeout: 8000,
         windowsHide: true,
