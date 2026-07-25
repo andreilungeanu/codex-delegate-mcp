@@ -53,6 +53,7 @@ export async function runCodexProcess({
   let turnStatus = "running";
   let agentError = null;
   let lastAgentMessage = null;
+  let usage = null;
   const failedItems = [];
   const stderrChunks = [];
   let stderrBytes = 0;
@@ -215,6 +216,7 @@ export async function runCodexProcess({
       emit("turn started");
     } else if (event?.type === "turn.completed") {
       turnStatus = "completed";
+      usage = readUsage(event.usage) ?? usage;
       emit("turn completed");
     } else if (event?.type === "turn.failed") {
       turnStatus = "failed";
@@ -359,6 +361,7 @@ export async function runCodexProcess({
     timeoutReason,
     cancelled,
     agentError,
+    usage,
     result,
     resultSource,
     finalMessageAvailable: final.finalMessageAvailable,
@@ -367,6 +370,21 @@ export async function runCodexProcess({
     stderrTail: status !== "completed" ? stderrTail : "",
     filesReportedByAgent: [...reportedPaths],
   };
+}
+
+/** Codex reports per-turn token counts; nothing else in the pipeline does. */
+export function readUsage(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const pick = (key) => (Number.isFinite(raw[key]) ? raw[key] : undefined);
+  const usage = {
+    inputTokens: pick("input_tokens"),
+    cachedInputTokens: pick("cached_input_tokens"),
+    cacheWriteInputTokens: pick("cache_write_input_tokens"),
+    outputTokens: pick("output_tokens"),
+    reasoningOutputTokens: pick("reasoning_output_tokens"),
+  };
+  const kept = Object.entries(usage).filter(([, v]) => v !== undefined);
+  return kept.length ? Object.fromEntries(kept) : null;
 }
 
 export function describeFailedItem(item, maxChars = 120) {

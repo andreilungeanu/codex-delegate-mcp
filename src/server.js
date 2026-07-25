@@ -41,6 +41,15 @@ const delegateOutputSchema = z
     mode: z.enum([...MODES]),
     workspace: z.string(),
     cliVersion: z.string().optional(),
+    usage: z
+      .object({
+        inputTokens: z.number().optional(),
+        cachedInputTokens: z.number().optional(),
+        cacheWriteInputTokens: z.number().optional(),
+        outputTokens: z.number().optional(),
+        reasoningOutputTokens: z.number().optional(),
+      })
+      .optional(),
     filesReportedByAgent: z.array(z.string()),
     plan: z
       .object({

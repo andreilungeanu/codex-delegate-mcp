@@ -134,6 +134,7 @@ export async function executeDelegate(rawArgs, options = {}) {
     mode: request.mode,
     workspace: request.workspace,
     cliVersion: codex.version,
+    usage: processResult.usage ?? undefined,
     filesReportedByAgent: normalizeAgentReportedFiles(
       processResult.filesReportedByAgent || [],
       request.workspace

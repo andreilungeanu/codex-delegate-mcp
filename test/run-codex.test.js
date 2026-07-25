@@ -7,6 +7,7 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import {
   describeFailedItem,
+  readUsage,
   meaningfulStderr,
   readAgentError,
   readFinalResult,
@@ -275,6 +276,16 @@ test("a completed run never falls back to streamed narration", async () => {
 
   assert.equal(result.result, "FINAL ANSWER");
   assert.equal(result.resultSource, undefined);
+});
+
+test("readUsage keeps only the counts Codex actually reported", () => {
+  assert.deepEqual(
+    readUsage({ input_tokens: 10, cached_input_tokens: 2, output_tokens: 3 }),
+    { inputTokens: 10, cachedInputTokens: 2, outputTokens: 3 }
+  );
+  assert.equal(readUsage({}), null);
+  assert.equal(readUsage(null), null);
+  assert.equal(readUsage({ input_tokens: "many" }), null);
 });
 
 test("describeFailedItem names the tool and its exit code", () => {
