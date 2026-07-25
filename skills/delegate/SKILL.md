@@ -44,7 +44,7 @@ You orchestrate; Codex implements. Use the **codex-delegate-mcp** MCP server —
 | `model` | `gpt-5.6-terra` | Override **only** when the user asks for another model |
 | `reasoningEffort` | `high` | Override **only** when the user asks (none\|minimal\|low\|medium\|high\|xhigh). gpt-5.6-* reject `minimal`; older models reject `none`. A rejected value fails the turn and the model's own message says which values it takes |
 | `fast` | `false` | Codex Fast mode (`service_tier` / `/fast`). Leave false; set true **only** when the user asks |
-| `network` | `false` | Enable only when the task needs network |
+| `network` | `true` | Web search plus shell network. Pass `false` to seal a run |
 | `workspace` | current cwd | Smallest directory that fits the task. **Required when resuming** — `codex exec resume` has no `--cd`, so an omitted workspace would run the thread in the server's directory, not the one it started in |
 
 Other models (e.g. `gpt-5.6-sol`, `gpt-5.6-luna`) are available — pass `model` when the user requests one.

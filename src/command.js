@@ -158,7 +158,9 @@ function buildReviewArgs(request, { resultFile, platform, windowsSandbox }) {
 }
 
 function commonFlags(request, resultFile, outputSchemaFile, platform, windowsSandbox) {
-  const network = request.mode === "agent" && request.network === true;
+  // On unless the caller opts out. `network_access` only binds the workspace-write
+  // sandbox, so in the read-only modes this is effectively the web_search switch.
+  const network = request.network !== false;
   const args = [
     "--json",
     "--output-last-message",
@@ -237,10 +239,10 @@ export function validateDelegateInput(raw, { cwd = process.cwd() } = {}) {
     throw bad("invalid_workspace", `workspace is not a directory: ${workspace}`);
   }
 
-  const network = raw.network === true;
-  if (network && mode !== "agent") {
-    throw bad("invalid_network", "network:true is only allowed in agent mode");
-  }
+  // Codex runs connected by default: it can search the web, and in agent mode its
+  // shell reaches the network so installs and fetches work. Pass network:false to
+  // cut both off for a run that should stay sealed.
+  const network = raw.network !== false;
 
   let resumeThreadId;
   if (raw.resumeThreadId != null && String(raw.resumeThreadId).trim()) {

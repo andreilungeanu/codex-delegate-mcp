@@ -183,8 +183,8 @@ export function buildServer({
           .describe("Codex Fast mode (service_tier=fast) — higher credit use"),
         network: z
           .boolean()
-          .default(false)
-          .describe("Allow network access (agent mode only)"),
+          .default(true)
+          .describe("Web search, and network from Codex's shell in agent mode. false seals the run"),
         timeoutMs: z
           .number()
           .int()

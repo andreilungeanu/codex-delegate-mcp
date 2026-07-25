@@ -16,7 +16,7 @@ test("validateDelegateInput defaults and resolves workspace", () => {
     { cwd }
   );
   assert.equal(req.mode, "agent");
-  assert.equal(req.network, false);
+  assert.equal(req.network, true);
   assert.equal(req.fast, false);
   assert.equal(req.workspace, cwd);
   assert.equal(req.model, "gpt-5.6-terra");
@@ -100,27 +100,22 @@ test("validateDelegateInput rejects empty spec", () => {
   );
 });
 
-test("network only allowed in agent mode", () => {
-  assert.throws(
-    () => validateDelegateInput({ spec: "x", mode: "ask", network: true }),
-    (err) => err.code === "invalid_network"
-  );
-  assert.throws(
-    () => validateDelegateInput({ spec: "x", mode: "plan", network: true }),
-    (err) => err.code === "invalid_network"
-  );
-  assert.throws(
-    () =>
-      validateDelegateInput({
-        spec: "x",
-        mode: "review",
-        network: true,
-        reviewTarget: { kind: "uncommitted" },
-      }),
-    (err) => err.code === "invalid_network"
-  );
-  const ok = validateDelegateInput({ spec: "x", mode: "agent", network: true });
-  assert.equal(ok.network, true);
+test("every mode is connected by default and network:false seals it", () => {
+  for (const mode of ["agent", "plan", "ask"]) {
+    assert.equal(validateDelegateInput({ spec: "x", mode }).network, true);
+    assert.equal(validateDelegateInput({ spec: "x", mode, network: false }).network, false);
+  }
+  const review = { spec: "x", mode: "review", reviewTarget: { kind: "uncommitted" } };
+  assert.equal(validateDelegateInput(review).network, true);
+  assert.equal(validateDelegateInput({ ...review, network: false }).network, false);
+});
+
+test("read-only modes still get web_search when connected", () => {
+  const args = buildCodexArgs(validateDelegateInput({ spec: "q", mode: "ask" }), {
+    resultFile: "/tmp/o.txt",
+    platform: "linux",
+  }).args;
+  assert.ok(args.includes('web_search="live"'));
 });
 
 test("review requires reviewTarget", () => {
