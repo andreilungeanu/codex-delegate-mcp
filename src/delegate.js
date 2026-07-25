@@ -105,6 +105,10 @@ export async function executeDelegate(rawArgs, options = {}) {
   warnings.push(...(processResult.warnings || []));
 
   let plan;
+  // In plan mode the final message IS the plan JSON, so returning it verbatim in
+  // `result` ships the same payload twice. Once it parses, `plan` carries the
+  // structure and `result` keeps only the overview.
+  let planResult;
   if (request.mode === "plan" && processResult.finalMessageAvailable) {
     try {
       const parsed = JSON.parse(processResult.result);
@@ -112,6 +116,7 @@ export async function executeDelegate(rawArgs, options = {}) {
         warnings.push("Plan mode final message JSON did not match the expected plan schema shape.");
       } else {
         plan = parsed;
+        planResult = parsed.overview;
       }
     } catch {
       warnings.push("Plan mode final message was not valid JSON.");
@@ -137,7 +142,7 @@ export async function executeDelegate(rawArgs, options = {}) {
   // Everything below is omitted when it carries no signal: a field that is
   // present on every call teaches the caller to stop reading it.
   return {
-    result: processResult.result,
+    result: planResult ?? processResult.result,
     resultSource: processResult.resultSource,
     finalMessageAvailable: processResult.finalMessageAvailable,
     status: processResult.status,

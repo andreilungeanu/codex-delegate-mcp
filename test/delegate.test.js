@@ -248,3 +248,56 @@ test("a cancel landing after a clean finish is not reported as cancelled", async
   assert.equal(result.status, "completed");
   assert.equal(result.reason, undefined);
 });
+
+test("plan mode returns the plan once, with result holding only the overview", async () => {
+  const plan = {
+    overview: "Split the parser out of the reducer.",
+    steps: [
+      { title: "Extract", detail: "Move the JSONL branch chain into parse-event.js." },
+      { title: "Wire", detail: "Call it from run-codex.js and keep the reducer stateless." },
+    ],
+  };
+  const raw = JSON.stringify(plan);
+  const options = delegateOptions("tid-plan");
+  options.runProcess = async () => ({
+    status: "completed",
+    exitCode: 0,
+    threadId: "tid-plan",
+    result: raw,
+    finalMessageAvailable: true,
+    warnings: [],
+    filesReportedByAgent: [],
+  });
+
+  const result = await executeDelegate(
+    { spec: "plan it", mode: "plan", workspace: process.cwd() },
+    options
+  );
+
+  assert.deepEqual(result.plan, plan);
+  assert.equal(result.result, plan.overview);
+  assert.ok(!result.result.includes("steps"), "result must not repeat the plan JSON");
+  assert.ok(JSON.stringify(result).length < raw.length * 2);
+});
+
+test("an unparseable plan keeps the raw final message in result", async () => {
+  const options = delegateOptions("tid-bad");
+  options.runProcess = async () => ({
+    status: "completed",
+    exitCode: 0,
+    threadId: "tid-bad",
+    result: "not json at all",
+    finalMessageAvailable: true,
+    warnings: [],
+    filesReportedByAgent: [],
+  });
+
+  const result = await executeDelegate(
+    { spec: "plan it", mode: "plan", workspace: process.cwd() },
+    options
+  );
+
+  assert.equal(result.plan, undefined);
+  assert.equal(result.result, "not json at all");
+  assert.ok(result.warnings.some((w) => /not valid JSON/i.test(w)));
+});
