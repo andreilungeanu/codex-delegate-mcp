@@ -157,7 +157,9 @@ export function buildServer({
     {
       description:
         `Delegate a coding task to the OpenAI Codex CLI. Never shell out to codex — use this tool. Pass a precise brief in spec. Defaults: mode=agent, model=${DEFAULT_MODEL}, reasoningEffort=${DEFAULT_REASONING_EFFORT}, network=false, fast=false. Override model/reasoningEffort/fast only when the user asks. Plan workflow: mode=plan then resume with mode=agent and resumeThreadId. Returns the authoritative final message, thread id, changed files, and warnings. See the delegate skill for orchestration.`,
-      inputSchema: {
+      // Strict: an unknown key is almost always a typo, and a silently dropped
+      // `resumeThredId` loses the thread with nothing to show for it.
+      inputSchema: z.object({
         spec: z
           .string()
           .describe(
@@ -201,7 +203,7 @@ export function buildServer({
         reviewTarget: reviewTargetSchema
           .optional()
           .describe("Required in review mode: uncommitted, base branch, or commit sha"),
-      },
+      }).strict(),
       outputSchema: delegateOutputSchema,
       annotations: {
         title: "Delegate coding task to Codex",
@@ -220,9 +222,11 @@ export function buildServer({
     {
       description:
         "Cancel the in-flight Codex delegation owned by this server. Optional threadId prevents cancelling a different active thread.",
-      inputSchema: {
-        threadId: z.string().optional().describe("Cancel only when this thread is active"),
-      },
+      inputSchema: z
+        .object({
+          threadId: z.string().optional().describe("Cancel only when this thread is active"),
+        })
+        .strict(),
       outputSchema: z
         .object({
           status: z.enum(["cancelled", "nothing-active", "not-owned"]),
@@ -244,13 +248,15 @@ export function buildServer({
     {
       description:
         "Report setup diagnostics: plugin version, Codex CLI resolution, login status, recursion guard. deep=true runs help-only surface checks (no model quota).",
-      inputSchema: {
-        deep: z
-          .boolean()
-          .default(false)
-          .describe("When true, probe codex exec/review/resume --help surfaces"),
-        workspace: z.string().optional(),
-      },
+      inputSchema: z
+        .object({
+          deep: z
+            .boolean()
+            .default(false)
+            .describe("When true, probe codex exec/review/resume --help surfaces"),
+          workspace: z.string().optional(),
+        })
+        .strict(),
       outputSchema: z
         .object({
           plugin: z.object({ version: z.string() }).passthrough(),

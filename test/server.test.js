@@ -116,3 +116,19 @@ test("runCancelTool returns an error payload when cancellation fails", async () 
   });
   lease.release();
 });
+
+test("an unknown delegate input is rejected instead of silently dropped", () => {
+  const server = buildServer({ executeDelegate: async () => ({}) });
+  const delegate = server._registeredTools.delegate;
+
+  const typo = delegate.inputSchema.safeParse({ spec: "x", resumeThredId: "lost" });
+  assert.equal(typo.success, false);
+  assert.match(typo.error.issues[0].message, /Unrecognized key/);
+
+  const ok = delegate.inputSchema.safeParse({
+    spec: "x",
+    resumeThreadId: "tid",
+    workspace: "/w",
+  });
+  assert.equal(ok.success, true);
+});
