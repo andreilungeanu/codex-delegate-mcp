@@ -30,6 +30,7 @@ try {
   for (const rel of [
     "src/server.js",
     "README.md",
+    "CONFIGURATION.md",
     "LICENSE",
     "PRIVACY.md",
     "SECURITY.md",

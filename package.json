@@ -40,8 +40,8 @@
     "CHANGELOG.md"
   ],
   "scripts": {
-    "test": "node --test test/*.test.js",
-    "test:pack": "node test/npm-package-smoke.mjs",
+    "test": "node --test",
+    "test:pack": "node scripts/npm-package-smoke.mjs",
     "start": "node src/server.js"
   },
   "dependencies": {
