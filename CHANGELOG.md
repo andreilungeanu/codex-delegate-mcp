@@ -4,6 +4,69 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.8.0] - 2026-07-25
+
+A correctness pass driven by live probing against Codex CLI 0.145.0. The theme is that the
+result envelope used to look the same whether a run worked or not; now failure is legible.
+
+### Fixed
+
+- A failed turn reports the reason Codex gave. `turn.failed` carries the diagnosis in
+  `error.message` and an `error` event repeats it; neither was read, so a rejected argument
+  came back as `result: ""` with no explanation. The one stderr line that was promoted,
+  `Reading additional input from stdin...`, is boilerplate Codex prints on every non-TTY run —
+  it is now filtered rather than presented as the fault.
+- A turn whose tool calls all failed no longer reads as a clean success. Codex marks the item
+  `status: "failed"`; only `item.type` was read, so a run where every command was denied
+  returned `status: "completed"` with a reply describing work that never happened.
+- The 90s idle timer no longer kills healthy runs. Codex emits nothing for the body of a shell
+  command or a long reasoning pass — `docs/phase0/probe1-graceful.raw.jsonl` in this repo
+  captured three frames followed by 120s of silence — so any command outrunning the timer was
+  tree-killed just before finishing. `idleMs` was also unreachable: nothing passed it and no
+  env var set it.
+- A kill that fails to reap the process tree can no longer wedge the server. `taskkill` can
+  report success and leave the tree up; the awaited `close` then never arrived, the lease was
+  never released, and every later delegation failed with `operation_in_progress`.
+- The temp directory is removed on every exit path. It was created before `buildCodexArgs` and
+  `acquire`, so an oversized spec or a concurrent call leaked one per attempt.
+- A cancel landing after a clean finish is no longer reported as `cancelled: true`.
+- The result file is size-checked before it is read, instead of being loaded and then rejected.
+- The `where`/`which` probe is time-boxed. It is synchronous, so a wedged probe froze the whole
+  server: no progress, no `cancel`, no stdio.
+- A `close` that arrives with lines still queued no longer drops them; a late `turn.failed`
+  could otherwise read as success.
+
+### Added
+
+- `usage` — per-turn token counts (`inputTokens`, `cachedInputTokens`, `cacheWriteInputTokens`,
+  `outputTokens`, `reasoningOutputTokens`). Codex has always sent these on `turn.completed`.
+- `resultSource: "stream-fallback"` — when a run is interrupted before the authoritative
+  `--output-last-message` file is written, the last streamed message is returned with a warning
+  saying it is not the final answer. A completed run never falls back to narration.
+- `CODEX_DELEGATE_STARTUP_MS` (60s spawn-to-first-output deadline), `CODEX_DELEGATE_IDLE_MS`
+  (opt-in mid-turn idle, off by default), `CODEX_DELEGATE_HARD_CAP_MS`,
+  `CODEX_DELEGATE_HEARTBEAT_MS`. A malformed or negative value falls back to its default.
+- `CODEX_DELEGATE_WINDOWS_SANDBOX` overrides the hardcoded `windows.sandbox="elevated"`; `off`
+  omits the flag. `elevated` needs an elevated session — on a normal one Codex cannot spawn its
+  sandbox helper (`CreateProcessAsUserW failed: 5`) and every shell command fails.
+- A `still working` progress heartbeat naming elapsed time, silence age, and the running
+  command, and the thread id in the first progress notification.
+- `reasoningEffort` accepts `none`, which the gpt-5.6 models take. They reject `minimal`, which
+  older models take; a rejected value now returns the model's own list of what it accepts.
+- CI gates on a coverage floor and a high-severity `npm audit`; the lockfile moved off the
+  `fast-uri` advisory.
+
+### Changed
+
+- **Breaking**: `workspace` must exist and be a directory. A typo used to reach Codex and be
+  created by its first write, so it looked like success at every layer.
+- **Breaking**: `workspace` is required when `resumeThreadId` is set. `codex exec resume` has
+  no `--cd`, so an omitted workspace silently ran the thread in the server's own directory
+  while carrying the original workspace's context — a cross-repository write with no signal.
+- **Breaking**: resolver setup notes no longer appear in a delegate result's `warnings`. They
+  described the setup, not the run, and fired on every call; `doctor` reports them. `warnings`
+  is now empty on a clean run, so anything in it is real.
+
 ## [1.7.0] - 2026-07-17
 
 ### Changed
