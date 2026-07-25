@@ -1,5 +1,6 @@
 import process from "node:process";
 import path from "node:path";
+import { statSync } from "node:fs";
 
 export const MODES = Object.freeze(["agent", "plan", "ask", "review"]);
 
@@ -12,7 +13,13 @@ export const DEFAULT_REASONING_EFFORT = "high";
 /** Leave headroom under Windows CreateProcess ~32k limit. */
 export const MAX_ARGV_CHARS = 28_000;
 
+/**
+ * Which values a model accepts is not discoverable up front and differs by model:
+ * gpt-5.6-* take none|low|medium|high|xhigh and reject minimal, which older
+ * models take. A rejected value comes back as the model's own error.
+ */
 export const REASONING_EFFORTS = Object.freeze([
+  "none",
   "minimal",
   "low",
   "medium",
@@ -200,7 +207,19 @@ export function validateDelegateInput(raw, { cwd = process.cwd() } = {}) {
   const mode = raw.mode ?? "agent";
   if (!MODES.includes(mode)) throw bad("invalid_mode", `mode must be one of ${MODES.join(", ")}`);
 
+  // A missing workspace used to reach Codex and be created by its first write,
+  // so a typo produced a parallel empty tree that looked like success throughout.
   const workspace = path.resolve(cwd, raw.workspace || cwd);
+  let workspaceStat;
+  try {
+    workspaceStat = statSync(workspace);
+  } catch {
+    throw bad("invalid_workspace", `workspace does not exist: ${workspace}`);
+  }
+  if (!workspaceStat.isDirectory()) {
+    throw bad("invalid_workspace", `workspace is not a directory: ${workspace}`);
+  }
+
   const network = raw.network === true;
   if (network && mode !== "agent") {
     throw bad("invalid_network", "network:true is only allowed in agent mode");
@@ -210,6 +229,15 @@ export function validateDelegateInput(raw, { cwd = process.cwd() } = {}) {
   if (raw.resumeThreadId != null && String(raw.resumeThreadId).trim()) {
     resumeThreadId = String(raw.resumeThreadId).trim();
     if (mode === "review") throw bad("invalid_resume", "resumeThreadId is not allowed with review");
+    // `codex exec resume` has no --cd: the turn runs wherever the child is
+    // spawned. Defaulting would silently run a thread against this server's own
+    // directory, with the original workspace's context still loaded.
+    if (raw.workspace == null) {
+      throw bad(
+        "invalid_workspace",
+        "workspace is required when resuming: resume has no --cd, so an omitted workspace would run the thread in the server's directory rather than the one it started in"
+      );
+    }
   }
 
   let reviewTarget;

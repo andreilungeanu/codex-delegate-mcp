@@ -9,7 +9,7 @@ import {
 } from "../src/command.js";
 
 test("validateDelegateInput defaults and resolves workspace", () => {
-  const cwd = path.resolve("work-repo");
+  const cwd = process.cwd();
   const req = validateDelegateInput(
     { spec: "do the thing" },
     { cwd }
@@ -20,6 +20,38 @@ test("validateDelegateInput defaults and resolves workspace", () => {
   assert.equal(req.workspace, cwd);
   assert.equal(req.model, "gpt-5.6-terra");
   assert.equal(req.reasoningEffort, "high");
+});
+
+test("workspace must exist and be a directory", () => {
+  assert.throws(
+    () => validateDelegateInput({ spec: "x", workspace: path.resolve("no-such-dir-xyz") }),
+    /workspace does not exist/
+  );
+  assert.throws(
+    () => validateDelegateInput({ spec: "x", workspace: import.meta.filename }),
+    /workspace is not a directory/
+  );
+});
+
+test("resume requires an explicit workspace because resume has no --cd", () => {
+  assert.throws(
+    () => validateDelegateInput({ spec: "x", resumeThreadId: "tid-1" }),
+    /workspace is required when resuming/
+  );
+  const ok = validateDelegateInput({
+    spec: "x",
+    resumeThreadId: "tid-1",
+    workspace: process.cwd(),
+  });
+  assert.equal(ok.resumeThreadId, "tid-1");
+});
+
+test("reasoningEffort accepts none, which gpt-5.6 models take", () => {
+  assert.equal(validateDelegateInput({ spec: "x", reasoningEffort: "none" }).reasoningEffort, "none");
+  assert.throws(
+    () => validateDelegateInput({ spec: "x", reasoningEffort: "ultra" }),
+    /reasoningEffort must be one of/
+  );
 });
 
 test("fast defaults off; only sets Codex service_tier when true", () => {
