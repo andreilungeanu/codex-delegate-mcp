@@ -9,7 +9,11 @@ const DEFAULT_MAX_RESULT_BYTES = 10 * 1024 * 1024;
 const DEFAULT_STDERR_BYTES = 64 * 1024;
 const STDERR_TAIL_CHARS = 2000;
 const DRAIN_MS = 2000;
-export const DEFAULT_IDLE_MS = 90_000;
+/** Mid-turn idle detection is off by default; silence is normal mid-turn. */
+export const DEFAULT_IDLE_MS = 0;
+/** Spawn to first JSONL event. Silence here does mean a wedged launcher. */
+export const DEFAULT_STARTUP_MS = 60_000;
+export const DEFAULT_HEARTBEAT_MS = 30_000;
 export const DEFAULT_HARD_CAP_MS = 3_600_000;
 
 /**
@@ -27,6 +31,8 @@ export async function runCodexProcess({
   onThreadId,
   timeoutMs = DEFAULT_HARD_CAP_MS,
   idleMs = DEFAULT_IDLE_MS,
+  startupMs = DEFAULT_STARTUP_MS,
+  heartbeatMs = DEFAULT_HEARTBEAT_MS,
   maxResultBytes = DEFAULT_MAX_RESULT_BYTES,
   spawnImpl = spawn,
   treeKillImpl = treeKill,
@@ -108,14 +114,24 @@ export async function runCodexProcess({
   };
 
   const hardCapMs = timeoutMs > 0 ? timeoutMs : 0;
+  const startedAt = Date.now();
+  let lastActivityAt = startedAt;
+  let lastCommand = null;
+  let sawFirstEvent = false;
   let idleTimer;
   let hardCapTimer;
+  let startupTimer;
+  let heartbeatTimer;
 
   const clearTimers = () => {
     clearTimeout(idleTimer);
     clearTimeout(hardCapTimer);
+    clearTimeout(startupTimer);
+    clearInterval(heartbeatTimer);
     idleTimer = undefined;
     hardCapTimer = undefined;
+    startupTimer = undefined;
+    heartbeatTimer = undefined;
   };
 
   const tripTimeout = (reason) => {
@@ -125,15 +141,29 @@ export async function runCodexProcess({
     abort({ userCancel: false }).catch(() => {});
   };
 
+  // Opt-in: Codex emits nothing for the body of a shell command or a long
+  // reasoning pass, so a mid-turn idle guard cannot tell quiet from wedged.
   const resetIdle = () => {
     clearTimeout(idleTimer);
     if (idleMs <= 0 || timedOut || cancelled) return;
     idleTimer = setTimeout(() => tripTimeout("idle-timeout"), idleMs);
-    if (!process.env.NODE_TEST_CONTEXT) idleTimer.unref?.();
   };
 
   const noteActivity = () => {
+    lastActivityAt = Date.now();
+    if (!sawFirstEvent) {
+      sawFirstEvent = true;
+      clearTimeout(startupTimer);
+      startupTimer = undefined;
+    }
     resetIdle();
+  };
+
+  const heartbeat = () => {
+    const elapsed = Math.round((Date.now() - startedAt) / 1000);
+    const quiet = Math.round((Date.now() - lastActivityAt) / 1000);
+    const running = lastCommand ? `, running: ${lastCommand}` : "";
+    emit(`still working — ${elapsed}s elapsed, last event ${quiet}s ago${running}`);
   };
 
   const rl = createInterface({ input: child.stdout, crlfDelay: Infinity });
@@ -169,6 +199,7 @@ export async function runCodexProcess({
       if (!item) return;
       if (item.type === "command_execution") {
         const cmd = String(item.command || item.command_line || "").slice(0, 120);
+        lastCommand = event.type === "item.completed" ? null : cmd || null;
         emit(cmd ? `running: ${cmd}` : "running command");
       } else if (item.type === "file_change") {
         for (const p of pathsFromFileChangeItem(item)) reportedPaths.add(p);
@@ -200,10 +231,9 @@ export async function runCodexProcess({
   let exitCode;
   try {
     if (signal) signal.addEventListener("abort", onAbort, { once: true });
-    if (hardCapMs > 0) {
-      hardCapTimer = setTimeout(() => tripTimeout("hard-cap"), hardCapMs);
-      if (!process.env.NODE_TEST_CONTEXT) hardCapTimer.unref?.();
-    }
+    if (hardCapMs > 0) hardCapTimer = setTimeout(() => tripTimeout("hard-cap"), hardCapMs);
+    if (startupMs > 0) startupTimer = setTimeout(() => tripTimeout("startup-timeout"), startupMs);
+    if (heartbeatMs > 0) heartbeatTimer = setInterval(heartbeat, heartbeatMs);
     resetIdle();
 
     exitCode = await new Promise((resolve, reject) => {
@@ -244,10 +274,14 @@ export async function runCodexProcess({
   warnings.push(...final.warnings);
   if (timedOut && timeoutReason === "idle-timeout") {
     warnings.push(
-      `Idle timeout after ${idleMs}ms with no Codex activity. Raise CODEX_DELEGATE_IDLE_MS if the task runs long silent commands.`
+      `Idle timeout after ${idleMs}ms with no Codex activity. Raise or unset CODEX_DELEGATE_IDLE_MS if the task runs long silent commands.`
+    );
+  } else if (timedOut && timeoutReason === "startup-timeout") {
+    warnings.push(
+      `Codex produced no output within ${startupMs}ms of spawning. Run doctor to check the CLI resolves and is logged in; raise CODEX_DELEGATE_STARTUP_MS on a slow machine.`
     );
   } else if (timedOut && timeoutReason === "hard-cap") {
-    warnings.push(`Hard-cap timeout after ${hardCapMs}ms.`);
+    warnings.push(`Hard-cap timeout after ${hardCapMs}ms. Raise timeoutMs for longer tasks.`);
   }
   const stderrTail = meaningfulStderr(stderr).slice(-STDERR_TAIL_CHARS);
   if (status !== "completed" && stderrTail.trim()) {

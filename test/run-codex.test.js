@@ -84,6 +84,69 @@ test("runCodexProcess parses thread id and requires final file", async () => {
   assert.ok(progress.includes("thread started: tid-1"));
 });
 
+test("runCodexProcess trips the startup deadline when Codex never speaks", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-startup-"));
+  const resultFile = path.join(dir, "last.txt");
+
+  let child;
+  const silentChild = () => {
+    child = new EventEmitter();
+    child.pid = 555;
+    child.stdout = new Readable({ read() {} });
+    child.stderr = new Readable({ read() {} });
+    child.exitCode = null;
+    child.signalCode = null;
+    return child;
+  };
+
+  const result = await runCodexProcess({
+    command: "codex",
+    args: ["exec"],
+    cwd: dir,
+    resultFile,
+    spawnImpl: silentChild,
+    // A real kill closes the process; this stands in for taskkill succeeding.
+    treeKillImpl: async () => {
+      child.exitCode = 1;
+      child.stdout.push(null);
+      child.emit("close", 1);
+    },
+    platform: "linux",
+    startupMs: 30,
+    heartbeatMs: 0,
+    timeoutMs: 10_000,
+  });
+
+  assert.equal(result.timedOut, true);
+  assert.equal(result.timeoutReason, "startup-timeout");
+  assert.equal(result.status, "interrupted");
+  assert.ok(result.warnings.some((w) => /no output within 30ms/.test(w)));
+});
+
+test("a first event cancels the startup deadline", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-startup-ok-"));
+  const resultFile = path.join(dir, "last.txt");
+
+  const result = await runCodexProcess({
+    command: "codex",
+    args: ["exec"],
+    cwd: dir,
+    resultFile,
+    spawnImpl: () =>
+      fakeChild({
+        lines: [JSON.stringify({ type: "thread.started", thread_id: "tid-s" })],
+        writeResult: () => writeFile(resultFile, "ok", "utf8"),
+      }),
+    platform: "linux",
+    startupMs: 10_000,
+    heartbeatMs: 0,
+    timeoutMs: 5000,
+  });
+
+  assert.equal(result.timedOut, false);
+  assert.equal(result.status, "completed");
+});
+
 test("readAgentError unwraps the nested Codex error envelope", () => {
   const raw = JSON.stringify({
     type: "error",

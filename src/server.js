@@ -177,7 +177,9 @@ export function buildServer({
           .min(1000)
           .max(86_400_000)
           .optional()
-          .describe("Hard-cap timeout in milliseconds (default 1h; idle timeout is 90s)"),
+          .describe(
+            "Hard-cap timeout in milliseconds (default 1h). A long silent command is not a timeout; only the 60s spawn-to-first-output deadline is."
+          ),
         reviewTarget: reviewTargetSchema
           .optional()
           .describe("Required in review mode: uncommitted, base branch, or commit sha"),

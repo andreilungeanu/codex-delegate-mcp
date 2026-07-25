@@ -4,7 +4,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { buildCodexArgs, validateDelegateInput, PLAN_SCHEMA } from "./command.js";
 import { resolveCodex } from "./resolve-codex.js";
-import { runCodexProcess, DEFAULT_HARD_CAP_MS } from "./run-codex.js";
+import {
+  runCodexProcess,
+  DEFAULT_HARD_CAP_MS,
+  DEFAULT_HEARTBEAT_MS,
+  DEFAULT_IDLE_MS,
+  DEFAULT_STARTUP_MS,
+} from "./run-codex.js";
 import { normalizeAgentReportedFiles } from "./agent-reported-files.js";
 import { createOperationRegistry } from "./ops.js";
 
@@ -68,7 +74,10 @@ export async function executeDelegate(rawArgs, options = {}) {
       env,
       resultFile,
       signal: controller.signal,
-      timeoutMs: request.timeoutMs ?? DEFAULT_HARD_CAP_MS,
+      timeoutMs: request.timeoutMs ?? envMs(env.CODEX_DELEGATE_HARD_CAP_MS, DEFAULT_HARD_CAP_MS),
+      idleMs: envMs(env.CODEX_DELEGATE_IDLE_MS, DEFAULT_IDLE_MS),
+      startupMs: envMs(env.CODEX_DELEGATE_STARTUP_MS, DEFAULT_STARTUP_MS),
+      heartbeatMs: envMs(env.CODEX_DELEGATE_HEARTBEAT_MS, DEFAULT_HEARTBEAT_MS),
       onProgress,
       onThreadId: (id) => lease.updateThreadId(id),
     });
@@ -121,6 +130,17 @@ export async function executeDelegate(rawArgs, options = {}) {
     cancelled: processResult.cancelled || cancellation?.status === "cancelled",
     exitCode: processResult.exitCode,
   };
+}
+
+/**
+ * A malformed or negative knob falls back to its default rather than arming a
+ * deadline that fails every call. Explicit 0 disables the guard it belongs to.
+ */
+export function envMs(raw, fallback) {
+  if (raw == null || String(raw).trim() === "") return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 0) return fallback;
+  return value;
 }
 
 function isValidPlanShape(value) {

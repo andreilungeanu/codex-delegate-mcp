@@ -175,7 +175,16 @@ This is a **worker** for an orchestrator host — not a replacement for Codex's 
 
 Optional: set `CODEX_DELEGATE_COMMAND` to an absolute Codex binary. On Windows the standalone install under `~/.codex/packages/standalone/releases/` is preferred over the PATH shim.
 
-Defaults: `model=gpt-5.6-terra`, `reasoningEffort=high`, `network=false`, `fast=false`, idle timeout 90s, hard cap 1h (`timeoutMs`).
+Defaults: `model=gpt-5.6-terra`, `reasoningEffort=high`, `network=false`, `fast=false`, hard cap 1h (`timeoutMs`).
+
+Timeouts. Codex emits nothing while a shell command runs or the model reasons, so silence mid-turn is not a hang and is not timed out. Two guards apply: a 60s spawn-to-first-output deadline, and the 1h hard cap. Each is overridable, and a malformed or negative value falls back to its default:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `CODEX_DELEGATE_STARTUP_MS` | `60000` | Spawn to first JSONL event. `0` disables. |
+| `CODEX_DELEGATE_HARD_CAP_MS` | `3600000` | Whole run; `timeoutMs` overrides per call. |
+| `CODEX_DELEGATE_IDLE_MS` | `0` (off) | Opt-in mid-turn idle guard. Enable only if you know the task stays chatty. |
+| `CODEX_DELEGATE_HEARTBEAT_MS` | `30000` | Progress heartbeat while quiet. `0` disables. |
 
 ## License
 
