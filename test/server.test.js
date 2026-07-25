@@ -25,12 +25,13 @@ test("delegate tool derives defaults and descriptions from command constants", (
   const delegate = server._registeredTools.delegate;
   const parsed = delegate.inputSchema.parse({ spec: "x" });
 
+  // The schema is the single source of the defaults. Restating them in the
+  // description and the server instructions shipped the same fact three times,
+  // on every tool listing, to a caller that can read the schema.
   assert.equal(parsed.model, DEFAULT_MODEL);
   assert.equal(parsed.reasoningEffort, DEFAULT_REASONING_EFFORT);
-  assert.match(delegate.description, new RegExp(DEFAULT_MODEL));
-  assert.match(delegate.description, new RegExp(DEFAULT_REASONING_EFFORT));
-  assert.match(SERVER_INSTRUCTIONS, new RegExp(DEFAULT_MODEL));
-  assert.match(SERVER_INSTRUCTIONS, new RegExp(DEFAULT_REASONING_EFFORT));
+  assert.ok(!delegate.description.includes(DEFAULT_MODEL));
+  assert.ok(!SERVER_INSTRUCTIONS.includes(DEFAULT_MODEL));
 });
 
 test("runDelegateTool returns structuredContent on success", async () => {

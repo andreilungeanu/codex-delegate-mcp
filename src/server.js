@@ -22,7 +22,7 @@ if (nodeMajor < 18) {
   process.exit(1);
 }
 
-export const SERVER_INSTRUCTIONS = `Delegate coding work to the OpenAI Codex CLI through the delegate tool. You orchestrate (brief + review); Codex implements. Defaults: model=${DEFAULT_MODEL}, reasoningEffort=${DEFAULT_REASONING_EFFORT}, network=false, fast=false. Override model/reasoningEffort/fast only when the user asks. Use mode="agent" for edits, mode="plan" for a structured plan, mode="ask" for read-only Q&A, mode="review" for native code review. Scope workspace tightly. Review filesReportedByAgent and the git diff after write-capable runs. Use doctor for setup diagnostics.`;
+export const SERVER_INSTRUCTIONS = `Delegate coding work to the OpenAI Codex CLI through the delegate tool. You orchestrate (brief + review); Codex implements. Scope workspace tightly and review the git diff after write-capable runs. doctor reports setup problems.`;
 
 const reviewTargetSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("uncommitted") }).strict(),
@@ -34,7 +34,6 @@ const delegateOutputSchema = z
   .object({
     result: z.string(),
     resultSource: z.literal("stream-fallback").optional(),
-    finalMessageAvailable: z.boolean(),
     status: z.enum(["completed", "failed", "interrupted"]),
     reason: z
       .enum([
@@ -156,7 +155,7 @@ export function buildServer({
     "delegate",
     {
       description:
-        `Delegate a coding task to the OpenAI Codex CLI. Never shell out to codex — use this tool. Pass a precise brief in spec. Defaults: mode=agent, model=${DEFAULT_MODEL}, reasoningEffort=${DEFAULT_REASONING_EFFORT}, network=false, fast=false. Override model/reasoningEffort/fast only when the user asks. Plan workflow: mode=plan then resume with mode=agent and resumeThreadId. Returns the authoritative final message, thread id, changed files, and warnings. See the delegate skill for orchestration.`,
+        "Delegate a coding task to the OpenAI Codex CLI. Never shell out to codex — use this tool. mode: agent edits, plan returns a structured plan, ask is read-only, review runs Codex's native review. Change model/reasoningEffort/fast only when the user asks. See the delegate skill for orchestration.",
       // Strict: an unknown key is almost always a typo, and a silently dropped
       // `resumeThredId` loses the thread with nothing to show for it.
       inputSchema: z.object({
@@ -174,19 +173,15 @@ export function buildServer({
         model: z
           .string()
           .default(DEFAULT_MODEL)
-          .describe(`Codex model id. Default ${DEFAULT_MODEL}; override only when the user asks`),
+          .describe("Codex model id"),
         reasoningEffort: z
           .enum([...REASONING_EFFORTS])
           .default(DEFAULT_REASONING_EFFORT)
-          .describe(
-            `Reasoning effort. Default ${DEFAULT_REASONING_EFFORT}; override only when the user asks`
-          ),
+          .describe("Reasoning effort. gpt-5.6-* reject minimal; older models reject none"),
         fast: z
           .boolean()
           .default(false)
-          .describe(
-            "Codex Fast mode (service_tier=fast) — higher credit use; enable only when the user asks"
-          ),
+          .describe("Codex Fast mode (service_tier=fast) — higher credit use"),
         network: z
           .boolean()
           .default(false)

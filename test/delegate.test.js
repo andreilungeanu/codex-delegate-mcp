@@ -75,7 +75,6 @@ test("executeDelegate wires resolve + process + agent-reported files", async () 
   assert.equal(result.threadId, "thread-abc");
   assert.equal(result.mode, undefined);
   assert.equal(result.result, "looks fine");
-  assert.equal(result.finalMessageAvailable, true);
   assert.equal(result.filesReportedByAgent, undefined);
   assert.equal(result.warnings, undefined);
 });
@@ -97,14 +96,11 @@ test("executeDelegate warns when a requested resume starts a new thread", async 
     delegateOptions("thread-new")
   );
 
-  // A resume was requested, so resumed:false is the answer, not noise.
+  // A resume was requested, so resumed:false is the answer — and it is the whole
+  // answer; prose repeating the two thread ids the caller already has is noise.
   assert.equal(result.resumed, false);
   assert.equal(result.threadId, "thread-new");
-  assert.ok(
-    result.warnings.includes(
-      "Requested resume of thread thread-stale but the agent started new thread thread-new; prior context did not carry over."
-    )
-  );
+  assert.equal(result.warnings, undefined);
 });
 
 test("executeDelegate does not infer a thread when a requested resume has no observed id", async () => {

@@ -245,7 +245,6 @@ test("an interrupted run salvages the last streamed message as a caveat", async 
   assert.equal(result.finalMessageAvailable, false);
   assert.equal(result.result, "Halfway through the refactor.");
   assert.equal(result.resultSource, "stream-fallback");
-  assert.ok(result.warnings.some((w) => /not its final answer/.test(w)));
 });
 
 test("a completed run never falls back to streamed narration", async () => {
@@ -370,7 +369,8 @@ test("runCodexProcess non-zero exit yields failed without final message", async 
   assert.equal(result.exitCode, 2);
   assert.equal(result.finalMessageAvailable, false);
   assert.equal(result.result, "");
-  assert.match(result.warnings[0], /status=failed/);
+  // status and exitCode already say this; a warning repeating them is noise.
+  assert.deepEqual(result.warnings, []);
 });
 
 test("runCodexProcess turn.failed yields failed status", async () => {
@@ -486,7 +486,7 @@ test("runCodexProcess does not spawn for a pre-aborted signal", async () => {
   assert.equal(result.result, "");
   assert.equal(result.stderrBytes, 0);
   assert.equal(result.stderrTail, "");
-  assert.match(result.warnings[0], /Final result unavailable/);
+  assert.deepEqual(result.warnings, []);
 });
 
 test("runCodexProcess removes abort listener after a spawn error", async () => {

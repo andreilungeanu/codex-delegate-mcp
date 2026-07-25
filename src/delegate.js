@@ -136,11 +136,6 @@ export async function executeDelegate(rawArgs, options = {}) {
 
   const resumed =
     Boolean(request.resumeThreadId) && processResult.threadId === request.resumeThreadId;
-  if (request.resumeThreadId && processResult.threadId && !resumed) {
-    warnings.push(
-      `Requested resume of thread ${request.resumeThreadId} but the agent started new thread ${processResult.threadId}; prior context did not carry over.`
-    );
-  }
   const files = normalizeAgentReportedFiles(
     processResult.filesReportedByAgent || [],
     request.workspace
@@ -155,7 +150,6 @@ export async function executeDelegate(rawArgs, options = {}) {
   return {
     result: planResult ?? processResult.result,
     resultSource: processResult.resultSource,
-    finalMessageAvailable: processResult.finalMessageAvailable,
     status: processResult.status,
     reason: processResult.reason ?? (lateCancel ? "cancelled" : undefined),
     threadId: processResult.threadId || undefined,

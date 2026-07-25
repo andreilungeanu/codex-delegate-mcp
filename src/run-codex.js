@@ -331,11 +331,6 @@ export async function runCodexProcess({
   const warnings = [];
   if (agentError) warnings.push(`Codex error: ${agentError}`);
   warnings.push(...final.warnings);
-  if (resultSource === "stream-fallback") {
-    warnings.push(
-      "result is the agent's last streamed message, not its final answer — the run did not finish. Resume the thread to continue."
-    );
-  }
   if (timedOut && timeoutReason === "idle-timeout") {
     warnings.push(
       `Idle timeout after ${idleMs}ms with no Codex activity. Raise or unset CODEX_DELEGATE_IDLE_MS if the task runs long silent commands.`
@@ -446,7 +441,7 @@ export async function readFinalResult({
     return {
       result: "",
       finalMessageAvailable: false,
-      warnings: [`Final result unavailable (status=${status}, exit=${exitCode}).`],
+      warnings: [],
     };
   }
   try {
