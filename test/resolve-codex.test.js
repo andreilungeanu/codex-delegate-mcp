@@ -9,6 +9,9 @@ import {
   clearCodexCache,
   whichOnPath,
 } from "../src/resolve-codex.js";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 test("parseVersion and compareSemver", () => {
   assert.deepEqual(parseVersion("codex-cli 0.144.4"), [0, 144, 4]);
@@ -147,5 +150,33 @@ test("refreshCodex clears the cache when its fresh probe fails", () => {
     resolveCodex({ ...options, runVersion: () => "codex-cli 0.144.6" }).version,
     "0.144.6"
   );
+  clearCodexCache();
+});
+
+test("a cached resolution is dropped once its binary disappears", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-cache-"));
+  const bin = path.join(dir, "codex");
+  await writeFile(bin, "#!/bin/sh\n", "utf8");
+
+  clearCodexCache();
+  let resolves = 0;
+  const opts = {
+    env: { CODEX_DELEGATE_COMMAND: bin },
+    platform: "linux",
+    homeDir: dir,
+    runVersion: () => {
+      resolves += 1;
+      return "codex-cli 0.145.0";
+    },
+    lookupOnPath: () => null,
+  };
+
+  assert.equal(resolveCodex(opts).command, bin);
+  assert.equal(resolves, 1);
+  resolveCodex(opts);
+  assert.equal(resolves, 1, "second call should hit the cache");
+
+  await rm(bin, { force: true });
+  assert.throws(() => resolveCodex(opts), /not found/);
   clearCodexCache();
 });

@@ -23,7 +23,9 @@ export function clearCodexCache() {
 }
 
 export function resolveCodex(options = {}) {
-  if (cached) return cached;
+  // Revalidate rather than trust the cache forever: reinstalling Codex moves the
+  // binary, and a stale path would fail every delegation until a restart.
+  if (cached && existsSync(cached.command)) return cached;
   cached = resolveCodexUncached(options);
   return cached;
 }
