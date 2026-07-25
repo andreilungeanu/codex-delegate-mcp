@@ -16,17 +16,21 @@ Codex Delegate is the MCP bridge that lets Claude Code, Cursor, Copilot — or a
 
 <br clear="left">
 
-## Frontier quality, kept
+## 🧠 Frontier quality, kept
 
 Your assistant does what frontier models are actually for: understands the task, writes a precise brief, reviews the finished diff. Codex holds its own as the implementer — guided and checked by a smarter orchestrator. The result reads like frontier work, because a frontier model planned it and signed off on it.
 
-## Done faster
+## ⚡ Done faster
 
 Codex tears through multi-file edits while a frontier chat model would still be streaming the first file. You delegate, keep working with your assistant, and the diff shows up done.
 
-## Your limits stop being the bottleneck
+## 🔋 Your limits stop being the bottleneck
 
 Delegated work runs on the **OpenAI Codex CLI** and its own usage — separate from your orchestrator's chat quota. Your Claude, Cursor, or Copilot subscription spends tokens on the brief and the review; Codex does the grinding. On API? That's the per-token grind moved off your main bill.
+
+## 🔍 Results you can actually trust
+
+An answer only counts as final if Codex exited cleanly and wrote its own last-message file. Cancel or time out a run and you still get the last thing Codex said — explicitly flagged as salvage, never passed off as finished work. And when Codex's tool calls fail inside a turn that otherwise looks clean, you get a warning saying so, because a confident summary of work that never happened is the expensive failure.
 
 ```
 You  →  your agent (plans & reviews)
@@ -40,14 +44,16 @@ You  →  your agent (plans & reviews)
 
 ## Features
 
-- **Native plugins** — install into Claude Code, Cursor, or GitHub Copilot CLI and just say *"delegate this to Codex"*. The shared skill teaches your agent how to delegate well.
-- **Truthful finals** — only `--output-last-message` after a clean exit counts as the answer. No JSONL guesswork.
-- **Clean, typed results** — final answer, `status` plus a `reason` when it is not `completed`, `threadId`, token `usage`, plan JSON, and `warnings` and `filesReportedByEditTools` when they are non-empty. Fields that carry no signal are omitted, so anything present is worth reading.
-- **Plan / ask / review** — structured `plan` mode, read-only `ask`, and Codex-native `review`.
-- **Cancel that works** — one in-flight op with process-tree kill across platforms.
-- **Resume** — continue the same Codex thread with `resumeThreadId`.
-- **Self-diagnosing** — a `doctor` tool for setup and help-only deep checks.
-- **Works everywhere MCP does** — VS Code, JetBrains, Windsurf, Visual Studio, and more.
+- 🤝 **Native plugins** — install into Claude Code, Cursor, or GitHub Copilot CLI and just say *"delegate this to Codex"*. The shared skill teaches your agent how to delegate well.
+- 📦 **Clean, typed results** — validated structured output: the final answer, `status` plus a `reason` when it isn't `completed`, `threadId`, token `usage`, and the files Codex edited. Fields that carry no signal are omitted, so anything present is worth reading — and an empty `warnings` genuinely means a clean run.
+- 📋 **Plan first** — `plan` mode returns a schema-validated plan. Review it, then resume the same thread to implement it.
+- 💬 **Ask anything** — `ask` mode: read-only Q&A over your codebase, zero file changes.
+- 🕵️ **Native code review** — `review` mode runs Codex's own reviewer over uncommitted work, a base branch, or a single commit.
+- 🧵 **Resume** — continue the same Codex thread with `resumeThreadId`, and get told if the context didn't actually carry over.
+- 🛑 **Cancel that means it** — process-tree kill across platforms, and `cancel` returns once the process has *ended*, not once the kill was requested.
+- 📊 **Token accounting** — per-turn input, cached, output, and reasoning counts, straight from Codex.
+- 🩺 **Self-diagnosing** — a `doctor` tool that tells you exactly what's missing if setup isn't right.
+- 🔌 **Works everywhere MCP does** — VS Code, JetBrains, Windsurf, Visual Studio, and more.
 
 ## Quick start
 
@@ -169,24 +175,14 @@ Add the following server to the client's MCP config:
 }
 ```
 
-## Notes
+## Good to know
 
-This is a **worker** for an orchestrator host — not a replacement for Codex's first-party `codex mcp-server`. The host writes the brief and reviews the git diff; this bridge runs `codex exec --json` with hooks disabled and `--ignore-user-config`, then returns evidence the host can trust. Project `.codex` config may still apply under Codex's normal precedence — treat the workspace as trusted.
+This is a **worker** for an orchestrator host — not a replacement for Codex's first-party `codex mcp-server`. Your host writes the brief and reviews the diff; this bridge runs Codex with hooks disabled and your personal config ignored, then hands back evidence the host can trust. Treat the workspace as trusted: project `.codex` config still applies under Codex's normal precedence.
 
-Optional: set `CODEX_DELEGATE_COMMAND` to an absolute Codex binary. On Windows the standalone install under `~/.codex/packages/standalone/releases/` is preferred over the PATH shim.
-
-Defaults: `model=gpt-5.6-terra`, `reasoningEffort=high`, `network=false`, `fast=false`, hard cap 1h (`timeoutMs`).
-
-Timeouts. Codex emits nothing while a shell command runs or the model reasons, so silence mid-turn is not a hang and is not timed out. Two guards apply: a 60s spawn-to-first-output deadline, and the 1h hard cap. Each is overridable, and a malformed or negative value falls back to its default:
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `CODEX_DELEGATE_STARTUP_MS` | `60000` | Spawn to first JSONL event. `0` disables. |
-| `CODEX_DELEGATE_HARD_CAP_MS` | `3600000` | Whole run; `timeoutMs` overrides per call. |
-| `CODEX_DELEGATE_HEARTBEAT_MS` | `30000` | Progress heartbeat while quiet. `0` disables. |
+It works out of the box. Everything is tunable if you want it — models, reasoning effort, timeouts, Windows sandbox mode — in [Configuration](CONFIGURATION.md).
 
 ## License
 
 MIT © [Andrei Lungeanu](https://github.com/andreilungeanu)
 
-<sub>[Security](SECURITY.md) · [Privacy](PRIVACY.md) · [Terms](TERMS.md) · [Changelog](CHANGELOG.md)</sub>
+<sub>[Configuration](CONFIGURATION.md) · [Security](SECURITY.md) · [Privacy](PRIVACY.md) · [Terms](TERMS.md) · [Changelog](CHANGELOG.md)</sub>

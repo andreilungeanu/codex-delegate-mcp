@@ -33,6 +33,7 @@
   "files": [
     "src",
     "README.md",
+    "CONFIGURATION.md",
     "PRIVACY.md",
     "SECURITY.md",
     "TERMS.md",
