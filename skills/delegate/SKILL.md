@@ -29,7 +29,7 @@ You orchestrate; Codex implements. Use the **codex-delegate-mcp** MCP server —
    Point at files to read; don't paste large code blocks.
 2. **Call `delegate`** on codex-delegate-mcp.
 3. **Review** — read `warnings` first, then `filesReportedByAgent`, then the git diff; run tests/lint.
-   - `warnings` is empty on a clean run, so anything in it is real. A failed-tool-call warning means the reply may describe work that did not happen — verify against the diff before believing it.
+   - `warnings` is absent on a clean run, so its presence means something real. A failed-tool-call warning means the reply may describe work that did not happen — verify against the diff before believing it.
    - `resultSource: "stream-fallback"` means the run never finished and `result` is the last thing Codex said, not an answer. Resume the thread.
    - If criteria fail: resume the **same thread** with `resumeThreadId` and a specific fix brief (pass the same `workspace`).
    - If a resume returns `resumed: false` with a new `threadId`, Codex minted a fresh thread and prior context did not carry over.
@@ -64,6 +64,24 @@ Pass exactly one `reviewTarget`:
 - `{ "kind": "commit", "sha": "..." }`
 
 Review cannot be resumed. Put focus instructions in `spec`.
+
+## Reading the result
+
+Fields that carry no signal are omitted, so anything present is worth reading.
+
+| Field | When present | Meaning |
+|---|---|---|
+| `result` | always | The final answer. Empty only when nothing could be salvaged. |
+| `status` | always | `completed` \| `failed` \| `interrupted` |
+| `reason` | not `completed` | `cancelled`, `startup-timeout`, `idle-timeout`, `hard-cap`, `agent-error`, `died-mid-turn`, `exit-nonzero` |
+| `finalMessageAvailable` | always | `false` on a `completed` run means the answer was lost, not that the run failed |
+| `resultSource` | salvage only | `stream-fallback` — `result` is the last thing Codex said, not a final answer |
+| `warnings` | non-empty only | Real diagnostics. Read first. |
+| `filesReportedByAgent` | non-empty only | Codex's own `file_change` events. The git diff is still authoritative. |
+| `resumed` | resume requested | `false` means a fresh thread was minted and prior context was lost |
+| `usage` | usually | Per-turn token counts |
+| `exitCode` | not `completed` | Process exit code |
+| `threadId`, `workspace`, `cliVersion`, `plan` | as applicable | |
 
 ## Timeouts
 
