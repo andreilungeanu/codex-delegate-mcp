@@ -4,6 +4,40 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.9.0] - 2026-07-25
+
+A result-contract pass. 1.8.0 made failure legible; this makes the envelope worth reading —
+a live `ask` returning one word carried roughly 400 characters of metadata, most of it the
+same on every call.
+
+### Changed
+
+- **Breaking**: `status`, `exitCode`, `timedOut` and `cancelled` were four fields encoding one
+  outcome. They collapse to `status` plus `reason` — `cancelled`, `startup-timeout`,
+  `idle-timeout`, `hard-cap`, `agent-error`, `died-mid-turn`, `exit-nonzero` — which says which
+  of the several ways to not finish actually happened. `reason` is omitted on a completed run,
+  and `exitCode` is kept only when the run did not complete.
+- **Breaking**: `mode` is gone from the result. It echoed the caller's own input.
+- **Breaking**: `warnings`, `filesReportedByAgent` and `resumed` are omitted when they carry no
+  signal — empty arrays, and `resumed` when no resume was requested. A field present on every
+  call teaches the caller to stop reading it, and `warnings` is where real defects appear.
+  Absence of `warnings` now means a clean run.
+
+### Fixed
+
+- The argv length limit counts the executable path. It measured only the arguments, so a spec
+  just under the ceiling could still overflow `CreateProcess` behind a long binary path.
+- A cached Codex resolution is revalidated before use. Reinstalling or moving the binary left
+  the bridge spawning a path that no longer existed, failing every delegation until a restart.
+
+### Internal
+
+- `doctor` has tests: it was the least-covered module in the repo at 10% of lines, now 97%. Its
+  subprocess calls are injectable so the login probe and the deep surface probe can be exercised
+  without a real CLI.
+- CI runs the matrix on Node 20 as well as 22 and 24, and the coverage floor rises to 93/85/87.
+  Node 18 is still declared in `engines` but not exercised.
+
 ## [1.8.0] - 2026-07-25
 
 A correctness pass driven by live probing against Codex CLI 0.145.0. The theme is that the
