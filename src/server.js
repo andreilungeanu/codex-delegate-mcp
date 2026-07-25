@@ -221,7 +221,7 @@ export function buildServer({
     "cancel",
     {
       description:
-        "Cancel the in-flight Codex delegation owned by this server. Optional threadId prevents cancelling a different active thread.",
+        "Cancel the in-flight Codex delegation owned by this server. Returns once the process has actually ended, not when the kill was requested. Optional threadId prevents cancelling a different active thread.",
       inputSchema: z
         .object({
           threadId: z.string().optional().describe("Cancel only when this thread is active"),

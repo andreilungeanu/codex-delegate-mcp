@@ -71,10 +71,20 @@ export async function executeDelegate(rawArgs, options = {}) {
       else outerSignal.addEventListener("abort", forward, { once: true });
     }
 
+    // Aborting only *requests* the kill. Resolving cancel on the abort alone
+    // reported "cancelled" while codex was still alive; waiting for the run to
+    // settle makes the answer true. runCodexProcess bounds this with its kill
+    // deadline, so a tree that refuses to die cannot hang the cancel either.
+    let markSettled;
+    const settled = new Promise((resolve) => {
+      markSettled = resolve;
+    });
+
     const lease = operationRegistry.acquire({
       threadId: request.resumeThreadId || null,
       cancel: async () => {
         controller.abort(new Error("cancelled"));
+        await settled;
       },
     });
 
@@ -95,6 +105,7 @@ export async function executeDelegate(rawArgs, options = {}) {
       });
       cancellation = lease.getCancellation();
     } finally {
+      markSettled();
       lease.release();
       if (outerSignal) outerSignal.removeEventListener("abort", forward);
     }

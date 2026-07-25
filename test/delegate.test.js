@@ -231,7 +231,10 @@ test("a cancel landing after a clean finish is not reported as cancelled", async
   const options = delegateOptions("tid-race");
   options.operationRegistry = registry;
   options.runProcess = async () => {
-    await registry.cancel({ threadId: undefined, cause: "user" }).catch(() => {});
+    // Fire, don't await: cancel now waits for this run to settle, so awaiting it
+    // from inside the run would deadlock by construction.
+    registry.cancel({ threadId: undefined, cause: "user" }).catch(() => {});
+    await new Promise((r) => setTimeout(r, 5));
     return {
       status: "completed",
       exitCode: 0,
@@ -300,4 +303,50 @@ test("an unparseable plan keeps the raw final message in result", async () => {
   assert.equal(result.plan, undefined);
   assert.equal(result.result, "not json at all");
   assert.ok(result.warnings.some((w) => /not valid JSON/i.test(w)));
+});
+
+test("cancel resolves only after the delegation has actually settled", async () => {
+  const registry = createOperationRegistry();
+  const options = delegateOptions("tid-cancel");
+  options.operationRegistry = registry;
+
+  let releaseRun;
+  const runGate = new Promise((resolve) => {
+    releaseRun = resolve;
+  });
+  const order = [];
+
+  options.runProcess = async ({ signal }) => {
+    signal.addEventListener("abort", () => order.push("abort-seen"), { once: true });
+    await runGate;
+    order.push("run-settled");
+    return {
+      status: "interrupted",
+      reason: "cancelled",
+      exitCode: 1,
+      threadId: "tid-cancel",
+      result: "",
+      finalMessageAvailable: false,
+      warnings: [],
+      filesReportedByAgent: [],
+    };
+  };
+
+  const delegation = executeDelegate({ spec: "long", workspace: process.cwd() }, options);
+  await new Promise((r) => setTimeout(r, 10));
+
+  const cancelling = registry.cancel({ cause: "user" }).then((out) => {
+    order.push("cancel-returned");
+    return out;
+  });
+
+  // Cancel must still be pending while the run is in flight.
+  await new Promise((r) => setTimeout(r, 10));
+  assert.deepEqual(order, ["abort-seen"]);
+
+  releaseRun();
+  const [cancelResult] = await Promise.all([cancelling, delegation]);
+
+  assert.equal(cancelResult.status, "cancelled");
+  assert.deepEqual(order, ["abort-seen", "run-settled", "cancel-returned"]);
 });
