@@ -153,9 +153,12 @@ function findNewestStandalone(homeDir, platform) {
 
 export function whichOnPath(command, platform, env, run = spawnSync) {
   const probe = platform === "win32" ? "where" : "which";
+  // Synchronous, so a probe that never returns freezes the whole server:
+  // no progress notifications, no cancel, no stdio.
   const result = run(probe, [command], {
     encoding: "utf8",
     env,
+    timeout: 5000,
     windowsHide: true,
     shell: false,
   });
