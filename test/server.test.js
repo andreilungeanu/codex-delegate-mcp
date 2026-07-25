@@ -47,7 +47,7 @@ test("runDelegateTool returns structuredContent on success", async () => {
       resumed: false,
       mode: "agent",
       workspace: "/tmp",
-      filesReportedByAgent: [],
+      filesReportedByEditTools: [],
       warnings: [],
     }),
   });

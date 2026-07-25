@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { readFile, unlink } from "node:fs/promises";
 import { isChildAlive, treeKill } from "./proc.js";
-import { pathsFromFileChangeItem } from "./agent-reported-files.js";
+import { pathsFromFileChangeItem } from "./edit-tool-files.js";
 
 const DEFAULT_MAX_RESULT_BYTES = 10 * 1024 * 1024;
 const DEFAULT_STDERR_BYTES = 64 * 1024;
@@ -81,7 +81,7 @@ export async function runCodexProcess({
       warnings: final.warnings,
       stderrBytes: 0,
       stderrTail: "",
-      filesReportedByAgent: [],
+      filesReportedByEditTools: [],
     };
   };
 
@@ -350,7 +350,7 @@ export async function runCodexProcess({
     warnings,
     stderrBytes,
     stderrTail: status !== "completed" ? stderrTail : "",
-    filesReportedByAgent: [...reportedPaths],
+    filesReportedByEditTools: [...reportedPaths],
   };
 }
 

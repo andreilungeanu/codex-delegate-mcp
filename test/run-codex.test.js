@@ -557,7 +557,7 @@ test("runCodexProcess collects file_change paths", async () => {
   });
 
   assert.equal(result.status, "completed");
-  assert.deepEqual(result.filesReportedByAgent.sort(), [absA, absB].sort());
+  assert.deepEqual(result.filesReportedByEditTools.sort(), [absA, absB].sort());
 });
 
 test("runCodexProcess appends stderr tail on failure", async () => {

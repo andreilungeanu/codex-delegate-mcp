@@ -58,7 +58,7 @@ const delegateOutputSchema = z
         reasoningOutputTokens: z.number().optional(),
       })
       .optional(),
-    filesReportedByAgent: z.array(z.string()).optional(),
+    filesReportedByEditTools: z.array(z.string()).optional(),
     plan: z
       .object({
         overview: z.string(),

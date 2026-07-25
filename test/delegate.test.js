@@ -24,7 +24,7 @@ function delegateOptions(threadId) {
       result: "done",
       finalMessageAvailable: true,
       warnings: [],
-      filesReportedByAgent: [],
+      filesReportedByEditTools: [],
     }),
   };
 }
@@ -40,7 +40,7 @@ test("executeDelegate refuses nested recursion", async () => {
   );
 });
 
-test("executeDelegate wires resolve + process + agent-reported files", async () => {
+test("executeDelegate wires resolve + process + edit-tool files", async () => {
   const registry = createOperationRegistry();
   const result = await executeDelegate(
     { spec: "add a comment", mode: "ask", workspace: process.cwd() },
@@ -65,7 +65,7 @@ test("executeDelegate wires resolve + process + agent-reported files", async () 
           finalMessageAvailable: true,
           warnings: [],
           stderrBytes: 0,
-          filesReportedByAgent: [],
+          filesReportedByEditTools: [],
         };
       },
     }
@@ -75,7 +75,7 @@ test("executeDelegate wires resolve + process + agent-reported files", async () 
   assert.equal(result.threadId, "thread-abc");
   assert.equal(result.mode, undefined);
   assert.equal(result.result, "looks fine");
-  assert.equal(result.filesReportedByAgent, undefined);
+  assert.equal(result.filesReportedByEditTools, undefined);
   assert.equal(result.warnings, undefined);
 });
 
@@ -153,7 +153,7 @@ test("executeDelegate plan mode warns when final message is not JSON", async () 
           result: "not-json{{{",
           finalMessageAvailable: true,
           warnings: [],
-          filesReportedByAgent: [],
+          filesReportedByEditTools: [],
         };
       },
     }
@@ -189,7 +189,7 @@ test("executeDelegate plan mode parses valid plan JSON", async () => {
         result: JSON.stringify(plan),
         finalMessageAvailable: true,
         warnings: [],
-        filesReportedByAgent: [],
+        filesReportedByEditTools: [],
       }),
     }
   );
@@ -240,7 +240,7 @@ test("a cancel landing after a clean finish is not reported as cancelled", async
       result: "done",
       finalMessageAvailable: true,
       warnings: [],
-      filesReportedByAgent: [],
+      filesReportedByEditTools: [],
     };
   };
   const result = await executeDelegate({ spec: "hi", workspace: process.cwd() }, options);
@@ -265,7 +265,7 @@ test("plan mode returns the plan once, with result holding only the overview", a
     result: raw,
     finalMessageAvailable: true,
     warnings: [],
-    filesReportedByAgent: [],
+    filesReportedByEditTools: [],
   });
 
   const result = await executeDelegate(
@@ -288,7 +288,7 @@ test("an unparseable plan keeps the raw final message in result", async () => {
     result: "not json at all",
     finalMessageAvailable: true,
     warnings: [],
-    filesReportedByAgent: [],
+    filesReportedByEditTools: [],
   });
 
   const result = await executeDelegate(
@@ -324,7 +324,7 @@ test("cancel resolves only after the delegation has actually settled", async () 
       result: "",
       finalMessageAvailable: false,
       warnings: [],
-      filesReportedByAgent: [],
+      filesReportedByEditTools: [],
     };
   };
 

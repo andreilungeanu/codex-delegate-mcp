@@ -357,7 +357,7 @@ test("plan mode accepts JSON but warns when schema shape is wrong", async () => 
           finalMessageAvailable: true,
           warnings: [],
           stderrBytes: 0,
-          filesReportedByAgent: [],
+          filesReportedByEditTools: [],
         };
       },
     }
@@ -393,7 +393,7 @@ test("pre-aborted outer signal interrupts before/during run", async () => {
           finalMessageAvailable: false,
           warnings: ["interrupted"],
           stderrBytes: 0,
-          filesReportedByAgent: [],
+          filesReportedByEditTools: [],
         };
       },
     }

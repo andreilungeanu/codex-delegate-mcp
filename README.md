@@ -42,7 +42,7 @@ You  →  your agent (plans & reviews)
 
 - **Native plugins** — install into Claude Code, Cursor, or GitHub Copilot CLI and just say *"delegate this to Codex"*. The shared skill teaches your agent how to delegate well.
 - **Truthful finals** — only `--output-last-message` after a clean exit counts as the answer. No JSONL guesswork.
-- **Clean, typed results** — final answer, `status` plus a `reason` when it is not `completed`, `threadId`, token `usage`, plan JSON, and `warnings` and `filesReportedByAgent` when they are non-empty. Fields that carry no signal are omitted, so anything present is worth reading.
+- **Clean, typed results** — final answer, `status` plus a `reason` when it is not `completed`, `threadId`, token `usage`, plan JSON, and `warnings` and `filesReportedByEditTools` when they are non-empty. Fields that carry no signal are omitted, so anything present is worth reading.
 - **Plan / ask / review** — structured `plan` mode, read-only `ask`, and Codex-native `review`.
 - **Cancel that works** — one in-flight op with process-tree kill across platforms.
 - **Resume** — continue the same Codex thread with `resumeThreadId`.

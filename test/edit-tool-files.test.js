@@ -2,9 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import {
-  normalizeAgentReportedFiles,
+  normalizeEditToolFiles,
   pathsFromFileChangeItem,
-} from "../src/agent-reported-files.js";
+} from "../src/edit-tool-files.js";
 
 test("pathsFromFileChangeItem extracts path strings", () => {
   assert.deepEqual(
@@ -23,9 +23,9 @@ test("pathsFromFileChangeItem extracts path strings", () => {
   assert.deepEqual(pathsFromFileChangeItem({ changes: "nope" }), []);
 });
 
-test("normalizeAgentReportedFiles relativizes and dedupes", () => {
+test("normalizeEditToolFiles relativizes and dedupes", () => {
   const workspace = path.resolve("/repo");
-  const files = normalizeAgentReportedFiles(
+  const files = normalizeEditToolFiles(
     [
       path.join(workspace, "src", "a.js"),
       path.join(workspace, "src", "a.js"),

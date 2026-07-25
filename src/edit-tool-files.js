@@ -1,8 +1,12 @@
 import path from "node:path";
 
-// Attribution rule: a path is agent-reported only via a native Codex file_change
-// event. Never add paths from git, the final message, or shell output — the
-// orchestrator owns workspace diff review.
+// Attribution rule: a path is reported only via a native Codex file_change event,
+// which Codex emits for its own edit tool and nothing else. Files written by a
+// shell command it ran — a formatter, a codegen script, sed — arrive as
+// command_execution and are deliberately absent here. Never backfill from git,
+// the final message, or shell output: the orchestrator owns diff review, and the
+// value of this list is that it says what Codex *itself* edited, which a diff
+// against a dirty tree cannot.
 
 function relativize(abs, workspace) {
   if (!workspace) return abs;
@@ -11,7 +15,7 @@ function relativize(abs, workspace) {
   return r.split(path.sep).join("/");
 }
 
-export function normalizeAgentReportedFiles(paths, workspace) {
+export function normalizeEditToolFiles(paths, workspace) {
   const abs = paths.map((p) => (workspace ? path.resolve(workspace, p) : path.resolve(p)));
   return [...new Set(abs)].map((f) => relativize(f, workspace));
 }

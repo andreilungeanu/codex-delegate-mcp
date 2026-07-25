@@ -15,7 +15,7 @@ import {
   DEFAULT_HEARTBEAT_MS,
   DEFAULT_STARTUP_MS,
 } from "./run-codex.js";
-import { normalizeAgentReportedFiles } from "./agent-reported-files.js";
+import { normalizeEditToolFiles } from "./edit-tool-files.js";
 import { createOperationRegistry } from "./ops.js";
 
 export async function executeDelegate(rawArgs, options = {}) {
@@ -133,8 +133,8 @@ export async function executeDelegate(rawArgs, options = {}) {
 
   const resumed =
     Boolean(request.resumeThreadId) && processResult.threadId === request.resumeThreadId;
-  const files = normalizeAgentReportedFiles(
-    processResult.filesReportedByAgent || [],
+  const files = normalizeEditToolFiles(
+    processResult.filesReportedByEditTools || [],
     request.workspace
   );
   // A cancel that lands after a clean finish cancelled nothing; saying otherwise
@@ -154,7 +154,7 @@ export async function executeDelegate(rawArgs, options = {}) {
     workspace: request.workspace,
     cliVersion: codex.version,
     usage: processResult.usage ?? undefined,
-    filesReportedByAgent: files.length ? files : undefined,
+    filesReportedByEditTools: files.length ? files : undefined,
     plan,
     warnings: warnings.length ? warnings : undefined,
     exitCode: processResult.status === "completed" ? undefined : processResult.exitCode,
