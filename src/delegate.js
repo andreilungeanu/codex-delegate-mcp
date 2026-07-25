@@ -120,6 +120,7 @@ export async function executeDelegate(rawArgs, options = {}) {
   }
   return {
     result: processResult.result,
+    resultSource: processResult.resultSource,
     finalMessageAvailable: processResult.finalMessageAvailable,
     status: processResult.status,
     threadId: processResult.threadId || undefined,

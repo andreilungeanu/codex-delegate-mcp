@@ -33,6 +33,7 @@ const reviewTargetSchema = z.discriminatedUnion("kind", [
 const delegateOutputSchema = z
   .object({
     result: z.string(),
+    resultSource: z.literal("stream-fallback").optional(),
     finalMessageAvailable: z.boolean(),
     status: z.enum(["completed", "failed", "interrupted"]),
     threadId: z.string().optional(),

@@ -52,6 +52,7 @@ export async function runCodexProcess({
   let threadId = null;
   let turnStatus = "running";
   let agentError = null;
+  let lastAgentMessage = null;
   const failedItems = [];
   const stderrChunks = [];
   let stderrBytes = 0;
@@ -238,6 +239,11 @@ export async function runCodexProcess({
         for (const p of pathsFromFileChangeItem(item)) reportedPaths.add(p);
         const n = Array.isArray(item.changes) ? item.changes.length : 0;
         emit(n ? `editing ${n} file(s)` : "editing files");
+      } else if (item.type === "agent_message") {
+        // Narration, not the answer. Kept only to salvage something when the
+        // authoritative --output-last-message file never gets written.
+        const text = String(item.text || "").trim();
+        if (text) lastAgentMessage = text;
       } else if (item.type === "web_search") {
         emit("web search");
       }
@@ -299,9 +305,24 @@ export async function runCodexProcess({
     maxResultBytes,
   });
 
+  // The file is authoritative and is only written on a clean exit. When it is
+  // absent, the last narration line is better than nothing — but it is never
+  // allowed to stand in for a final answer on a run that actually completed.
+  let result = final.result;
+  let resultSource;
+  if (!final.finalMessageAvailable && lastAgentMessage) {
+    result = lastAgentMessage;
+    resultSource = "stream-fallback";
+  }
+
   const warnings = [];
   if (agentError) warnings.push(`Codex error: ${agentError}`);
   warnings.push(...final.warnings);
+  if (resultSource === "stream-fallback") {
+    warnings.push(
+      "result is the agent's last streamed message, not its final answer — the run did not finish. Resume the thread to continue."
+    );
+  }
   if (timedOut && timeoutReason === "idle-timeout") {
     warnings.push(
       `Idle timeout after ${idleMs}ms with no Codex activity. Raise or unset CODEX_DELEGATE_IDLE_MS if the task runs long silent commands.`
@@ -338,7 +359,8 @@ export async function runCodexProcess({
     timeoutReason,
     cancelled,
     agentError,
-    result: final.result,
+    result,
+    resultSource,
     finalMessageAvailable: final.finalMessageAvailable,
     warnings,
     stderrBytes,

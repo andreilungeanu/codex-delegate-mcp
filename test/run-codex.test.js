@@ -214,6 +214,69 @@ test("a turn whose tool calls all failed does not read as clean success", async 
   );
 });
 
+test("an interrupted run salvages the last streamed message as a caveat", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-salvage-"));
+  const resultFile = path.join(dir, "last.txt");
+
+  const result = await runCodexProcess({
+    command: "codex",
+    args: ["exec"],
+    cwd: dir,
+    resultFile,
+    spawnImpl: () =>
+      fakeChild({
+        lines: [
+          JSON.stringify({ type: "thread.started", thread_id: "tid-s" }),
+          JSON.stringify({ type: "turn.started" }),
+          JSON.stringify({
+            type: "item.completed",
+            item: { type: "agent_message", text: "Halfway through the refactor." },
+          }),
+        ],
+        exitCode: 1,
+      }),
+    platform: "linux",
+    heartbeatMs: 0,
+    timeoutMs: 5000,
+  });
+
+  assert.equal(result.status, "failed");
+  assert.equal(result.finalMessageAvailable, false);
+  assert.equal(result.result, "Halfway through the refactor.");
+  assert.equal(result.resultSource, "stream-fallback");
+  assert.ok(result.warnings.some((w) => /not its final answer/.test(w)));
+});
+
+test("a completed run never falls back to streamed narration", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-nofall-"));
+  const resultFile = path.join(dir, "last.txt");
+
+  const result = await runCodexProcess({
+    command: "codex",
+    args: ["exec"],
+    cwd: dir,
+    resultFile,
+    spawnImpl: () =>
+      fakeChild({
+        lines: [
+          JSON.stringify({ type: "turn.started" }),
+          JSON.stringify({
+            type: "item.completed",
+            item: { type: "agent_message", text: "thinking out loud" },
+          }),
+          JSON.stringify({ type: "turn.completed", usage: {} }),
+        ],
+        writeResult: () => writeFile(resultFile, "FINAL ANSWER", "utf8"),
+      }),
+    platform: "linux",
+    heartbeatMs: 0,
+    timeoutMs: 5000,
+  });
+
+  assert.equal(result.result, "FINAL ANSWER");
+  assert.equal(result.resultSource, undefined);
+});
+
 test("describeFailedItem names the tool and its exit code", () => {
   assert.equal(
     describeFailedItem({ type: "command_execution", command: "ls", exit_code: -1 }),
