@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   buildCodexArgs,
   validateDelegateInput,
@@ -28,7 +29,7 @@ test("workspace must exist and be a directory", () => {
     /workspace does not exist/
   );
   assert.throws(
-    () => validateDelegateInput({ spec: "x", workspace: import.meta.filename }),
+    () => validateDelegateInput({ spec: "x", workspace: fileURLToPath(import.meta.url) }),
     /workspace is not a directory/
   );
 });

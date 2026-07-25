@@ -13,7 +13,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        node-version: [22]
+        node-version: [20, 22]
         include:
           - os: ubuntu-latest
             node-version: 24
@@ -41,7 +41,7 @@ jobs:
       - name: Coverage floor
         run: >
           node --test --experimental-test-coverage --test-coverage-include='src/**'
-          --test-coverage-lines=86 --test-coverage-branches=85 --test-coverage-functions=83
+          --test-coverage-lines=93 --test-coverage-branches=85 --test-coverage-functions=87
           test/*.test.js
       - run: npm audit --omit=dev --audit-level=high
 
