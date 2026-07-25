@@ -462,3 +462,13 @@ test("the Windows sandbox mode is overridable and can be omitted", () => {
   }).args;
   assert.ok(custom.includes('windows.sandbox="unelevated"'));
 });
+
+test("the argv length estimate counts the executable path", () => {
+  const req = validateDelegateInput({ spec: "x".repeat(27_600), workspace: process.cwd() });
+  const opts = { resultFile: "/tmp/o.txt", platform: "linux" };
+  buildCodexArgs(req, opts);
+  assert.throws(
+    () => buildCodexArgs(req, { ...opts, command: "/a/very/long/".repeat(30) + "codex" }),
+    /argv is too long/
+  );
+});
