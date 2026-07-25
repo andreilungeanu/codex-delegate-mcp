@@ -73,11 +73,11 @@ test("executeDelegate wires resolve + process + agent-reported files", async () 
 
   assert.equal(result.status, "completed");
   assert.equal(result.threadId, "thread-abc");
-  assert.equal(result.mode, "ask");
+  assert.equal(result.mode, undefined);
   assert.equal(result.result, "looks fine");
   assert.equal(result.finalMessageAvailable, true);
-  assert.ok(Array.isArray(result.filesReportedByAgent));
-  assert.ok(Array.isArray(result.warnings));
+  assert.equal(result.filesReportedByAgent, undefined);
+  assert.equal(result.warnings, undefined);
 });
 
 test("executeDelegate reports a resume only when the observed thread matches", async () => {
@@ -88,7 +88,7 @@ test("executeDelegate reports a resume only when the observed thread matches", a
 
   assert.equal(result.resumed, true);
   assert.equal(result.threadId, "thread-existing");
-  assert.equal(result.warnings.length, 0);
+  assert.equal(result.warnings, undefined);
 });
 
 test("executeDelegate warns when a requested resume starts a new thread", async () => {
@@ -97,6 +97,7 @@ test("executeDelegate warns when a requested resume starts a new thread", async 
     delegateOptions("thread-new")
   );
 
+  // A resume was requested, so resumed:false is the answer, not noise.
   assert.equal(result.resumed, false);
   assert.equal(result.threadId, "thread-new");
   assert.ok(
@@ -114,7 +115,7 @@ test("executeDelegate does not infer a thread when a requested resume has no obs
 
   assert.equal(result.resumed, false);
   assert.equal(result.threadId, undefined);
-  assert.equal(result.warnings.length, 0);
+  assert.equal(result.warnings, undefined);
 });
 
 test("executeDelegate reports a fresh run as not resumed", async () => {
@@ -123,9 +124,9 @@ test("executeDelegate reports a fresh run as not resumed", async () => {
     delegateOptions("thread-new")
   );
 
-  assert.equal(result.resumed, false);
+  assert.equal(result.resumed, undefined);
   assert.equal(result.threadId, "thread-new");
-  assert.equal(result.warnings.length, 0);
+  assert.equal(result.warnings, undefined);
 });
 
 test("executeDelegate plan mode warns when final message is not JSON", async () => {
@@ -162,7 +163,7 @@ test("executeDelegate plan mode warns when final message is not JSON", async () 
     }
   );
 
-  assert.equal(result.mode, "plan");
+  assert.equal(result.mode, undefined);
   assert.equal(result.plan, undefined);
   assert.ok(
     result.warnings.some((w) => /not valid JSON/i.test(w)),
@@ -197,7 +198,7 @@ test("executeDelegate plan mode parses valid plan JSON", async () => {
     }
   );
   assert.deepEqual(result.plan, plan);
-  assert.ok(!result.warnings.some((w) => /not valid JSON/i.test(w)));
+  assert.ok(!(result.warnings || []).some((w) => /not valid JSON/i.test(w)));
 });
 
 test("resolver setup notes stay out of the per-run warnings", async () => {
@@ -209,7 +210,7 @@ test("resolver setup notes stay out of the per-run warnings", async () => {
     warnings: ["PATH Codex on Windows can degrade workspace-write."],
   });
   const result = await executeDelegate({ spec: "hi", workspace: process.cwd() }, options);
-  assert.equal(result.warnings.length, 0);
+  assert.equal(result.warnings, undefined);
 });
 
 test("the temp directory is removed when argv construction throws", async () => {
@@ -245,5 +246,5 @@ test("a cancel landing after a clean finish is not reported as cancelled", async
   };
   const result = await executeDelegate({ spec: "hi", workspace: process.cwd() }, options);
   assert.equal(result.status, "completed");
-  assert.equal(result.cancelled, false);
+  assert.equal(result.reason, undefined);
 });

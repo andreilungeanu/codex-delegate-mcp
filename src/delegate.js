@@ -124,30 +124,32 @@ export async function executeDelegate(rawArgs, options = {}) {
       `Requested resume of thread ${request.resumeThreadId} but the agent started new thread ${processResult.threadId}; prior context did not carry over.`
     );
   }
+  const files = normalizeAgentReportedFiles(
+    processResult.filesReportedByAgent || [],
+    request.workspace
+  );
+  // A cancel that lands after a clean finish cancelled nothing; saying otherwise
+  // invites the caller to throw away work that actually landed.
+  const lateCancel =
+    processResult.status !== "completed" && cancellation?.status === "cancelled";
+
+  // Everything below is omitted when it carries no signal: a field that is
+  // present on every call teaches the caller to stop reading it.
   return {
     result: processResult.result,
     resultSource: processResult.resultSource,
     finalMessageAvailable: processResult.finalMessageAvailable,
     status: processResult.status,
+    reason: processResult.reason ?? (lateCancel ? "cancelled" : undefined),
     threadId: processResult.threadId || undefined,
-    resumed,
-    mode: request.mode,
+    resumed: request.resumeThreadId ? resumed : undefined,
     workspace: request.workspace,
     cliVersion: codex.version,
     usage: processResult.usage ?? undefined,
-    filesReportedByAgent: normalizeAgentReportedFiles(
-      processResult.filesReportedByAgent || [],
-      request.workspace
-    ),
+    filesReportedByAgent: files.length ? files : undefined,
     plan,
-    warnings,
-    timedOut: processResult.timedOut,
-    // A cancel that lands after a clean finish cancelled nothing; saying
-    // otherwise invites the caller to throw away work that actually landed.
-    cancelled:
-      processResult.cancelled ||
-      (processResult.status !== "completed" && cancellation?.status === "cancelled"),
-    exitCode: processResult.exitCode,
+    warnings: warnings.length ? warnings : undefined,
+    exitCode: processResult.status === "completed" ? undefined : processResult.exitCode,
   };
 }
 

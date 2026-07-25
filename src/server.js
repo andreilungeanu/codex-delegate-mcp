@@ -36,9 +36,19 @@ const delegateOutputSchema = z
     resultSource: z.literal("stream-fallback").optional(),
     finalMessageAvailable: z.boolean(),
     status: z.enum(["completed", "failed", "interrupted"]),
+    reason: z
+      .enum([
+        "cancelled",
+        "startup-timeout",
+        "idle-timeout",
+        "hard-cap",
+        "agent-error",
+        "died-mid-turn",
+        "exit-nonzero",
+      ])
+      .optional(),
     threadId: z.string().optional(),
-    resumed: z.boolean(),
-    mode: z.enum([...MODES]),
+    resumed: z.boolean().optional(),
     workspace: z.string(),
     cliVersion: z.string().optional(),
     usage: z
@@ -50,7 +60,7 @@ const delegateOutputSchema = z
         reasoningOutputTokens: z.number().optional(),
       })
       .optional(),
-    filesReportedByAgent: z.array(z.string()),
+    filesReportedByAgent: z.array(z.string()).optional(),
     plan: z
       .object({
         overview: z.string(),
@@ -62,9 +72,7 @@ const delegateOutputSchema = z
         ),
       })
       .optional(),
-    warnings: z.array(z.string()),
-    timedOut: z.boolean().optional(),
-    cancelled: z.boolean().optional(),
+    warnings: z.array(z.string()).optional(),
     exitCode: z.number().int().optional(),
   })
   .passthrough();

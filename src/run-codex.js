@@ -76,6 +76,7 @@ export async function runCodexProcess({
     });
     return {
       status,
+      reason: "cancelled",
       exitCode,
       threadId,
       timedOut,
@@ -288,14 +289,24 @@ export async function runCodexProcess({
 
   const interrupted = cancelled || timedOut || signal?.aborted;
   let status = "failed";
-  if (interrupted) status = "interrupted";
-  else if (turnStatus === "failed") status = "failed";
-  else if (exitCode === 0 && turnStatus === "in_progress") {
+  // One outcome, one reason. `reason` replaces the timedOut/cancelled booleans:
+  // it says which of the several ways to not finish actually happened.
+  let reason;
+  if (interrupted) {
+    status = "interrupted";
+    reason = timedOut ? timeoutReason : "cancelled";
+  } else if (turnStatus === "failed") {
+    status = "failed";
+    reason = "agent-error";
+  } else if (exitCode === 0 && turnStatus === "in_progress") {
     // Process died mid-turn: do not treat a partial --output-last-message as final.
     status = "failed";
+    reason = "died-mid-turn";
   } else if (exitCode === 0 && (turnStatus === "completed" || turnStatus === "running")) {
     // Some review paths exit cleanly without turn events; still require exit 0.
     status = "completed";
+  } else {
+    reason = "exit-nonzero";
   }
 
   const stderr = Buffer.concat(stderrChunks, stderrBytes).toString("utf8");
@@ -355,6 +366,7 @@ export async function runCodexProcess({
 
   return {
     status,
+    reason,
     exitCode,
     threadId,
     timedOut,
