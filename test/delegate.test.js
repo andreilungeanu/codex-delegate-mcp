@@ -2,6 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { executeDelegate } from "../src/delegate.js";
 import { createOperationRegistry } from "../src/ops.js";
+import { readdir } from "node:fs/promises";
+import { tmpdir } from "node:os";
 
 function delegateOptions(threadId) {
   return {
@@ -196,4 +198,52 @@ test("executeDelegate plan mode parses valid plan JSON", async () => {
   );
   assert.deepEqual(result.plan, plan);
   assert.ok(!result.warnings.some((w) => /not valid JSON/i.test(w)));
+});
+
+test("resolver setup notes stay out of the per-run warnings", async () => {
+  const options = delegateOptions("tid-w");
+  options.resolve = () => ({
+    command: "/bin/codex",
+    version: "0.145.0",
+    source: "standalone",
+    warnings: ["PATH Codex on Windows can degrade workspace-write."],
+  });
+  const result = await executeDelegate({ spec: "hi", workspace: process.cwd() }, options);
+  assert.equal(result.warnings.length, 0);
+});
+
+test("the temp directory is removed when argv construction throws", async () => {
+  const before = (await readdir(tmpdir())).filter((n) => n.startsWith("codex-delegate-")).length;
+  await assert.rejects(
+    executeDelegate(
+      { spec: "x".repeat(40_000), workspace: process.cwd() },
+      delegateOptions("tid-big")
+    ),
+    /argv is too long/
+  );
+  const after = (await readdir(tmpdir())).filter((n) => n.startsWith("codex-delegate-")).length;
+  assert.equal(after, before);
+});
+
+test("a cancel landing after a clean finish is not reported as cancelled", async () => {
+  const registry = createOperationRegistry();
+  const options = delegateOptions("tid-race");
+  options.operationRegistry = registry;
+  options.runProcess = async () => {
+    await registry.cancel({ threadId: undefined, cause: "user" }).catch(() => {});
+    return {
+      status: "completed",
+      exitCode: 0,
+      threadId: "tid-race",
+      timedOut: false,
+      cancelled: false,
+      result: "done",
+      finalMessageAvailable: true,
+      warnings: [],
+      filesReportedByAgent: [],
+    };
+  };
+  const result = await executeDelegate({ spec: "hi", workspace: process.cwd() }, options);
+  assert.equal(result.status, "completed");
+  assert.equal(result.cancelled, false);
 });

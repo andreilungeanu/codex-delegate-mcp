@@ -34,56 +34,64 @@ export async function executeDelegate(rawArgs, options = {}) {
   }
 
   const request = validateDelegateInput(rawArgs, { cwd });
+  // Resolver notes describe the setup, not this run. Emitting them on every
+  // result makes a non-empty `warnings` mean nothing; doctor reports them.
   const codex = resolve({ env });
-  const warnings = [...(codex.warnings || [])];
+  const warnings = [];
 
+  // Created before the work that can throw, so every exit path has to clean it up.
   const tmp = await mkdtemp(path.join(tmpdir(), "codex-delegate-"));
-  const resultFile = path.join(tmp, "last-message.txt");
-  let outputSchemaFile = null;
-  if (request.mode === "plan") {
-    outputSchemaFile = path.join(tmp, "plan.schema.json");
-    await writeFile(outputSchemaFile, JSON.stringify(PLAN_SCHEMA), "utf8");
-  }
-
-  const built = buildCodexArgs(request, {
-    resultFile,
-    outputSchemaFile,
-    platform: process.platform,
-  });
-
-  const controller = new AbortController();
-  const forward = () => controller.abort(outerSignal?.reason);
-  if (outerSignal) {
-    if (outerSignal.aborted) controller.abort(outerSignal.reason);
-    else outerSignal.addEventListener("abort", forward, { once: true });
-  }
-
-  const lease = operationRegistry.acquire({
-    threadId: request.resumeThreadId || null,
-    cancel: async () => {
-      controller.abort(new Error("cancelled"));
-    },
-  });
-
   let processResult;
+  let cancellation;
   try {
-    processResult = await runProcess({
-      command: codex.command,
-      args: built.args,
-      cwd: request.workspace,
-      env,
+    const resultFile = path.join(tmp, "last-message.txt");
+    let outputSchemaFile = null;
+    if (request.mode === "plan") {
+      outputSchemaFile = path.join(tmp, "plan.schema.json");
+      await writeFile(outputSchemaFile, JSON.stringify(PLAN_SCHEMA), "utf8");
+    }
+
+    const built = buildCodexArgs(request, {
       resultFile,
-      signal: controller.signal,
-      timeoutMs: request.timeoutMs ?? envMs(env.CODEX_DELEGATE_HARD_CAP_MS, DEFAULT_HARD_CAP_MS),
-      idleMs: envMs(env.CODEX_DELEGATE_IDLE_MS, DEFAULT_IDLE_MS),
-      startupMs: envMs(env.CODEX_DELEGATE_STARTUP_MS, DEFAULT_STARTUP_MS),
-      heartbeatMs: envMs(env.CODEX_DELEGATE_HEARTBEAT_MS, DEFAULT_HEARTBEAT_MS),
-      onProgress,
-      onThreadId: (id) => lease.updateThreadId(id),
+      outputSchemaFile,
+      platform: process.platform,
     });
+
+    const controller = new AbortController();
+    const forward = () => controller.abort(outerSignal?.reason);
+    if (outerSignal) {
+      if (outerSignal.aborted) controller.abort(outerSignal.reason);
+      else outerSignal.addEventListener("abort", forward, { once: true });
+    }
+
+    const lease = operationRegistry.acquire({
+      threadId: request.resumeThreadId || null,
+      cancel: async () => {
+        controller.abort(new Error("cancelled"));
+      },
+    });
+
+    try {
+      processResult = await runProcess({
+        command: codex.command,
+        args: built.args,
+        cwd: request.workspace,
+        env,
+        resultFile,
+        signal: controller.signal,
+        timeoutMs: request.timeoutMs ?? envMs(env.CODEX_DELEGATE_HARD_CAP_MS, DEFAULT_HARD_CAP_MS),
+        idleMs: envMs(env.CODEX_DELEGATE_IDLE_MS, DEFAULT_IDLE_MS),
+        startupMs: envMs(env.CODEX_DELEGATE_STARTUP_MS, DEFAULT_STARTUP_MS),
+        heartbeatMs: envMs(env.CODEX_DELEGATE_HEARTBEAT_MS, DEFAULT_HEARTBEAT_MS),
+        onProgress,
+        onThreadId: (id) => lease.updateThreadId(id),
+      });
+      cancellation = lease.getCancellation();
+    } finally {
+      lease.release();
+      if (outerSignal) outerSignal.removeEventListener("abort", forward);
+    }
   } finally {
-    lease.release();
-    if (outerSignal) outerSignal.removeEventListener("abort", forward);
     await rm(tmp, { recursive: true, force: true }).catch(() => {});
   }
 
@@ -103,7 +111,6 @@ export async function executeDelegate(rawArgs, options = {}) {
     }
   }
 
-  const cancellation = lease.getCancellation();
   const resumed =
     Boolean(request.resumeThreadId) && processResult.threadId === request.resumeThreadId;
   if (request.resumeThreadId && processResult.threadId && !resumed) {
@@ -127,7 +134,11 @@ export async function executeDelegate(rawArgs, options = {}) {
     plan,
     warnings,
     timedOut: processResult.timedOut,
-    cancelled: processResult.cancelled || cancellation?.status === "cancelled",
+    // A cancel that lands after a clean finish cancelled nothing; saying
+    // otherwise invites the caller to throw away work that actually landed.
+    cancelled:
+      processResult.cancelled ||
+      (processResult.status !== "completed" && cancellation?.status === "cancelled"),
     exitCode: processResult.exitCode,
   };
 }
