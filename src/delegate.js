@@ -60,7 +60,6 @@ export async function executeDelegate(rawArgs, options = {}) {
       outputSchemaFile,
       platform: process.platform,
       windowsSandbox: normalizeText(env.CODEX_DELEGATE_WINDOWS_SANDBOX) ?? DEFAULT_WINDOWS_SANDBOX,
-      command: codex.command,
     });
 
     const controller = new AbortController();

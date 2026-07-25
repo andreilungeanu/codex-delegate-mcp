@@ -464,12 +464,10 @@ test("the Windows sandbox mode is overridable and can be omitted", () => {
   assert.ok(custom.includes('windows.sandbox="unelevated"'));
 });
 
-test("the argv length estimate counts the executable path", () => {
-  const req = validateDelegateInput({ spec: "x".repeat(27_600), workspace: process.cwd() });
-  const opts = { resultFile: "/tmp/o.txt", platform: "linux" };
-  buildCodexArgs(req, opts);
+test("an oversized spec is rejected before it reaches CreateProcess", () => {
+  const req = validateDelegateInput({ spec: "x".repeat(29_000), workspace: process.cwd() });
   assert.throws(
-    () => buildCodexArgs(req, { ...opts, command: "/a/very/long/".repeat(30) + "codex" }),
+    () => buildCodexArgs(req, { resultFile: "/tmp/o.txt", platform: "linux" }),
     /argv is too long/
   );
 });

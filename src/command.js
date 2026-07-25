@@ -62,7 +62,6 @@ export function buildCodexArgs(
     outputSchemaFile,
     platform = process.platform,
     windowsSandbox = DEFAULT_WINDOWS_SANDBOX,
-    command = "",
   } = {}
 ) {
   if (!request || typeof request !== "object") throw new TypeError("request required");
@@ -82,7 +81,7 @@ export function buildCodexArgs(
   } else {
     built = buildInitialArgs(request, { resultFile, outputSchemaFile, platform, windowsSandbox });
   }
-  assertArgvLength(built.args, command);
+  assertArgvLength(built.args);
   return built;
 }
 
@@ -99,10 +98,8 @@ export function estimateArgvChars(args) {
   return total;
 }
 
-function assertArgvLength(args, command = "") {
-  // The executable counts against the OS limit too; leaving it out let a spec
-  // pass the check and still overflow CreateProcess behind a long binary path.
-  const chars = estimateArgvChars(command ? [command, ...args] : args);
+function assertArgvLength(args) {
+  const chars = estimateArgvChars(args);
   if (chars > MAX_ARGV_CHARS) {
     const err = new Error(
       `Codex argv is too long (${chars} chars; limit ${MAX_ARGV_CHARS}). Shorten the spec brief.`

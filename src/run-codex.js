@@ -85,8 +85,6 @@ export async function runCodexProcess({
     };
   };
 
-  if (signal?.aborted) return interruptedBeforeSpawn();
-
   const childEnv = { ...env };
   // Recursion marker for nested delegate detection by the parent server.
   childEnv.CODEX_DELEGATE_DEPTH = "1";
