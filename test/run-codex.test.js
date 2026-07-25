@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
 import {
+  describeFailedItem,
   meaningfulStderr,
   readAgentError,
   readFinalResult,
@@ -177,6 +178,48 @@ test("a first event cancels the startup deadline", async () => {
 
   assert.equal(result.timedOut, false);
   assert.equal(result.status, "completed");
+});
+
+test("a turn whose tool calls all failed does not read as clean success", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-denied-"));
+  const resultFile = path.join(dir, "last.txt");
+
+  const result = await runCodexProcess({
+    command: "codex",
+    args: ["exec"],
+    cwd: dir,
+    resultFile,
+    spawnImpl: () =>
+      fakeChild({
+        lines: [
+          JSON.stringify({ type: "thread.started", thread_id: "tid-d" }),
+          JSON.stringify({ type: "turn.started" }),
+          JSON.stringify({
+            type: "item.completed",
+            item: { type: "command_execution", command: "npm test", exit_code: -1, status: "failed" },
+          }),
+          JSON.stringify({ type: "turn.completed", usage: {} }),
+        ],
+        writeResult: () => writeFile(resultFile, "I ran the tests and they pass.", "utf8"),
+      }),
+    platform: "linux",
+    heartbeatMs: 0,
+    timeoutMs: 5000,
+  });
+
+  assert.equal(result.status, "completed");
+  assert.ok(
+    result.warnings.some((w) => /1 Codex tool call\(s\) failed/.test(w) && /npm test/.test(w)),
+    `expected a failed-tool-call warning, got ${JSON.stringify(result.warnings)}`
+  );
+});
+
+test("describeFailedItem names the tool and its exit code", () => {
+  assert.equal(
+    describeFailedItem({ type: "command_execution", command: "ls", exit_code: -1 }),
+    'command_execution "ls" exit -1'
+  );
+  assert.equal(describeFailedItem({ type: "file_change" }), "file_change");
 });
 
 test("readAgentError unwraps the nested Codex error envelope", () => {

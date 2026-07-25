@@ -52,6 +52,7 @@ export async function runCodexProcess({
   let threadId = null;
   let turnStatus = "running";
   let agentError = null;
+  const failedItems = [];
   const stderrChunks = [];
   let stderrBytes = 0;
   const reportedPaths = new Set();
@@ -224,6 +225,11 @@ export async function runCodexProcess({
     } else if (event?.type === "item.started" || event?.type === "item.completed") {
       const item = event.item;
       if (!item) return;
+      // A denied or failing tool call leaves the turn "completed"; without this
+      // a run where nothing worked is indistinguishable from one that did.
+      if (event.type === "item.completed" && item.status === "failed") {
+        failedItems.push(describeFailedItem(item));
+      }
       if (item.type === "command_execution") {
         const cmd = String(item.command || item.command_line || "").slice(0, 120);
         lastCommand = event.type === "item.completed" ? null : cmd || null;
@@ -307,6 +313,13 @@ export async function runCodexProcess({
   } else if (timedOut && timeoutReason === "hard-cap") {
     warnings.push(`Hard-cap timeout after ${hardCapMs}ms. Raise timeoutMs for longer tasks.`);
   }
+  if (failedItems.length) {
+    const shown = failedItems.slice(0, 3).join("; ");
+    const more = failedItems.length > 3 ? ` (+${failedItems.length - 3} more)` : "";
+    warnings.push(
+      `${failedItems.length} Codex tool call(s) failed during this turn: ${shown}${more}. The reply may describe work that did not happen.`
+    );
+  }
   if (killEscaped) {
     warnings.push(
       `Codex did not exit within ${killDeadlineMs}ms of being killed; a process may still be running. Check for stray codex processes.`
@@ -332,6 +345,14 @@ export async function runCodexProcess({
     stderrTail: status !== "completed" ? stderrTail : "",
     filesReportedByAgent: [...reportedPaths],
   };
+}
+
+export function describeFailedItem(item, maxChars = 120) {
+  const kind = String(item?.type || "item");
+  const detail = String(item?.command || item?.command_line || "").trim();
+  const exit = Number.isInteger(item?.exit_code) ? ` exit ${item.exit_code}` : "";
+  const label = detail ? `${kind} "${detail.slice(0, maxChars)}"` : kind;
+  return `${label}${exit}`;
 }
 
 /** Codex prints this on every non-TTY run; it is not a diagnosis. */
