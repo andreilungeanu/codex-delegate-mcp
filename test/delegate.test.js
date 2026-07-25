@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { executeDelegate } from "../src/delegate.js";
+import { executeDelegate, envMs } from "../src/delegate.js";
 import { createOperationRegistry } from "../src/ops.js";
 import { readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -345,4 +345,18 @@ test("cancel resolves only after the delegation has actually settled", async () 
 
   assert.equal(cancelResult.status, "cancelled");
   assert.deepEqual(order, ["abort-seen", "run-settled", "cancel-returned"]);
+});
+
+test("a malformed timeout knob falls back instead of arming a broken deadline", () => {
+  // Unset and blank take the default.
+  assert.equal(envMs(undefined, 5000), 5000);
+  assert.equal(envMs(null, 5000), 5000);
+  assert.equal(envMs("   ", 5000), 5000);
+  // Garbage, fractions and negatives would arm a guard that fails every call.
+  assert.equal(envMs("soon", 5000), 5000);
+  assert.equal(envMs("12.5", 5000), 5000);
+  assert.equal(envMs("-1", 5000), 5000);
+  // A real value wins, and an explicit 0 disables its guard rather than defaulting.
+  assert.equal(envMs("250", 5000), 250);
+  assert.equal(envMs("0", 5000), 0);
 });
