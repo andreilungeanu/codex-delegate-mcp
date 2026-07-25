@@ -41,7 +41,7 @@ jobs:
       - name: Coverage floor
         run: >
           node --test --experimental-test-coverage --test-coverage-include='src/**'
-          --test-coverage-lines=84 --test-coverage-branches=82 --test-coverage-functions=80
+          --test-coverage-lines=86 --test-coverage-branches=85 --test-coverage-functions=83
           test/*.test.js
       - run: npm audit --omit=dev --audit-level=high
 

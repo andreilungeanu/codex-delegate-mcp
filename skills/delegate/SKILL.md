@@ -28,8 +28,10 @@ You orchestrate; Codex implements. Use the **codex-delegate-mcp** MCP server —
    - **Done when** — verifiable acceptance criteria.
    Point at files to read; don't paste large code blocks.
 2. **Call `delegate`** on codex-delegate-mcp.
-3. **Review** — read `filesReportedByAgent`, inspect the git diff, run tests/lint.
-   - If criteria fail: resume the **same thread** with `resumeThreadId` and a specific fix brief.
+3. **Review** — read `warnings` first, then `filesReportedByAgent`, then the git diff; run tests/lint.
+   - `warnings` is empty on a clean run, so anything in it is real. A failed-tool-call warning means the reply may describe work that did not happen — verify against the diff before believing it.
+   - `resultSource: "stream-fallback"` means the run never finished and `result` is the last thing Codex said, not an answer. Resume the thread.
+   - If criteria fail: resume the **same thread** with `resumeThreadId` and a specific fix brief (pass the same `workspace`).
    - If a resume returns `resumed: false` with a new `threadId`, Codex minted a fresh thread and prior context did not carry over.
    - After 2 failed resumes, start a fresh thread with a rewritten brief.
 4. **Report** — summarize what changed and whether acceptance criteria are met.
@@ -40,10 +42,10 @@ You orchestrate; Codex implements. Use the **codex-delegate-mcp** MCP server —
 |---|---|---|
 | `mode` | `agent` | `plan` / `ask` / `review` as needed |
 | `model` | `gpt-5.6-terra` | Override **only** when the user asks for another model |
-| `reasoningEffort` | `high` | Override **only** when the user asks (minimal\|low\|medium\|high\|xhigh) |
+| `reasoningEffort` | `high` | Override **only** when the user asks (none\|minimal\|low\|medium\|high\|xhigh). gpt-5.6-* reject `minimal`; older models reject `none`. A rejected value fails the turn and the model's own message says which values it takes |
 | `fast` | `false` | Codex Fast mode (`service_tier` / `/fast`). Leave false; set true **only** when the user asks |
 | `network` | `false` | Enable only when the task needs network |
-| `workspace` | current cwd | Smallest directory that fits the task |
+| `workspace` | current cwd | Smallest directory that fits the task. **Required when resuming** — `codex exec resume` has no `--cd`, so an omitted workspace would run the thread in the server's directory, not the one it started in |
 
 Other models (e.g. `gpt-5.6-sol`, `gpt-5.6-luna`) are available — pass `model` when the user requests one.
 
@@ -51,7 +53,7 @@ Other models (e.g. `gpt-5.6-sol`, `gpt-5.6-luna`) are available — pass `model`
 
 1. `delegate(spec, mode="plan")` → save `threadId`, read `plan`.
 2. Present the plan; wait for approval.
-3. `delegate("implement the approved plan", mode="agent", resumeThreadId=<threadId>)`.
+3. `delegate("implement the approved plan", mode="agent", resumeThreadId=<threadId>, workspace=<same workspace>)`.
 
 ## Review mode
 
@@ -62,3 +64,10 @@ Pass exactly one `reviewTarget`:
 - `{ "kind": "commit", "sha": "..." }`
 
 Review cannot be resumed. Put focus instructions in `spec`.
+
+## Timeouts
+
+A quiet run is not a stuck run: Codex emits nothing while a shell command runs or the model
+reasons, so long silent stretches are normal and are not timed out. Guards are a 60s
+spawn-to-first-output deadline and a 1h hard cap (`timeoutMs`). Raise `timeoutMs` for work
+that legitimately runs longer.
