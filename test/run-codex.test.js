@@ -5,7 +5,12 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
-import { readFinalResult, runCodexProcess } from "../src/run-codex.js";
+import {
+  meaningfulStderr,
+  readAgentError,
+  readFinalResult,
+  runCodexProcess,
+} from "../src/run-codex.js";
 
 function fakeChild({ lines = [], exitCode = 0, writeResult } = {}) {
   const child = new EventEmitter();
@@ -76,7 +81,55 @@ test("runCodexProcess parses thread id and requires final file", async () => {
   assert.equal(result.threadId, "tid-1");
   assert.equal(result.finalMessageAvailable, true);
   assert.equal(result.result, "hello from codex");
-  assert.ok(progress.includes("thread started"));
+  assert.ok(progress.includes("thread started: tid-1"));
+});
+
+test("readAgentError unwraps the nested Codex error envelope", () => {
+  const raw = JSON.stringify({
+    type: "error",
+    error: { type: "invalid_request_error", message: "Unsupported value: 'minimal'" },
+    status: 400,
+  });
+  assert.equal(readAgentError({ message: raw }), "Unsupported value: 'minimal'");
+  assert.equal(readAgentError("plain failure"), "plain failure");
+  assert.equal(readAgentError({ message: "   " }), null);
+  assert.equal(readAgentError(undefined), null);
+  assert.equal(readAgentError({ message: "x".repeat(50) }, 10), `${"x".repeat(10)}…`);
+});
+
+test("meaningfulStderr drops the benign stdin notice and keeps the rest", () => {
+  const stderr = "Reading additional input from stdin...\nreal failure\n";
+  assert.equal(meaningfulStderr(stderr).trim(), "real failure");
+  assert.equal(meaningfulStderr("Reading additional input from stdin...").trim(), "");
+});
+
+test("runCodexProcess surfaces the reason from a turn.failed event", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-err-"));
+  const resultFile = path.join(dir, "last.txt");
+  const detail = JSON.stringify({ error: { message: "model rejected the request" } });
+
+  const result = await runCodexProcess({
+    command: "codex",
+    args: ["exec"],
+    cwd: dir,
+    resultFile,
+    spawnImpl: () =>
+      fakeChild({
+        lines: [
+          JSON.stringify({ type: "thread.started", thread_id: "tid-e" }),
+          JSON.stringify({ type: "turn.started" }),
+          JSON.stringify({ type: "error", message: detail }),
+          JSON.stringify({ type: "turn.failed", error: { message: detail } }),
+        ],
+        exitCode: 1,
+      }),
+    platform: "linux",
+    timeoutMs: 5000,
+  });
+
+  assert.equal(result.status, "failed");
+  assert.equal(result.agentError, "model rejected the request");
+  assert.ok(result.warnings.some((w) => w === "Codex error: model rejected the request"));
 });
 
 test("runCodexProcess non-zero exit yields failed without final message", async () => {

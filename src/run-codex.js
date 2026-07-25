@@ -8,6 +8,7 @@ import { pathsFromFileChangeItem } from "./agent-reported-files.js";
 const DEFAULT_MAX_RESULT_BYTES = 10 * 1024 * 1024;
 const DEFAULT_STDERR_BYTES = 64 * 1024;
 const STDERR_TAIL_CHARS = 2000;
+const DRAIN_MS = 2000;
 export const DEFAULT_IDLE_MS = 90_000;
 export const DEFAULT_HARD_CAP_MS = 3_600_000;
 
@@ -41,9 +42,16 @@ export async function runCodexProcess({
   let cancelled = false;
   let threadId = null;
   let turnStatus = "running";
+  let agentError = null;
   const stderrChunks = [];
   let stderrBytes = 0;
   const reportedPaths = new Set();
+
+  const emit = (message) => {
+    try {
+      onProgress?.(message);
+    } catch {}
+  };
 
   const interruptedBeforeSpawn = async () => {
     const status = "interrupted";
@@ -76,9 +84,7 @@ export async function runCodexProcess({
   // Recursion marker for nested delegate detection by the parent server.
   childEnv.CODEX_DELEGATE_DEPTH = "1";
 
-  try {
-    await unlink(resultFile).catch(() => {});
-  } catch {}
+  await unlink(resultFile).catch(() => {});
 
   const spawnOpts = {
     cwd,
@@ -144,45 +150,42 @@ export async function runCodexProcess({
       try {
         onThreadId?.(threadId);
       } catch {}
-      try {
-        onProgress?.("thread started");
-      } catch {}
+      emit(`thread started: ${threadId}`);
     } else if (event?.type === "turn.started") {
       turnStatus = "in_progress";
-      try {
-        onProgress?.("turn started");
-      } catch {}
+      emit("turn started");
     } else if (event?.type === "turn.completed") {
       turnStatus = "completed";
-      try {
-        onProgress?.("turn completed");
-      } catch {}
+      emit("turn completed");
     } else if (event?.type === "turn.failed") {
       turnStatus = "failed";
-      try {
-        onProgress?.("turn failed");
-      } catch {}
+      agentError = agentError || readAgentError(event.error);
+      emit("turn failed");
+    } else if (event?.type === "error") {
+      // Codex reports the actionable reason here; the turn.failed that follows repeats it.
+      agentError = agentError || readAgentError(event);
     } else if (event?.type === "item.started" || event?.type === "item.completed") {
       const item = event.item;
       if (!item) return;
       if (item.type === "command_execution") {
         const cmd = String(item.command || item.command_line || "").slice(0, 120);
-        try {
-          onProgress?.(cmd ? `running: ${cmd}` : "running command");
-        } catch {}
+        emit(cmd ? `running: ${cmd}` : "running command");
       } else if (item.type === "file_change") {
         for (const p of pathsFromFileChangeItem(item)) reportedPaths.add(p);
         const n = Array.isArray(item.changes) ? item.changes.length : 0;
-        try {
-          onProgress?.(n ? `editing ${n} file(s)` : "editing files");
-        } catch {}
+        emit(n ? `editing ${n} file(s)` : "editing files");
       } else if (item.type === "web_search") {
-        try {
-          onProgress?.("web search");
-        } catch {}
+        emit("web search");
       }
     }
   });
+
+  // Bounded: a killed process can leave a grandchild holding stdout, so the
+  // interface may never close. Waiting forever would wedge the delegation.
+  const drained = Promise.race([
+    new Promise((resolve) => rl.once("close", resolve)),
+    new Promise((resolve) => setTimeout(resolve, DRAIN_MS).unref?.()),
+  ]);
 
   child.stderr.on("data", (chunk) => {
     noteActivity();
@@ -207,6 +210,8 @@ export async function runCodexProcess({
       child.on("error", reject);
       child.on("close", (code) => resolve(code ?? 1));
     });
+    // close can land with lines still queued; a dropped turn.failed would read as success.
+    await drained;
   } finally {
     clearTimers();
     if (signal) signal.removeEventListener("abort", onAbort);
@@ -234,13 +239,17 @@ export async function runCodexProcess({
     maxResultBytes,
   });
 
-  const warnings = [...final.warnings];
+  const warnings = [];
+  if (agentError) warnings.push(`Codex error: ${agentError}`);
+  warnings.push(...final.warnings);
   if (timedOut && timeoutReason === "idle-timeout") {
-    warnings.push(`Idle timeout after ${idleMs}ms with no Codex activity.`);
+    warnings.push(
+      `Idle timeout after ${idleMs}ms with no Codex activity. Raise CODEX_DELEGATE_IDLE_MS if the task runs long silent commands.`
+    );
   } else if (timedOut && timeoutReason === "hard-cap") {
     warnings.push(`Hard-cap timeout after ${hardCapMs}ms.`);
   }
-  const stderrTail = stderr.slice(-STDERR_TAIL_CHARS);
+  const stderrTail = meaningfulStderr(stderr).slice(-STDERR_TAIL_CHARS);
   if (status !== "completed" && stderrTail.trim()) {
     warnings.push(`stderr: ${stderrTail.trim()}`);
   }
@@ -252,6 +261,7 @@ export async function runCodexProcess({
     timedOut,
     timeoutReason,
     cancelled,
+    agentError,
     result: final.result,
     finalMessageAvailable: final.finalMessageAvailable,
     warnings,
@@ -259,6 +269,33 @@ export async function runCodexProcess({
     stderrTail: status !== "completed" ? stderrTail : "",
     filesReportedByAgent: [...reportedPaths],
   };
+}
+
+/** Codex prints this on every non-TTY run; it is not a diagnosis. */
+const BENIGN_STDERR = /^Reading additional input from stdin\.\.\.$/;
+
+export function meaningfulStderr(stderr) {
+  return String(stderr || "")
+    .split(/\r?\n/)
+    .filter((line) => !BENIGN_STDERR.test(line.trim()))
+    .join("\n");
+}
+
+/**
+ * Codex nests the actionable reason as a JSON string inside error.message.
+ * Unwrap one level so the caller reads prose, not a serialized envelope.
+ */
+export function readAgentError(source, maxChars = 600) {
+  const raw = typeof source === "string" ? source : source?.message;
+  const text = String(raw ?? "").trim();
+  if (!text) return null;
+  let message = text;
+  try {
+    const parsed = JSON.parse(text);
+    const nested = parsed?.error?.message ?? parsed?.message;
+    if (typeof nested === "string" && nested.trim()) message = nested.trim();
+  } catch {}
+  return message.length > maxChars ? `${message.slice(0, maxChars)}…` : message;
 }
 
 export async function readFinalResult({
