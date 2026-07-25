@@ -1,7 +1,7 @@
 import process from "node:process";
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
-import { readFile, stat, unlink } from "node:fs/promises";
+import { readFile, unlink } from "node:fs/promises";
 import { isChildAlive, treeKill } from "./proc.js";
 import { pathsFromFileChangeItem } from "./agent-reported-files.js";
 
@@ -412,7 +412,6 @@ export async function readFinalResult({
   exitCode,
   maxResultBytes = DEFAULT_MAX_RESULT_BYTES,
   readFileImpl = readFile,
-  statImpl = stat,
 } = {}) {
   if (status !== "completed" || exitCode !== 0) {
     return {
@@ -422,17 +421,15 @@ export async function readFinalResult({
     };
   }
   try {
-    // Size first: reading then measuring means a runaway file is already in
-    // memory by the time the cap rejects it.
-    const { size } = await statImpl(filePath);
-    if (size > maxResultBytes) {
+    const result = await readFileImpl(filePath, "utf8");
+    const bytes = Buffer.byteLength(result, "utf8");
+    if (bytes > maxResultBytes) {
       return {
         result: "",
         finalMessageAvailable: false,
-        warnings: [`Final result is ${size} bytes, over the ${maxResultBytes} byte cap.`],
+        warnings: [`Final result is ${bytes} bytes, over the ${maxResultBytes} byte cap.`],
       };
     }
-    const result = await readFileImpl(filePath, "utf8");
     return { result, finalMessageAvailable: true, warnings: [] };
   } catch {
     return {
