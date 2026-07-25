@@ -73,10 +73,9 @@ result envelope used to look the same whether a run worked or not; now failure i
   `status: "failed"`; only `item.type` was read, so a run where every command was denied
   returned `status: "completed"` with a reply describing work that never happened.
 - The 90s idle timer no longer kills healthy runs. Codex emits nothing for the body of a shell
-  command or a long reasoning pass — `docs/phase0/probe1-graceful.raw.jsonl` in this repo
-  captured three frames followed by 120s of silence — so any command outrunning the timer was
-  tree-killed just before finishing. `idleMs` was also unreachable: nothing passed it and no
-  env var set it.
+  command or a long reasoning pass — a captured session showed three frames followed by 120s of
+  silence — so any command outrunning the timer was tree-killed just before finishing. `idleMs`
+  was also unreachable: nothing passed it and no env var set it.
 - A kill that fails to reap the process tree can no longer wedge the server. `taskkill` can
   report success and leave the tree up; the awaited `close` then never arrived, the lease was
   never released, and every later delegation failed with `operation_in_progress`.
@@ -196,7 +195,7 @@ result envelope used to look the same whether a run worked or not; now failure i
 ### Tests
 
 - Expanded unhappy-path coverage: empty spec, network/mode conflicts, resume+review, timeouts, plan schema requirements, fail-closed finals, cancel ownership, invalid model/live probes
-- Live smoke (`docs/live-smoke.mjs`) verified ask/plan/agent/review/resume/cancel against Codex CLI 0.144.4
+- Live smoke verified ask/plan/agent/review/resume/cancel against Codex CLI 0.144.4
 
 ## [1.0.0] - 2026-07-16
 
