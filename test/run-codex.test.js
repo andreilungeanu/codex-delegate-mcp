@@ -119,8 +119,7 @@ test("runCodexProcess trips the startup deadline when Codex never speaks", async
     timeoutMs: 10_000,
   });
 
-  assert.equal(result.timedOut, true);
-  assert.equal(result.timeoutReason, "startup-timeout");
+  assert.equal(result.reason, "startup-timeout");
   assert.equal(result.status, "interrupted");
   assert.ok(result.warnings.some((w) => /no output within 30ms/.test(w)));
 });
@@ -153,7 +152,7 @@ test("a kill that never reaps the tree still settles the delegation", async () =
   });
 
   assert.equal(result.status, "interrupted");
-  assert.equal(result.timeoutReason, "startup-timeout");
+  assert.equal(result.reason, "startup-timeout");
   assert.ok(result.warnings.some((w) => /did not exit within 40ms/.test(w)));
 });
 
@@ -177,7 +176,6 @@ test("a first event cancels the startup deadline", async () => {
     timeoutMs: 5000,
   });
 
-  assert.equal(result.timedOut, false);
   assert.equal(result.status, "completed");
 });
 
@@ -454,7 +452,7 @@ test("runCodexProcess abort signal marks interrupted and cancelled", async () =>
   });
 
   assert.equal(result.status, "interrupted");
-  assert.equal(result.cancelled, true);
+  assert.equal(result.reason, "cancelled");
   assert.equal(result.finalMessageAvailable, false);
 });
 
@@ -479,8 +477,7 @@ test("runCodexProcess does not spawn for a pre-aborted signal", async () => {
 
   assert.equal(spawnCalls, 0);
   assert.equal(result.status, "interrupted");
-  assert.equal(result.cancelled, true);
-  assert.equal(result.timedOut, false);
+  assert.equal(result.reason, "cancelled");
   assert.equal(result.finalMessageAvailable, false);
   assert.equal(result.result, "");
   assert.equal(result.stderrBytes, 0);

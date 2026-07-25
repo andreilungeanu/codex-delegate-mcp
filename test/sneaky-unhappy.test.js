@@ -144,7 +144,7 @@ test("failed cancel surfaces and second cancel rethrows same failure", async () 
 
 // --- Process / final-result sneaky paths ---
 
-test("timeout marks timedOut but not user-cancelled", async () => {
+test("a hard-cap timeout reports hard-cap, not cancelled", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-timeout-"));
   const resultFile = path.join(dir, "last.txt");
   let childRef = null;
@@ -168,9 +168,7 @@ test("timeout marks timedOut but not user-cancelled", async () => {
   });
 
   assert.equal(result.status, "interrupted");
-  assert.equal(result.timedOut, true);
-  assert.equal(result.timeoutReason, "hard-cap");
-  assert.equal(result.cancelled, false);
+  assert.equal(result.reason, "hard-cap");
 });
 
 test("exit 0 while turn still in_progress is not completed", async () => {
