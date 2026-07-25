@@ -4,6 +4,38 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.11.0] - 2026-07-25
+
+A subtraction release. A review of every commit since 1.7.0 asked which fixes were load-bearing
+and which were belt-and-suspenders; this removes the ones that guarded against nothing, plus a
+field name that promised more than it delivered.
+
+### Changed
+
+- **Breaking**: `filesReportedByAgent` is now `filesReportedByEditTools`. Codex emits
+  `file_change` for its own edit tool and nothing else, so files written by a shell command it
+  ran — a formatter, a codegen script, `sed` — never appeared in the list. The old name read as
+  "everything the agent touched" and quietly wasn't. The narrower list is still worth having:
+  it says what Codex edited *itself*, which a diff against a dirty tree cannot.
+- **Breaking**: `finalMessageAvailable` is gone from the result. `status`, `reason` and
+  `resultSource` already said whether the answer was authoritative.
+- **Breaking**: `idle-timeout` is gone from the `reason` enum, along with the
+  `CODEX_DELEGATE_IDLE_MS` knob. 1.7.0 established that a mid-turn idle guard cannot tell a
+  quiet run from a wedged one and defaulted it off; keeping it as dead-by-default configuration
+  was the wrong half of that fix. A run is bounded by the startup deadline and the hard cap.
+- Warnings that restated a field were dropped: the resume mismatch (`resumed: false` says it),
+  the stream-fallback caveat (`resultSource` says it), and "final result unavailable"
+  (`status` plus `reason` say it). Tool and server descriptions no longer restate defaults the
+  schema already encodes.
+
+### Removed
+
+- The result-file `stat` before the read. The cap is 10MB; reading that and then rejecting it
+  was never the OOM the guard was written for, and it cost a syscall and a TOCTOU gap on every
+  successful run. The size check now runs on what was read.
+- The executable path in the argv length estimate. `MAX_ARGV_CHARS` reserves 4,767 characters
+  under the Windows limit and a Codex binary path is about 100, so the guard could not fire.
+
 ## [1.10.0] - 2026-07-25
 
 Three findings from an independent audit of the delegate surface: an input that vanished, an
