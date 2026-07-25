@@ -4,6 +4,25 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.10.0] - 2026-07-25
+
+Three findings from an independent audit of the delegate surface: an input that vanished, an
+answer sent twice, and a cancel that answered before it was true.
+
+### Changed
+
+- **Breaking**: unknown tool inputs are rejected instead of silently dropped. The schemas were
+  permissive, so zod stripped anything it did not recognise — a mistyped `resumeThredId` meant
+  no resume, no error, and a thread's context quietly lost. The error names the offending key.
+- **Breaking**: in `plan` mode `result` is the plan's `overview`, not the plan JSON repeated.
+  The final message *is* the plan, so returning it verbatim shipped the same payload twice —
+  most of a plan envelope was duplicate. `plan.overview` and `plan.steps` are unchanged, and a
+  final message that does not parse as a plan still comes back in `result` untouched.
+- `cancel` resolves once the process has actually ended rather than once the kill was
+  requested. It previously returned `cancelled` off an un-awaited abort, so the caller could be
+  told a delegation was over while Codex was still running. The kill deadline bounds the wait,
+  so a process tree that refuses to die cannot hang the cancel either.
+
 ## [1.9.0] - 2026-07-25
 
 A result-contract pass. 1.8.0 made failure legible; this makes the envelope worth reading —
