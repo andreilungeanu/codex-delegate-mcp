@@ -107,7 +107,7 @@ export async function runCodexProcess({
   const closed = new Promise((resolve, reject) => {
     settleClose = resolve;
     child.on("error", reject);
-    child.on("close", (code) => resolve(code ?? 1));
+    child.on("close", (code) => resolve(code));
   });
 
   let killTimer;
@@ -260,7 +260,11 @@ export async function runCodexProcess({
     if (startupMs > 0) startupTimer = setTimeout(() => tripTimeout("startup-timeout"), startupMs);
     if (heartbeatMs > 0) heartbeatTimer = setInterval(heartbeat, heartbeatMs);
 
-    exitCode = await closed;
+    // Every settle path lands here, and two of them carry no code: a death by
+    // signal, and the kill deadline giving up on a tree that refuses to die. A
+    // null here fails output validation and takes the whole result with it —
+    // thread id, edited files, warnings — precisely when the run went wrong.
+    exitCode = (await closed) ?? 1;
     // close can land with lines still queued; a dropped turn.failed would read as success.
     await drained;
   } finally {

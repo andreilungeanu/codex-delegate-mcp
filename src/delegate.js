@@ -157,8 +157,17 @@ export async function executeDelegate(rawArgs, options = {}) {
     filesReportedByEditTools: files.length ? files : undefined,
     plan,
     warnings: warnings.length ? warnings : undefined,
-    exitCode: processResult.status === "completed" ? undefined : processResult.exitCode,
+    exitCode: processResult.status === "completed" ? undefined : toExitCode(processResult.exitCode),
   };
+}
+
+/**
+ * Output validation rejects the payload *after* the run finished, so one
+ * malformed field costs the caller the entire result. An exit code we cannot
+ * vouch for is worth less than the thread id and file list it would take down.
+ */
+function toExitCode(value) {
+  return Number.isInteger(value) ? value : undefined;
 }
 
 /**

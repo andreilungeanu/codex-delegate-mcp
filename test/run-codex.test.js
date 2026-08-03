@@ -156,6 +156,61 @@ test("a kill that never reaps the tree still settles the delegation", async () =
   assert.ok(result.warnings.some((w) => /did not exit within 40ms/.test(w)));
 });
 
+test("a kill deadline that fires still reports a numeric exit code", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-killcode-"));
+  const resultFile = path.join(dir, "last.txt");
+  const edited = path.join(dir, "important.ts");
+  let childRef = null;
+
+  const result = await runCodexProcess({
+    command: "codex",
+    args: ["exec"],
+    cwd: dir,
+    resultFile,
+    spawnImpl: () => {
+      childRef = new EventEmitter();
+      childRef.pid = 31_337;
+      childRef.stdout = new Readable({ read() {} });
+      childRef.stderr = new Readable({ read() {} });
+      childRef.exitCode = null;
+      childRef.signalCode = null;
+      childRef.stdout.push(
+        JSON.stringify({ type: "thread.started", thread_id: "thr_immortal" }) + "\n"
+      );
+      childRef.stdout.push(JSON.stringify({ type: "turn.started" }) + "\n");
+      childRef.stdout.push(
+        JSON.stringify({
+          type: "item.completed",
+          item: { type: "file_change", changes: [{ path: edited, kind: "update" }] },
+        }) + "\n"
+      );
+      return childRef;
+    },
+    // The kill reaches the pipes but the process never reports close, so the exit
+    // code can only come from the kill deadline. (A tree that also holds the pipes
+    // open is the drain-deadline test.)
+    treeKillImpl: async () => {
+      childRef.stdout.push(null);
+      childRef.stderr.push(null);
+    },
+    platform: "linux",
+    startupMs: 0,
+    heartbeatMs: 0,
+    timeoutMs: 40,
+    killDeadlineMs: 30,
+  });
+
+  assert.equal(result.status, "interrupted");
+  assert.equal(result.reason, "hard-cap");
+  // null here fails the delegate output schema, which discards the whole payload.
+  assert.equal(result.exitCode, 1);
+  // The diagnostics that ride along are the reason this matters.
+  assert.equal(result.threadId, "thr_immortal");
+  assert.deepEqual(result.filesReportedByEditTools, [edited]);
+  assert.ok(result.warnings.some((w) => /Hard-cap timeout/.test(w)));
+  assert.ok(result.warnings.some((w) => /a process may still be running/.test(w)));
+});
+
 test("a first event cancels the startup deadline", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-startup-ok-"));
   const resultFile = path.join(dir, "last.txt");

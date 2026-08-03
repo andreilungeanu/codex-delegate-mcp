@@ -11,6 +11,7 @@ import {
   DEFAULT_REASONING_EFFORT,
 } from "../src/command.js";
 import { createOperationRegistry } from "../src/ops.js";
+import { executeDelegate } from "../src/delegate.js";
 
 test("buildServer registers delegate, cancel, doctor", () => {
   const server = buildServer({
@@ -132,4 +133,39 @@ test("an unknown delegate input is rejected instead of silently dropped", () => 
     workspace: "/w",
   });
   assert.equal(ok.success, true);
+});
+
+test("an unknowable exit code does not cost the caller the whole result", async () => {
+  // Output validation runs after the handler succeeded: an exitCode the schema
+  // rejects throws away the thread id, the edited files and every warning, which
+  // is exactly the payload a killed-but-unreaped run needs to deliver.
+  const payload = await executeDelegate(
+    { spec: "x", mode: "agent", workspace: process.cwd() },
+    {
+      env: {},
+      operationRegistry: createOperationRegistry(),
+      resolve: () => ({ command: "/bin/codex", version: "0.144.4", warnings: [] }),
+      runProcess: async () => ({
+        status: "interrupted",
+        reason: "hard-cap",
+        exitCode: null,
+        threadId: "thr_immortal",
+        result: "",
+        finalMessageAvailable: false,
+        warnings: ["Hard-cap timeout after 1000ms. Raise timeoutMs for longer tasks."],
+        stderrBytes: 0,
+        filesReportedByEditTools: ["important.ts"],
+      }),
+    }
+  );
+
+  const validated = buildServer()._registeredTools.delegate.outputSchema.safeParse(payload);
+  assert.equal(
+    validated.success,
+    true,
+    `payload rejected by the output schema: ${JSON.stringify(validated.error?.issues)}`
+  );
+  assert.equal(payload.threadId, "thr_immortal");
+  assert.deepEqual(payload.filesReportedByEditTools, ["important.ts"]);
+  assert.equal(payload.warnings.length, 1);
 });
