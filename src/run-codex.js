@@ -33,6 +33,7 @@ export async function runCodexProcess({
   startupMs = DEFAULT_STARTUP_MS,
   heartbeatMs = DEFAULT_HEARTBEAT_MS,
   killDeadlineMs = DEFAULT_KILL_DEADLINE_MS,
+  drainMs = DRAIN_MS,
   maxResultBytes = DEFAULT_MAX_RESULT_BYTES,
   spawnImpl = spawn,
   treeKillImpl = treeKill,
@@ -103,12 +104,17 @@ export async function runCodexProcess({
   if (signal?.aborted) return interruptedBeforeSpawn();
   child = spawnImpl(command, args, spawnOpts);
 
-  let settleClose;
-  const closed = new Promise((resolve, reject) => {
-    settleClose = resolve;
+  // 'exit' means the process is gone. 'close' additionally waits for every stdio
+  // pipe, including any a background process Codex started inherited — that can
+  // be minutes or hours later, so the exit code must not depend on it.
+  let settleExit;
+  const exited = new Promise((resolve, reject) => {
+    settleExit = resolve;
     child.on("error", reject);
+    child.on("exit", (code) => resolve(code));
     child.on("close", (code) => resolve(code));
   });
+  const pipesClosed = new Promise((resolve) => child.on("close", resolve));
 
   let killTimer;
   let killEscaped = false;
@@ -121,7 +127,7 @@ export async function runCodexProcess({
     if (killTimer || killDeadlineMs <= 0) return;
     killTimer = setTimeout(() => {
       killEscaped = true;
-      settleClose(null);
+      settleExit(null);
     }, killDeadlineMs);
   };
 
@@ -236,12 +242,7 @@ export async function runCodexProcess({
     }
   });
 
-  // Bounded: a killed process can leave a grandchild holding stdout, so the
-  // interface may never close. Waiting forever would wedge the delegation.
-  const drained = Promise.race([
-    new Promise((resolve) => rl.once("close", resolve)),
-    new Promise((resolve) => setTimeout(resolve, DRAIN_MS).unref?.()),
-  ]);
+  const drained = new Promise((resolve) => rl.once("close", resolve));
 
   child.stderr.on("data", (chunk) => {
     noteActivity();
@@ -254,6 +255,7 @@ export async function runCodexProcess({
   });
 
   let exitCode;
+  let drainEscaped = false;
   try {
     if (signal) signal.addEventListener("abort", onAbort, { once: true });
     if (hardCapMs > 0) hardCapTimer = setTimeout(() => tripTimeout("hard-cap"), hardCapMs);
@@ -264,13 +266,19 @@ export async function runCodexProcess({
     // signal, and the kill deadline giving up on a tree that refuses to die. A
     // null here fails output validation and takes the whole result with it —
     // thread id, edited files, warnings — precisely when the run went wrong.
-    exitCode = (await closed) ?? 1;
-    // close can land with lines still queued; a dropped turn.failed would read as success.
-    await drained;
+    exitCode = (await exited) ?? 1;
+    // The pipes can still hold queued lines; a dropped turn.failed would read as
+    // success. Bounded, and only from the exit onwards: whatever inherited stdout
+    // may hold it open for its own lifetime, and waiting on that would wedge the
+    // delegation and the single-slot registry behind it for exactly that long.
+    drainEscaped = !(await withDeadline(Promise.all([pipesClosed, drained]), drainMs));
   } finally {
     clearTimers();
     if (signal) signal.removeEventListener("abort", onAbort);
     rl.close();
+    // Nothing reads these now, and something may still be writing to them.
+    child.stdout?.destroy();
+    child.stderr?.destroy();
   }
 
   const interrupted = cancelled || timedOut || signal?.aborted;
@@ -335,6 +343,10 @@ export async function runCodexProcess({
     warnings.push(
       `Codex did not exit within ${killDeadlineMs}ms of being killed; a process may still be running. Check for stray codex processes.`
     );
+  } else if (drainEscaped) {
+    warnings.push(
+      `Codex exited but something it started still holds its output open after ${drainMs}ms — a server or watcher is probably still running in the workspace.`
+    );
   }
   const stderrTail = meaningfulStderr(stderr).slice(-STDERR_TAIL_CHARS);
   if (status !== "completed" && stderrTail.trim()) {
@@ -356,6 +368,23 @@ export async function runCodexProcess({
     stderrTail: status !== "completed" ? stderrTail : "",
     filesReportedByEditTools: [...reportedPaths],
   };
+}
+
+/**
+ * Resolve true if the promise settled inside the deadline, false if the deadline
+ * won. The timer is cleared either way: an unref'd one lets the process fall out
+ * from under a still-pending wait, and a live one outlives the answer.
+ */
+function withDeadline(promise, ms) {
+  if (!(ms > 0)) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), ms);
+    const done = () => {
+      clearTimeout(timer);
+      resolve(true);
+    };
+    promise.then(done, done);
+  });
 }
 
 /** Codex reports per-turn token counts; nothing else in the pipeline does. */

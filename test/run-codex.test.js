@@ -211,6 +211,55 @@ test("a kill deadline that fires still reports a numeric exit code", async () =>
   assert.ok(result.warnings.some((w) => /a process may still be running/.test(w)));
 });
 
+test("a background process holding stdout does not hold the delegation", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-orphan-"));
+  const resultFile = path.join(dir, "last.txt");
+  let childRef = null;
+
+  const startedAt = Date.now();
+  const result = await runCodexProcess({
+    command: "codex",
+    args: ["exec"],
+    cwd: dir,
+    resultFile,
+    spawnImpl: () => {
+      childRef = new EventEmitter();
+      childRef.pid = 8080;
+      // Codex started a dev server that inherited stdout: the process exits, the
+      // pipes stay open for the server's lifetime, so 'close' never arrives.
+      childRef.stdout = new Readable({ read() {} });
+      childRef.stderr = new Readable({ read() {} });
+      childRef.exitCode = null;
+      childRef.signalCode = null;
+      childRef.stdout.push(JSON.stringify({ type: "thread.started", thread_id: "t-orphan" }) + "\n");
+      childRef.stdout.push(JSON.stringify({ type: "turn.started" }) + "\n");
+      childRef.stdout.push(JSON.stringify({ type: "turn.completed", usage: {} }) + "\n");
+      writeFile(resultFile, "started the dev server", "utf8").then(() => {
+        childRef.exitCode = 0;
+        childRef.emit("exit", 0, null);
+      });
+      return childRef;
+    },
+    platform: "linux",
+    heartbeatMs: 0,
+    timeoutMs: 30_000,
+    drainMs: 100,
+  });
+  const elapsed = Date.now() - startedAt;
+
+  assert.equal(result.status, "completed");
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.threadId, "t-orphan");
+  assert.equal(result.result, "started the dev server");
+  // The pipes are still open right now; the run must not be waiting on them.
+  assert.equal(childRef.stdout.readableEnded, false);
+  assert.ok(elapsed < 5000, `run took ${elapsed}ms; it should not track the orphan`);
+  assert.ok(
+    result.warnings.some((w) => /still holds its output open/.test(w)),
+    `expected an orphan warning, got ${JSON.stringify(result.warnings)}`
+  );
+});
+
 test("a first event cancels the startup deadline", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-startup-ok-"));
   const resultFile = path.join(dir, "last.txt");

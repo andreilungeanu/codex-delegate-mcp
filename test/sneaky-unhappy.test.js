@@ -333,6 +333,51 @@ test("spawn ENOENT rejects and does not leave registry leased", async () => {
   assert.equal(registry.snapshot().active, false);
 });
 
+test("an orphan holding stdout does not wedge the single-slot registry", async () => {
+  const registry = createOperationRegistry();
+  // Every run leaves a background process on stdout, so 'close' never arrives.
+  const options = () => ({
+    env: {},
+    operationRegistry: registry,
+    resolve: () => ({ command: "/bin/codex", version: "0.144.4", warnings: [] }),
+    runProcess: (opts) =>
+      runCodexProcess({
+        ...opts,
+        platform: "linux",
+        heartbeatMs: 0,
+        drainMs: 60,
+        spawnImpl: () => {
+          const child = new EventEmitter();
+          child.pid = 4242;
+          child.stdout = new Readable({ read() {} });
+          child.stderr = new Readable({ read() {} });
+          child.exitCode = null;
+          child.signalCode = null;
+          child.stdout.push(JSON.stringify({ type: "turn.completed", usage: {} }) + "\n");
+          writeFile(opts.resultFile, "done", "utf8").then(() => {
+            child.exitCode = 0;
+            child.emit("exit", 0, null);
+          });
+          return child;
+        },
+      }),
+  });
+
+  const first = await executeDelegate(
+    { spec: "one", mode: "ask", workspace: process.cwd() },
+    options()
+  );
+  // The slot has to be free for this one, or it comes back operation_in_progress.
+  const second = await executeDelegate(
+    { spec: "two", mode: "ask", workspace: process.cwd() },
+    options()
+  );
+
+  assert.equal(first.status, "completed");
+  assert.equal(second.status, "completed");
+  assert.equal(registry.snapshot().active, false);
+});
+
 test("plan mode accepts JSON but warns when schema shape is wrong", async () => {
   const result = await executeDelegate(
     { spec: "plan", mode: "plan", workspace: process.cwd() },
