@@ -244,14 +244,26 @@ export async function runCodexProcess({
 
   const drained = new Promise((resolve) => rl.once("close", resolve));
 
+  // A rolling tail, not the first 64 KB: the diagnosis is the last thing a dying
+  // process writes, and stderrTail then takes the tail of whatever this kept. Keep
+  // the head and a megabyte of noise buries the one line that says why.
   child.stderr.on("data", (chunk) => {
     noteActivity();
-    if (stderrBytes >= DEFAULT_STDERR_BYTES) return;
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    const remaining = DEFAULT_STDERR_BYTES - stderrBytes;
-    const cappedChunk = buffer.subarray(0, remaining);
-    stderrChunks.push(cappedChunk);
-    stderrBytes += cappedChunk.length;
+    if (!buffer.length) return;
+    stderrChunks.push(buffer);
+    stderrBytes += buffer.length;
+    while (stderrBytes > DEFAULT_STDERR_BYTES) {
+      const excess = stderrBytes - DEFAULT_STDERR_BYTES;
+      const oldest = stderrChunks[0];
+      if (oldest.length <= excess) {
+        stderrChunks.shift();
+        stderrBytes -= oldest.length;
+      } else {
+        stderrChunks[0] = oldest.subarray(excess);
+        stderrBytes -= excess;
+      }
+    }
   });
 
   let exitCode;

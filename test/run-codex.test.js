@@ -803,6 +803,46 @@ test("runCodexProcess caps stderr by UTF-8 bytes", async () => {
   assert.equal(result.stderrBytes, 64 * 1024);
 });
 
+test("a noisy stderr keeps the failure at its end, not the padding at its front", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-stderr-tail-"));
+  const resultFile = path.join(dir, "last.txt");
+  const noise = "E".repeat(1024 * 1024);
+  const reason = "fatal: the real reason is at the very end";
+
+  const result = await runCodexProcess({
+    command: "codex",
+    args: ["exec"],
+    cwd: dir,
+    resultFile,
+    spawnImpl: () => {
+      const child = new EventEmitter();
+      child.pid = 4242;
+      child.stdout = Readable.from([]);
+      child.stderr = Readable.from([noise, `\n${reason}\n`]);
+      child.exitCode = null;
+      child.signalCode = null;
+      child.stderr.on("end", () => {
+        child.exitCode = 1;
+        child.emit("close", 1);
+      });
+      return child;
+    },
+    platform: "linux",
+    heartbeatMs: 0,
+    timeoutMs: 5000,
+  });
+
+  assert.equal(result.status, "failed");
+  assert.match(result.stderrTail, /fatal: the real reason is at the very end/);
+  assert.ok(
+    result.warnings.some((w) => w.includes(reason)),
+    "the warning has to carry the diagnosis, not a megabyte of padding"
+  );
+  // Still bounded, and still the last 2000 chars of what was kept.
+  assert.equal(result.stderrBytes, 64 * 1024);
+  assert.ok(result.stderrTail.length <= 2000);
+});
+
 test("runCodexProcess does not time out a silent mid-turn run", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-quiet-"));
   const resultFile = path.join(dir, "last.txt");
