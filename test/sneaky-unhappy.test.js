@@ -411,6 +411,35 @@ test("plan mode accepts JSON but warns when schema shape is wrong", async () => 
   assert.ok(result.warnings.some((w) => /plan/i.test(w) && /schema|shape|invalid/i.test(w)));
 });
 
+test("a runaway plan is trimmed to a bounded number of steps", async () => {
+  const steps = Array.from({ length: 2000 }, (_, i) => ({
+    title: `step ${i}`,
+    detail: "d".repeat(200),
+  }));
+  const result = await executeDelegate(
+    { spec: "plan", mode: "plan", workspace: process.cwd() },
+    {
+      env: {},
+      operationRegistry: createOperationRegistry(),
+      resolve: () => ({ command: "/bin/codex", version: "0.144.4", warnings: [] }),
+      runProcess: async () => ({
+        status: "completed",
+        exitCode: 0,
+        threadId: "t-plan-big",
+        result: JSON.stringify({ overview: "big", steps }),
+        finalMessageAvailable: true,
+        warnings: [],
+        stderrBytes: 0,
+        filesReportedByEditTools: [],
+      }),
+    }
+  );
+
+  assert.equal(result.plan.steps.length, 200);
+  assert.equal(result.plan.overview, "big");
+  assert.ok(result.warnings.some((w) => /2000 steps; only the first 200/.test(w)));
+});
+
 test("pre-aborted outer signal interrupts before/during run", async () => {
   const controller = new AbortController();
   controller.abort(new Error("already done"));

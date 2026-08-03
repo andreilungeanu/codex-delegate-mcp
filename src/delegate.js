@@ -18,6 +18,8 @@ import {
 import { normalizeEditToolFiles } from "./edit-tool-files.js";
 import { createOperationRegistry } from "./ops.js";
 
+const MAX_PLAN_STEPS = 200;
+
 export async function executeDelegate(rawArgs, options = {}) {
   const {
     cwd = process.cwd(),
@@ -122,6 +124,15 @@ export async function executeDelegate(rawArgs, options = {}) {
       const parsed = JSON.parse(processResult.result);
       if (!isValidPlanShape(parsed)) {
         warnings.push("Plan mode final message JSON did not match the expected plan schema shape.");
+      } else if (parsed.steps.length > MAX_PLAN_STEPS) {
+        // The step list is model-authored and unbounded; a 2000-step plan is a
+        // malfunction, and shipping all of it costs the caller more than the tail
+        // of it is worth.
+        plan = { ...parsed, steps: parsed.steps.slice(0, MAX_PLAN_STEPS) };
+        planResult = parsed.overview;
+        warnings.push(
+          `Plan had ${parsed.steps.length} steps; only the first ${MAX_PLAN_STEPS} are returned.`
+        );
       } else {
         plan = parsed;
         planResult = parsed.overview;

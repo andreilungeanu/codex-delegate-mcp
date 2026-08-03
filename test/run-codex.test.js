@@ -730,6 +730,72 @@ test("runCodexProcess collects file_change paths", async () => {
   assert.deepEqual(result.filesReportedByEditTools.sort(), [absA, absB].sort());
 });
 
+test("an absurd thread id is refused rather than echoed back", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-tid-"));
+  const resultFile = path.join(dir, "last.txt");
+  const seen = [];
+
+  const result = await runCodexProcess({
+    command: "codex",
+    args: ["exec"],
+    cwd: dir,
+    resultFile,
+    onThreadId: (id) => seen.push(id),
+    spawnImpl: () =>
+      fakeChild({
+        lines: [
+          JSON.stringify({ type: "thread.started", thread_id: "x".repeat(50_000) }),
+          JSON.stringify({ type: "turn.completed", usage: {} }),
+        ],
+        writeResult: () => writeFile(resultFile, "ok", "utf8"),
+      }),
+    platform: "linux",
+    heartbeatMs: 0,
+    timeoutMs: 5000,
+  });
+
+  assert.equal(result.status, "completed");
+  assert.equal(result.threadId, null);
+  assert.deepEqual(seen, []);
+  assert.ok(
+    result.warnings.some((w) => /50000-character thread id/.test(w) && /cannot be resumed/.test(w)),
+    `expected a dropped-thread-id warning, got ${JSON.stringify(result.warnings)}`
+  );
+});
+
+test("the edited-file list is bounded and says so", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-manyfiles-"));
+  const resultFile = path.join(dir, "last.txt");
+  const changes = Array.from({ length: 3000 }, (_, i) => ({
+    path: path.join(dir, `f${i}.ts`),
+    kind: "update",
+  }));
+
+  const result = await runCodexProcess({
+    command: "codex",
+    args: ["exec"],
+    cwd: dir,
+    resultFile,
+    spawnImpl: () =>
+      fakeChild({
+        lines: [
+          JSON.stringify({ type: "item.completed", item: { type: "file_change", changes } }),
+          JSON.stringify({ type: "turn.completed", usage: {} }),
+        ],
+        writeResult: () => writeFile(resultFile, "ok", "utf8"),
+      }),
+    platform: "linux",
+    heartbeatMs: 0,
+    timeoutMs: 5000,
+  });
+
+  assert.equal(result.filesReportedByEditTools.length, 500);
+  assert.ok(
+    result.warnings.some((w) => /2500 are missing from the list/.test(w)),
+    `expected a truncated-file-list warning, got ${JSON.stringify(result.warnings)}`
+  );
+});
+
 test("runCodexProcess appends stderr tail on failure", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-err-"));
   const resultFile = path.join(dir, "last.txt");

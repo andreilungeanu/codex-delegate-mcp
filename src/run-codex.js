@@ -9,6 +9,13 @@ const DEFAULT_MAX_RESULT_BYTES = 10 * 1024 * 1024;
 const DEFAULT_STDERR_BYTES = 64 * 1024;
 const STDERR_TAIL_CHARS = 2000;
 const DRAIN_MS = 2000;
+/**
+ * Both of these are chosen by the child process and echoed back verbatim, so both
+ * need a ceiling. A real thread id is a 36-character uuid; a run that edits more
+ * files than this has a git diff worth reading instead of a list worth shipping.
+ */
+const MAX_THREAD_ID_CHARS = 200;
+const MAX_REPORTED_PATHS = 500;
 /** Spawn to first JSONL event. Silence here does mean a wedged launcher. */
 export const DEFAULT_STARTUP_MS = 60_000;
 export const DEFAULT_HEARTBEAT_MS = 30_000;
@@ -56,6 +63,8 @@ export async function runCodexProcess({
   const stderrChunks = [];
   let stderrBytes = 0;
   const reportedPaths = new Set();
+  let droppedPaths = 0;
+  let unusableThreadIdChars = 0;
 
   const emit = (message) => {
     try {
@@ -196,7 +205,14 @@ export async function runCodexProcess({
       return;
     }
     if (event?.type === "thread.started" && event.thread_id) {
-      threadId = event.thread_id;
+      const id = String(event.thread_id);
+      // Truncating would produce a plausible id that resumes nothing and matches
+      // no cancel; refusing it loses the same run and says so.
+      if (id.length > MAX_THREAD_ID_CHARS) {
+        unusableThreadIdChars = id.length;
+        return;
+      }
+      threadId = id;
       try {
         onThreadId?.(threadId);
       } catch {}
@@ -228,7 +244,14 @@ export async function runCodexProcess({
         lastCommand = event.type === "item.completed" ? null : cmd || null;
         emit(cmd ? `running: ${cmd}` : "running command");
       } else if (item.type === "file_change") {
-        for (const p of pathsFromFileChangeItem(item)) reportedPaths.add(p);
+        for (const p of pathsFromFileChangeItem(item)) {
+          if (reportedPaths.has(p)) continue;
+          if (reportedPaths.size >= MAX_REPORTED_PATHS) {
+            droppedPaths += 1;
+            continue;
+          }
+          reportedPaths.add(p);
+        }
         const n = Array.isArray(item.changes) ? item.changes.length : 0;
         emit(n ? `editing ${n} file(s)` : "editing files");
       } else if (item.type === "agent_message") {
@@ -349,6 +372,16 @@ export async function runCodexProcess({
     );
   } else if (timedOut && timeoutReason === "hard-cap") {
     warnings.push(`Hard-cap timeout after ${hardCapMs}ms. Raise timeoutMs for longer tasks.`);
+  }
+  if (unusableThreadIdChars) {
+    warnings.push(
+      `Codex reported a ${unusableThreadIdChars}-character thread id, past the ${MAX_THREAD_ID_CHARS} character limit; it was dropped, so this run cannot be resumed.`
+    );
+  }
+  if (droppedPaths) {
+    warnings.push(
+      `Codex reported more than ${MAX_REPORTED_PATHS} edited files; ${droppedPaths} are missing from the list. Read the git diff for the full set.`
+    );
   }
   if (failedItems.length) {
     const shown = failedItems.slice(0, 3).join("; ");
