@@ -13,8 +13,14 @@ export const DEFAULT_REASONING_EFFORT = "high";
 /** Leave headroom under Windows CreateProcess ~32k limit. */
 export const MAX_ARGV_CHARS = 28_000;
 
-/** Windows sandbox mode; "off" omits the flag entirely. */
-export const DEFAULT_WINDOWS_SANDBOX = "elevated";
+/**
+ * Codex takes `elevated` or `unelevated`; "off" is ours and omits the flag. The
+ * default was `elevated`, which needs an elevated session — on a normal one Codex
+ * cannot spawn the sandbox helper (CreateProcessAsUserW failed: 5), so every shell
+ * command in every mode fails while the turn still reports as completed.
+ */
+export const DEFAULT_WINDOWS_SANDBOX = "unelevated";
+export const WINDOWS_SANDBOX_MODES = Object.freeze(["unelevated", "elevated", "off"]);
 
 /**
  * Which values a model accepts is not discoverable up front and differs by model:
@@ -183,9 +189,8 @@ function commonFlags(request, resultFile, outputSchemaFile, platform, windowsSan
 
   if (outputSchemaFile) args.push("--output-schema", outputSchemaFile);
   // --ignore-user-config strips the user's [windows] sandbox setting, and without
-  // it workspace-write degrades to read-only. "elevated" needs an elevated
-  // session though: on a normal one Codex cannot spawn the sandbox helper at all
-  // (CreateProcessAsUserW failed: 5), so every shell command fails. Overridable.
+  // one workspace-write degrades to read-only. See resolveWindowsSandbox for what
+  // each mode costs; this only decides whether the flag is passed at all.
   if (platform === "win32" && windowsSandbox !== "off") {
     args.push("-c", `windows.sandbox=${tomlString(windowsSandbox)}`);
   }
@@ -216,6 +221,35 @@ function sandboxForMode(mode) {
 
 function tomlString(value) {
   return JSON.stringify(String(value));
+}
+
+/**
+ * An unknown mode used to travel to Codex and fail the run at config load, which
+ * reads as a broken bridge rather than a typo'd env var. "off" is worse than its
+ * name: the flag is omitted, workspace-write degrades to read-only, and a run
+ * where every write was denied still comes back completed with nothing to say so.
+ */
+export function resolveWindowsSandbox(raw, { platform = process.platform, mode } = {}) {
+  const warnings = [];
+  const requested = raw == null ? "" : String(raw).trim();
+  let sandbox = requested || DEFAULT_WINDOWS_SANDBOX;
+
+  if (!WINDOWS_SANDBOX_MODES.includes(sandbox)) {
+    warnings.push(
+      `CODEX_DELEGATE_WINDOWS_SANDBOX="${requested}" is not one of ${WINDOWS_SANDBOX_MODES.join(
+        ", "
+      )}; using "${DEFAULT_WINDOWS_SANDBOX}".`
+    );
+    sandbox = DEFAULT_WINDOWS_SANDBOX;
+  }
+
+  if (platform === "win32" && sandbox === "off" && mode === "agent") {
+    warnings.push(
+      'CODEX_DELEGATE_WINDOWS_SANDBOX="off" omits the Windows sandbox flag, which degrades workspace-write to read-only: Codex can run commands but every write is denied, and it reports that as a completed turn.'
+    );
+  }
+
+  return { sandbox, warnings };
 }
 
 export function validateDelegateInput(raw, { cwd = process.cwd() } = {}) {

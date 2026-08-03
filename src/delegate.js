@@ -5,7 +5,7 @@ import path from "node:path";
 import {
   buildCodexArgs,
   validateDelegateInput,
-  DEFAULT_WINDOWS_SANDBOX,
+  resolveWindowsSandbox,
   PLAN_SCHEMA,
 } from "./command.js";
 import { resolveCodex } from "./resolve-codex.js";
@@ -17,6 +17,7 @@ import {
 } from "./run-codex.js";
 import { normalizeEditToolFiles } from "./edit-tool-files.js";
 import { createOperationRegistry } from "./ops.js";
+import { preflightReviewTarget } from "./git-preflight.js";
 
 const MAX_PLAN_STEPS = 200;
 
@@ -29,6 +30,7 @@ export async function executeDelegate(rawArgs, options = {}) {
     operationRegistry = createOperationRegistry(),
     onProgress,
     signal: outerSignal,
+    preflight = preflightReviewTarget,
   } = options;
 
   if (env.CODEX_DELEGATE_DEPTH && String(env.CODEX_DELEGATE_DEPTH).trim() !== "") {
@@ -40,6 +42,9 @@ export async function executeDelegate(rawArgs, options = {}) {
   }
 
   const request = validateDelegateInput(rawArgs, { cwd });
+  if (request.mode === "review") {
+    await preflight({ workspace: request.workspace, reviewTarget: request.reviewTarget });
+  }
   // Resolver notes describe the setup, not this run. Emitting them on every
   // result makes a non-empty `warnings` mean nothing; doctor reports them.
   const codex = resolve({ env });
@@ -57,11 +62,17 @@ export async function executeDelegate(rawArgs, options = {}) {
       await writeFile(outputSchemaFile, JSON.stringify(PLAN_SCHEMA), "utf8");
     }
 
+    const windows = resolveWindowsSandbox(env.CODEX_DELEGATE_WINDOWS_SANDBOX, {
+      platform: process.platform,
+      mode: request.mode,
+    });
+    warnings.push(...windows.warnings);
+
     const built = buildCodexArgs(request, {
       resultFile,
       outputSchemaFile,
       platform: process.platform,
-      windowsSandbox: normalizeText(env.CODEX_DELEGATE_WINDOWS_SANDBOX) ?? DEFAULT_WINDOWS_SANDBOX,
+      windowsSandbox: windows.sandbox,
     });
 
     const controller = new AbortController();
@@ -190,12 +201,6 @@ export function envMs(raw, fallback) {
   const value = Number(raw);
   if (!Number.isInteger(value) || value < 0) return fallback;
   return value;
-}
-
-function normalizeText(value) {
-  if (value == null) return undefined;
-  const text = String(value).trim();
-  return text ? text : undefined;
 }
 
 function isValidPlanShape(value) {

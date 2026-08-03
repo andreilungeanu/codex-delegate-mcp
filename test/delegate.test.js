@@ -40,6 +40,17 @@ test("executeDelegate refuses nested recursion", async () => {
   );
 });
 
+test("executeDelegate warns about an unusable Windows sandbox mode instead of passing it on", async () => {
+  const options = delegateOptions("thread-1");
+  const result = await executeDelegate(
+    { spec: "x", mode: "ask", workspace: process.cwd() },
+    { ...options, env: { CODEX_DELEGATE_WINDOWS_SANDBOX: "bogusvalue" } }
+  );
+
+  assert.equal(result.status, "completed");
+  assert.match(result.warnings?.[0] ?? "", /bogusvalue/);
+});
+
 test("executeDelegate wires resolve + process + edit-tool files", async () => {
   const registry = createOperationRegistry();
   const result = await executeDelegate(
@@ -90,7 +101,7 @@ test("executeDelegate reports a resume only when the observed thread matches", a
   assert.equal(result.warnings, undefined);
 });
 
-test("executeDelegate warns when a requested resume starts a new thread", async () => {
+test("executeDelegate reports resumed:false, and nothing more, when a resume starts a new thread", async () => {
   const result = await executeDelegate(
     { spec: "continue", resumeThreadId: "thread-stale", workspace: process.cwd() },
     delegateOptions("thread-new")

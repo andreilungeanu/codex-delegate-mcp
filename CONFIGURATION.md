@@ -21,7 +21,7 @@ negative value falls back to its default rather than arming a guard that fails e
 | `CODEX_DELEGATE_STARTUP_MS` | `60000` | Spawn to first JSONL event. `0` disables. |
 | `CODEX_DELEGATE_HARD_CAP_MS` | `3600000` | Whole run; a per-call `timeoutMs` overrides it. |
 | `CODEX_DELEGATE_HEARTBEAT_MS` | `30000` | Progress heartbeat while quiet. `0` disables. |
-| `CODEX_DELEGATE_WINDOWS_SANDBOX` | `elevated` | Windows sandbox mode; `off` omits the flag entirely. |
+| `CODEX_DELEGATE_WINDOWS_SANDBOX` | `unelevated` | Windows sandbox mode: `unelevated`, `elevated`, or `off`. |
 
 `CODEX_DELEGATE_DEPTH` is set on the child process as a recursion marker. If it is already set
 when `delegate` is called, the call is refused — a delegated agent must not spawn another one.
@@ -58,7 +58,15 @@ shim, which cannot be spawned directly without a shell. If resolution looks wron
 ## Windows sandbox
 
 `--ignore-user-config` strips any `[windows]` sandbox setting from your own Codex config, and
-without one `workspace-write` degrades to read-only. The default `elevated` restores it, but it
-needs an elevated session: on a normal one Codex cannot spawn the sandbox helper at all
-(`CreateProcessAsUserW failed: 5`) and every shell command fails. Set
-`CODEX_DELEGATE_WINDOWS_SANDBOX=off` to omit the flag, or to another mode Codex accepts.
+without one `workspace-write` degrades to read-only — so the bridge passes one itself. Codex
+accepts two values; `off` is the bridge's own and omits the flag.
+
+| Mode | Shell commands | Writes | Notes |
+|---|---|---|---|
+| `unelevated` (default) | work | work | What a normal session should use. |
+| `elevated` | **all fail** on a non-elevated session | work | Needs an elevated session: otherwise Codex cannot spawn the sandbox helper (`CreateProcessAsUserW failed: 5`). Applies to `ask`, `plan` and `review` too, not just `agent`. |
+| `off` | work | **all denied** | `workspace-write` degrades to read-only. |
+
+Both failure modes still report `status: "completed"`, because Codex treats a denied write or a
+dead helper as something to mention in prose rather than a failed turn. `off` warns for that
+reason; if you set `elevated`, make sure the session really is elevated.

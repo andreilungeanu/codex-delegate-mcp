@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import {
   buildCodexArgs,
   validateDelegateInput,
+  resolveWindowsSandbox,
   PLAN_SCHEMA,
   MODES,
 } from "../src/command.js";
@@ -360,18 +361,18 @@ test("build plan args include output schema", () => {
   assert.ok(PLAN_SCHEMA.required.includes("overview"));
 });
 
-test("windows platform adds elevated sandbox flag", () => {
+test("windows platform adds the unelevated sandbox flag", () => {
   const { args } = buildCodexArgs(
     { spec: "x", mode: "agent", workspace: "D:\\repo", network: false },
     { resultFile: "D:\\tmp\\out.txt", platform: "win32" }
   );
-  assert.ok(args.includes('windows.sandbox="elevated"'));
+  assert.ok(args.includes('windows.sandbox="unelevated"'));
 
   const linux = buildCodexArgs(
     { spec: "x", mode: "agent", workspace: "/repo", network: false },
     { resultFile: "/tmp/out.txt", platform: "linux" }
   );
-  assert.ok(!linux.args.includes('windows.sandbox="elevated"'));
+  assert.ok(!linux.args.some((a) => String(a).startsWith("windows.sandbox")));
 });
 
 test("build review args use developer_instructions and target flags", () => {
@@ -442,7 +443,7 @@ test("buildCodexArgs rejects oversized specs", () => {
 test("the Windows sandbox mode is overridable and can be omitted", () => {
   const req = validateDelegateInput({ spec: "x", workspace: process.cwd() });
   const on = buildCodexArgs(req, { resultFile: "/tmp/o.txt", platform: "win32" }).args;
-  assert.ok(on.includes('windows.sandbox="elevated"'));
+  assert.ok(on.includes('windows.sandbox="unelevated"'));
 
   const off = buildCodexArgs(req, {
     resultFile: "/tmp/o.txt",
@@ -454,9 +455,36 @@ test("the Windows sandbox mode is overridable and can be omitted", () => {
   const custom = buildCodexArgs(req, {
     resultFile: "/tmp/o.txt",
     platform: "win32",
-    windowsSandbox: "unelevated",
+    windowsSandbox: "elevated",
   }).args;
-  assert.ok(custom.includes('windows.sandbox="unelevated"'));
+  assert.ok(custom.includes('windows.sandbox="elevated"'));
+});
+
+test("resolveWindowsSandbox defaults, validates, and flags the off degradation", () => {
+  assert.deepEqual(resolveWindowsSandbox(undefined, { platform: "win32", mode: "agent" }), {
+    sandbox: "unelevated",
+    warnings: [],
+  });
+  assert.deepEqual(resolveWindowsSandbox("  ", { platform: "win32", mode: "agent" }).sandbox, "unelevated");
+  assert.deepEqual(resolveWindowsSandbox("elevated", { platform: "win32", mode: "agent" }), {
+    sandbox: "elevated",
+    warnings: [],
+  });
+
+  // An unknown value used to reach Codex and fail the run at config load.
+  const bogus = resolveWindowsSandbox("bogusvalue", { platform: "win32", mode: "agent" });
+  assert.equal(bogus.sandbox, "unelevated");
+  assert.equal(bogus.warnings.length, 1);
+  assert.match(bogus.warnings[0], /bogusvalue/);
+
+  const off = resolveWindowsSandbox("off", { platform: "win32", mode: "agent" });
+  assert.equal(off.sandbox, "off");
+  assert.equal(off.warnings.length, 1);
+  assert.match(off.warnings[0], /read-only/);
+
+  // Nothing to degrade when the mode cannot write, and nothing at all off Windows.
+  assert.deepEqual(resolveWindowsSandbox("off", { platform: "win32", mode: "ask" }).warnings, []);
+  assert.deepEqual(resolveWindowsSandbox("off", { platform: "linux", mode: "agent" }).warnings, []);
 });
 
 test("an oversized spec is rejected before it reaches CreateProcess", () => {
