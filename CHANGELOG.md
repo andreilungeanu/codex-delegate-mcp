@@ -4,6 +4,56 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.12.0] - 2026-08-03
+
+A stress test drove the bridge end to end — real MCP client, real `spawn`, a scripted Codex — and
+found four defects, every one of them on a path a run only takes once something has already gone
+wrong. A successful run is unchanged.
+
+### Fixed
+
+- **A killed-but-unreaped run lost its entire result.** When the kill deadline fired on a process
+  tree that refused to die, `exitCode` settled as `null`, and `null` is not a number: output
+  validation rejected the payload *after* the handler had succeeded. The caller got
+  `MCP error -32602` in place of the thread id (so the work could not be resumed), the list of
+  files already edited — after a write-capable run — and both warnings. The exit code is now
+  coerced where it is assigned, and a field that cannot be vouched for is dropped rather than
+  allowed to take the result down with it. One consequence of the old behaviour: the
+  "a process may still be running" warning was unreachable by construction, because the only
+  condition that produced it was the one that destroyed the payload carrying it.
+- **A background process holding stdout wedged the whole server for that process's lifetime.**
+  The run awaited `'close'`, which fires only once every stdio pipe is closed, not when Codex
+  exits. Anything Codex started that inherited stdout — a dev server, a watcher — kept the
+  delegation open for as long as it ran: 30 235 ms for a 30 s orphan, against a Codex that had
+  exited and written its answer in about 200 ms. The single-slot registry stayed held for the
+  duration, so every later `delegate` was rejected with `operation_in_progress` and `cancel` was
+  blocked behind the same wait — for up to the one-hour hard cap. The exit code now comes from
+  `'exit'`, and the pipe drain is a bounded race measured from the exit; the same case returns in
+  about 2.4 s with a warning naming the cause. The existing `DRAIN_MS` bound described exactly
+  this scenario but was applied to the readline close and unref'd, so it never bound anything.
+- **The result cap did not cover the stream-fallback path.** `maxResultBytes` guarded the
+  final-message file, but the `agent_message` substituted when that file is missing was passed
+  through at whatever size the CLI streamed it: a 64 MB message came back verbatim, 128 MB on the
+  wire, reported as `status: "completed"`. A run whose authoritative file is missing is the more
+  likely one to be pathological, not the less. Both paths are capped now.
+- **`stderrTail` kept the wrong end of stderr.** Capture stopped at the first 64 KB and the tail
+  was then taken of that prefix, so the diagnosis — which a dying process writes last — was
+  precisely the part discarded. With 1 MB of noise ahead of `fatal: …`, the caller received 2 008
+  characters of padding and never saw the reason. stderr is now kept as a rolling tail.
+
+### Changed
+
+- An over-cap result is truncated, with a warning saying so, instead of being discarded. The old
+  behaviour answered a too-long result with an empty one.
+- The thread id, the edited-file list and the plan step list are bounded — 200 characters, 500
+  entries, 200 steps — each with a warning when the bound bites. All three are chosen by the child
+  process and were echoed back verbatim; a 50 000-character thread id was stored in the operation
+  registry and returned to the caller. An over-long thread id is refused rather than truncated: a
+  truncated id resumes nothing and matches no cancel, while looking like it should do both.
+- The text copy of a delegate result is no longer pretty-printed. It duplicates
+  `structuredContent` for hosts that do not read structured output, and indenting the larger of
+  the two copies cost about 15% of every result.
+
 ## [1.11.0] - 2026-07-25
 
 A subtraction release. A review of every commit since 1.7.0 asked which fixes were load-bearing
