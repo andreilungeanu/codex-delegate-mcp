@@ -12,7 +12,7 @@ const resolved = {
 
 function options(overrides = {}) {
   return {
-    workspace: "/repo",
+    workspace: process.cwd(),
     env: {},
     resolve: () => resolved,
     execFileImpl: async () => ({ stdout: "Logged in", stderr: "" }),
@@ -31,10 +31,20 @@ test("doctor reports a resolved CLI, login and runtime", async () => {
   assert.equal(out.versionGate.status, "ok");
   assert.equal(out.login.status, "ok");
   assert.equal(out.login.detail, "Logged in");
-  assert.equal(out.workspace.path, "/repo");
+  assert.equal(out.workspace.path, process.cwd());
+  assert.equal(out.workspace.exists, true);
+  assert.equal(out.workspace.isGitRepo, true);
   assert.equal(out.runtime.transport, "stdio");
   assert.deepEqual(out.warnings, []);
   assert.equal(out.deep, undefined);
+});
+
+test("doctor flags a workspace that is not there", async () => {
+  const out = await runDoctor(options({ workspace: "/no/such/workspace" }));
+
+  assert.equal(out.workspace.exists, false);
+  assert.equal(out.workspace.isGitRepo, undefined);
+  assert.match(out.warnings.join("\n"), /workspace does not exist/);
 });
 
 test("doctor surfaces a resolution failure instead of throwing", async () => {
@@ -74,7 +84,7 @@ test("doctor reports a failed login probe without failing the call", async () =>
   assert.equal(out.login.detail, "Not logged in");
 });
 
-test("doctor carries resolver warnings and the recursion guard", async () => {
+test("doctor files resolver notes away from warnings, and reports the recursion guard", async () => {
   const out = await runDoctor(
     options({
       resolve: () => ({ ...resolved, warnings: ["PATH Codex can degrade workspace-write."] }),
@@ -82,9 +92,32 @@ test("doctor carries resolver warnings and the recursion guard", async () => {
     })
   );
 
-  assert.deepEqual(out.warnings, ["PATH Codex can degrade workspace-write."]);
+  // The note describes the resolver doing its job and fires on every correctly
+  // configured Windows machine; `warnings` has to stay empty when nothing is wrong.
+  assert.deepEqual(out.codex.notes, ["PATH Codex can degrade workspace-write."]);
+  assert.deepEqual(out.warnings, []);
   assert.equal(out.recursionGuard.active, true);
   assert.equal(out.recursionGuard.depth, "1");
+});
+
+test("doctor stays quiet about the sandbox unless the mode breaks something", async () => {
+  const clean = await runDoctor(options({ platform: "win32" }));
+  assert.equal(clean.sandbox.windowsSandbox, "unelevated");
+  assert.deepEqual(clean.warnings, []);
+
+  const off = await runDoctor(
+    options({ platform: "win32", env: { CODEX_DELEGATE_WINDOWS_SANDBOX: "off" } })
+  );
+  assert.match(off.warnings.join("\n"), /read-only/);
+
+  const elevated = await runDoctor(
+    options({ platform: "win32", env: { CODEX_DELEGATE_WINDOWS_SANDBOX: "elevated" } })
+  );
+  assert.match(elevated.warnings.join("\n"), /elevated session/);
+
+  const linux = await runDoctor(options({ platform: "linux" }));
+  assert.equal(linux.sandbox.windowsSandbox, undefined);
+  assert.deepEqual(linux.warnings, []);
 });
 
 test("doctor deep probes the exec surfaces it depends on", async () => {
