@@ -29,7 +29,7 @@ You orchestrate; Codex implements. Use the **codex-delegate-mcp** MCP server —
    Point at files to read; don't paste large code blocks.
 2. **Call `delegate`** on codex-delegate-mcp.
 3. **Review** — read `warnings` first, then `filesReportedByEditTools`, then the git diff; run tests/lint. The diff is what actually changed; the field only tells you which of it Codex edited directly.
-   - `warnings` is absent on a clean run, so its presence means something real. A failed-tool-call warning means the reply may describe work that did not happen — verify against the diff before believing it.
+   - A `warnings` entry always means something real; an empty `warnings` does not mean a clean run. The bridge sees failures Codex reports as failed tool calls, not ones it narrates in prose — a run that could not do the work often says so in `result` and nowhere else. A failed-tool-call warning means the reply may describe work that did not happen: verify against the diff before believing it.
    - `resultSource: "stream-fallback"` means the run never finished and `result` is the last thing Codex said, not an answer. Resume the thread.
    - If criteria fail: resume the **same thread** with `resumeThreadId` and a specific fix brief (pass the same `workspace`).
    - If a resume returns `resumed: false` with a new `threadId`, Codex minted a fresh thread and prior context did not carry over.
@@ -75,10 +75,10 @@ Fields that carry no signal are omitted, so anything present is worth reading.
 | `status` | always | `completed` \| `failed` \| `interrupted` |
 | `reason` | not `completed` | `cancelled`, `startup-timeout`, `hard-cap`, `agent-error`, `died-mid-turn`, `exit-nonzero` |
 | `resultSource` | salvage only | `stream-fallback` — `result` is the last thing Codex said, not a final answer |
-| `warnings` | non-empty only | Real diagnostics. Read first. |
+| `warnings` | non-empty only | Real diagnostics. Read first — but absence is not proof of a clean run |
 | `filesReportedByEditTools` | non-empty only | Only what Codex's edit tool reported. Files written by a shell command it ran are **not** listed. The git diff is authoritative. |
 | `resumed` | resume requested | `false` means a fresh thread was minted and prior context was lost |
-| `usage` | usually | Per-turn token counts |
+| `usage` | when reported | Per-turn token counts. Absent in `review`, which reports all zeros |
 | `exitCode` | not `completed` | Process exit code |
 | `threadId`, `workspace`, `cliVersion`, `plan` | as applicable | |
 

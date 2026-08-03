@@ -45,7 +45,7 @@ You  →  your agent (plans & reviews)
 ## Features
 
 - 🤝 **Native plugins** — install into Claude Code, Cursor, or GitHub Copilot CLI and just say *"delegate this to Codex"*. The shared skill teaches your agent how to delegate well.
-- 📦 **Clean, typed results** — validated structured output: the final answer, `status` plus a `reason` when it isn't `completed`, `threadId`, token `usage`, and the files Codex edited. Fields that carry no signal are omitted, so anything present is worth reading — and an empty `warnings` genuinely means a clean run.
+- 📦 **Clean, typed results** — validated structured output: the final answer, `status` plus a `reason` when it isn't `completed`, `threadId`, token `usage`, and the files Codex edited. Fields that carry no signal are omitted, so anything present is worth reading. A `warnings` entry always means something real; an empty one is not a clean bill of health, because the bridge sees the failures Codex reports as failed tool calls and not the ones it explains in prose.
 - 📋 **Plan first** — `plan` mode returns a schema-validated plan. Review it, then resume the same thread to implement it.
 - 💬 **Ask anything** — `ask` mode: read-only Q&A over your codebase, zero file changes.
 - 🕵️ **Native code review** — `review` mode runs Codex's own reviewer over uncommitted work, a base branch, or a single commit.
