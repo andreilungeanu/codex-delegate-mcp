@@ -87,6 +87,54 @@ test("runCodexProcess parses thread id and requires final file", async () => {
   assert.ok(progress.includes("thread started: tid-1"));
 });
 
+test("runCodexProcess announces each item once, on the event that starts it", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-progress-"));
+  const resultFile = path.join(dir, "last.txt");
+  const command = {
+    id: "i1",
+    type: "command_execution",
+    command: "npm test",
+    status: "in_progress",
+  };
+  const edit = {
+    id: "i2",
+    type: "file_change",
+    changes: [{ path: path.join(dir, "a.js"), kind: "add" }],
+    status: "in_progress",
+  };
+
+  const spawnImpl = () =>
+    fakeChild({
+      lines: [
+        JSON.stringify({ type: "turn.started" }),
+        JSON.stringify({ type: "item.started", item: command }),
+        JSON.stringify({ type: "item.completed", item: { ...command, status: "completed" } }),
+        JSON.stringify({ type: "item.started", item: edit }),
+        JSON.stringify({ type: "item.completed", item: { ...edit, status: "completed" } }),
+        JSON.stringify({ type: "turn.completed", usage: {} }),
+      ],
+      writeResult: () => writeFile(resultFile, "ok", "utf8"),
+    });
+
+  const progress = [];
+  const result = await runCodexProcess({
+    command: "codex",
+    args: ["exec", "--json"],
+    cwd: dir,
+    resultFile,
+    spawnImpl,
+    platform: "linux",
+    timeoutMs: 5000,
+    onProgress: (m) => progress.push(m),
+  });
+
+  assert.equal(result.status, "completed");
+  assert.equal(progress.filter((m) => m === "running: npm test").length, 1);
+  assert.equal(progress.filter((m) => m === "editing 1 file(s)").length, 1);
+  // The completed event still has to do its bookkeeping.
+  assert.deepEqual(result.filesReportedByEditTools, [path.join(dir, "a.js")]);
+});
+
 test("runCodexProcess trips the startup deadline when Codex never speaks", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-startup-"));
   const resultFile = path.join(dir, "last.txt");
@@ -453,6 +501,21 @@ test("readUsage keeps only the counts Codex actually reported", () => {
   assert.equal(readUsage({}), null);
   assert.equal(readUsage(null), null);
   assert.equal(readUsage({ input_tokens: "many" }), null);
+  // Every `codex exec review` turn reports these zeros.
+  assert.equal(
+    readUsage({
+      input_tokens: 0,
+      cached_input_tokens: 0,
+      cache_write_input_tokens: 0,
+      output_tokens: 0,
+      reasoning_output_tokens: 0,
+    }),
+    null
+  );
+  assert.deepEqual(readUsage({ input_tokens: 0, output_tokens: 5 }), {
+    inputTokens: 0,
+    outputTokens: 5,
+  });
 });
 
 test("describeFailedItem names the tool and its exit code", () => {

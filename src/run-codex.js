@@ -5,6 +5,11 @@ import { readFile, unlink } from "node:fs/promises";
 import { isChildAlive, treeKill } from "./proc.js";
 import { pathsFromFileChangeItem } from "./edit-tool-files.js";
 
+/**
+ * Deliberately generous. This is the ceiling that stops a runaway process, not a
+ * budget for the caller's context: an answer is worth more delivered whole than
+ * cut to fit a window, and the windows keep getting bigger.
+ */
 const DEFAULT_MAX_RESULT_BYTES = 10 * 1024 * 1024;
 const DEFAULT_STDERR_BYTES = 64 * 1024;
 const STDERR_TAIL_CHARS = 2000;
@@ -234,16 +239,25 @@ export async function runCodexProcess({
     } else if (event?.type === "item.started" || event?.type === "item.completed") {
       const item = event.item;
       if (!item) return;
+      // Codex announces each item twice. The two events carry the same description,
+      // so only the first is worth a notification — the second used to repeat it,
+      // and announced a finished command with the word "running".
+      const started = event.type === "item.started";
       // A denied or failing tool call leaves the turn "completed"; without this
       // a run where nothing worked is indistinguishable from one that did.
-      if (event.type === "item.completed" && item.status === "failed") {
+      if (!started && item.status === "failed") {
         failedItems.push(describeFailedItem(item));
       }
       if (item.type === "command_execution") {
         const cmd = String(item.command || item.command_line || "").slice(0, 120);
-        lastCommand = event.type === "item.completed" ? null : cmd || null;
-        emit(cmd ? `running: ${cmd}` : "running command");
+        if (started) {
+          lastCommand = cmd || null;
+          emit(cmd ? `running: ${cmd}` : "running command");
+        } else {
+          lastCommand = null;
+        }
       } else if (item.type === "file_change") {
+        // Collected from both events: either one alone may carry the full list.
         for (const p of pathsFromFileChangeItem(item)) {
           if (reportedPaths.has(p)) continue;
           if (reportedPaths.size >= MAX_REPORTED_PATHS) {
@@ -252,8 +266,10 @@ export async function runCodexProcess({
           }
           reportedPaths.add(p);
         }
-        const n = Array.isArray(item.changes) ? item.changes.length : 0;
-        emit(n ? `editing ${n} file(s)` : "editing files");
+        if (started) {
+          const n = Array.isArray(item.changes) ? item.changes.length : 0;
+          emit(n ? `editing ${n} file(s)` : "editing files");
+        }
       } else if (item.type === "agent_message") {
         // Narration, not the answer. Kept only to salvage something when the
         // authoritative --output-last-message file never gets written.
@@ -469,7 +485,11 @@ export function readUsage(raw) {
     reasoningOutputTokens: pick("reasoning_output_tokens"),
   };
   const kept = Object.entries(usage).filter(([, v]) => v !== undefined);
-  return kept.length ? Object.fromEntries(kept) : null;
+  if (!kept.length) return null;
+  // `codex exec review` reports every count as 0 on turns that plainly spent
+  // tokens. A field that is present and always meaningless is worse than absent.
+  if (kept.every(([, v]) => v === 0)) return null;
+  return Object.fromEntries(kept);
 }
 
 export function describeFailedItem(item, maxChars = 120) {
