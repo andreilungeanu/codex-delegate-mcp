@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
 import {
+  capResultBytes,
   describeFailedItem,
   readUsage,
   meaningfulStderr,
@@ -377,6 +378,71 @@ test("a completed run never falls back to streamed narration", async () => {
 
   assert.equal(result.result, "FINAL ANSWER");
   assert.equal(result.resultSource, undefined);
+});
+
+test("an oversized stream fallback is truncated, not shipped whole", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-fallback-cap-"));
+  const resultFile = path.join(dir, "last.txt");
+  const huge = "z".repeat(200_000);
+
+  const result = await runCodexProcess({
+    command: "codex",
+    args: ["exec"],
+    cwd: dir,
+    resultFile,
+    spawnImpl: () =>
+      fakeChild({
+        lines: [
+          JSON.stringify({ type: "thread.started", thread_id: "t-huge" }),
+          JSON.stringify({ type: "turn.started" }),
+          JSON.stringify({
+            type: "item.completed",
+            item: { type: "agent_message", text: huge },
+          }),
+        ],
+        // No final file, so the stream fallback stands in — the path that used to
+        // hand back 64 MB verbatim under status "completed".
+        exitCode: 1,
+      }),
+    platform: "linux",
+    heartbeatMs: 0,
+    timeoutMs: 5000,
+    maxResultBytes: 1000,
+  });
+
+  assert.equal(result.resultSource, "stream-fallback");
+  assert.equal(Buffer.byteLength(result.result, "utf8"), 1000);
+  assert.ok(
+    result.warnings.some((w) => /200000 bytes, truncated to the 1000 byte cap/.test(w)),
+    `expected a truncation warning, got ${JSON.stringify(result.warnings)}`
+  );
+});
+
+test("capResultBytes cuts on a codepoint boundary", () => {
+  // 3 bytes each: a cap of 7 has to stop at 6 rather than split the third.
+  const cut = capResultBytes("€€€", 7);
+  assert.equal(cut.text, "€€");
+  assert.ok(!cut.text.includes("�"));
+  assert.match(cut.warnings[0], /9 bytes, truncated to the 7 byte cap/);
+  assert.deepEqual(capResultBytes("€€€", 9), { text: "€€€", warnings: [] });
+});
+
+test("an oversized final result file is truncated rather than discarded", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-file-cap-"));
+  const file = path.join(dir, "out.txt");
+  await writeFile(file, "y".repeat(5000), "utf8");
+
+  const out = await readFinalResult({
+    filePath: file,
+    status: "completed",
+    exitCode: 0,
+    maxResultBytes: 100,
+  });
+
+  // Previously: result "", finalMessageAvailable false — the answer thrown away.
+  assert.equal(out.finalMessageAvailable, true);
+  assert.equal(out.result, "y".repeat(100));
+  assert.match(out.warnings[0], /5000 bytes, truncated to the 100 byte cap/);
 });
 
 test("readUsage keeps only the counts Codex actually reported", () => {

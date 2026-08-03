@@ -317,14 +317,20 @@ export async function runCodexProcess({
   // allowed to stand in for a final answer on a run that actually completed.
   let result = final.result;
   let resultSource;
+  const fallbackWarnings = [];
   if (!final.finalMessageAvailable && lastAgentMessage) {
-    result = lastAgentMessage;
+    // Capped like the file path: a run whose authoritative file is missing is the
+    // more likely one to be pathological, not the less, and this path used to
+    // hand back whatever the CLI streamed at whatever size it streamed it.
+    const capped = capResultBytes(lastAgentMessage, maxResultBytes);
+    result = capped.text;
     resultSource = "stream-fallback";
+    fallbackWarnings.push(...capped.warnings);
   }
 
   const warnings = [];
   if (agentError) warnings.push(`Codex error: ${agentError}`);
-  warnings.push(...final.warnings);
+  warnings.push(...final.warnings, ...fallbackWarnings);
   if (timedOut && timeoutReason === "startup-timeout") {
     warnings.push(
       `Codex produced no output within ${startupMs}ms of spawning. Run doctor to check the CLI resolves and is logged in; raise CODEX_DELEGATE_STARTUP_MS on a slow machine.`
@@ -367,6 +373,25 @@ export async function runCodexProcess({
     stderrBytes,
     stderrTail: status !== "completed" ? stderrTail : "",
     filesReportedByEditTools: [...reportedPaths],
+  };
+}
+
+/**
+ * Trim to a UTF-8 byte budget, backing off to a codepoint boundary so the cut
+ * cannot emit a replacement character. Discarding an oversized result — what the
+ * cap used to do — throws the answer away to punish its length; the front of it
+ * plus a warning tells the caller both what was said and that it was cut.
+ */
+export function capResultBytes(text, maxResultBytes) {
+  const value = String(text ?? "");
+  const bytes = Buffer.byteLength(value, "utf8");
+  if (!(maxResultBytes > 0) || bytes <= maxResultBytes) return { text: value, warnings: [] };
+  const buffer = Buffer.from(value, "utf8");
+  let end = maxResultBytes;
+  while (end > 0 && (buffer[end] & 0xc0) === 0x80) end -= 1;
+  return {
+    text: buffer.subarray(0, end).toString("utf8"),
+    warnings: [`Result was ${bytes} bytes, truncated to the ${maxResultBytes} byte cap.`],
   };
 }
 
@@ -452,16 +477,8 @@ export async function readFinalResult({
     };
   }
   try {
-    const result = await readFileImpl(filePath, "utf8");
-    const bytes = Buffer.byteLength(result, "utf8");
-    if (bytes > maxResultBytes) {
-      return {
-        result: "",
-        finalMessageAvailable: false,
-        warnings: [`Final result is ${bytes} bytes, over the ${maxResultBytes} byte cap.`],
-      };
-    }
-    return { result, finalMessageAvailable: true, warnings: [] };
+    const capped = capResultBytes(await readFileImpl(filePath, "utf8"), maxResultBytes);
+    return { result: capped.text, finalMessageAvailable: true, warnings: capped.warnings };
   } catch {
     return {
       result: "",
