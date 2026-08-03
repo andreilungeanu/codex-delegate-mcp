@@ -124,7 +124,10 @@ export async function runDelegateTool({
       signal: extra?.signal,
     });
     return {
-      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+      // Compact: this is the same object as structuredContent, kept only for hosts
+      // that do not read structured output, and indenting it costs ~15% of the
+      // larger of the two copies of every result.
+      content: [{ type: "text", text: JSON.stringify(result) }],
       structuredContent: result,
     };
   } catch (err) {

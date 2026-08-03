@@ -56,6 +56,27 @@ test("runDelegateTool returns structuredContent on success", async () => {
   assert.equal(response.isError, undefined);
 });
 
+test("the text copy of a result is compact", async () => {
+  const payload = {
+    result: "done",
+    status: "completed",
+    workspace: "/tmp",
+    filesReportedByEditTools: ["a.ts", "b.ts"],
+  };
+  const response = await runDelegateTool({
+    args: { spec: "hi" },
+    extra: {},
+    operationRegistry: createOperationRegistry(),
+    execute: async () => payload,
+  });
+
+  // It duplicates structuredContent for hosts that ignore structured output;
+  // indenting the larger of the two copies is pure cost.
+  assert.equal(response.content[0].text, JSON.stringify(payload));
+  assert.ok(!response.content[0].text.includes("\n"));
+  assert.deepEqual(JSON.parse(response.content[0].text), payload);
+});
+
 test("runDelegateTool returns isError payload on failure", async () => {
   const err = new Error("boom");
   err.code = "delegate_failed";
