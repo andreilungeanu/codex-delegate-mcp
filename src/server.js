@@ -13,7 +13,7 @@ import {
 } from "./command.js";
 import { executeDelegate as executeDelegateDefault } from "./delegate.js";
 import { runDoctor as runDoctorDefault } from "./doctor.js";
-import { createOperationRegistry } from "./ops.js";
+import { createOperationRegistry, DEFAULT_MAX_CONCURRENT } from "./ops.js";
 import { VERSION } from "./version.js";
 
 const nodeMajor = Number(process.versions.node.split(".")[0]);
@@ -46,6 +46,7 @@ const delegateOutputSchema = z
       ])
       .optional(),
     threadId: z.string().optional(),
+    delegationId: z.string().optional(),
     resumed: z.boolean().optional(),
     workspace: z.string(),
     cliVersion: z.string().optional(),
@@ -75,11 +76,22 @@ const delegateOutputSchema = z
   })
   .passthrough();
 
+/**
+ * A ceiling below 1 would disable the tool outright, and a non-numeric one is a
+ * typo; both fall back to the default rather than silently crippling the server.
+ *
+ * @param {NodeJS.ProcessEnv} env
+ */
+export function maxConcurrentFrom(env = process.env) {
+  const raw = Number(env.CODEX_DELEGATE_MAX_CONCURRENT);
+  return Number.isFinite(raw) && raw >= 1 ? Math.floor(raw) : DEFAULT_MAX_CONCURRENT;
+}
+
 /** @param {{ args?: any, operationRegistry: any }} params */
 export async function runCancelTool({ args = {}, operationRegistry }) {
   try {
     const result = await operationRegistry.cancel({
-      threadId: args?.threadId,
+      id: args?.delegationId || args?.threadId || null,
       cause: "user",
     });
     return {
@@ -145,10 +157,21 @@ export async function runDelegateTool({
   }
 }
 
+/**
+ * @param {{
+ *   executeDelegate?: any,
+ *   doctorRunner?: any,
+ *   operationRegistry?: any,
+ *   env?: NodeJS.ProcessEnv,
+ * }} [options]
+ */
 export function buildServer({
   executeDelegate = executeDelegateDefault,
   doctorRunner = runDoctorDefault,
-  operationRegistry = createOperationRegistry(),
+  env = process.env,
+  operationRegistry = createOperationRegistry({
+    maxConcurrent: maxConcurrentFrom(env),
+  }),
 } = {}) {
   const server = new McpServer(
     { name: "codex-delegate-mcp", version: VERSION },
@@ -220,15 +243,22 @@ export function buildServer({
     "cancel",
     {
       description:
-        "Cancel the in-flight Codex delegation owned by this server. Returns once the process has actually ended, not when the kill was requested. Optional threadId prevents cancelling a different active thread.",
+        "Cancel in-flight Codex delegations owned by this server. Returns once the processes have actually ended, not when the kill was requested. Name one with delegationId (announced in progress before the run starts, and the only handle for a run that wedges during startup) or threadId (cancels every delegation on that thread). With neither, every active delegation is cancelled.",
       inputSchema: z
         .object({
-          threadId: z.string().optional().describe("Cancel only when this thread is active"),
+          delegationId: z
+            .string()
+            .optional()
+            .describe("Cancel this one delegation, by the id announced in its progress stream"),
+          threadId: z
+            .string()
+            .optional()
+            .describe("Cancel every delegation running on this Codex thread"),
         })
         .strict(),
       outputSchema: z
         .object({
-          status: z.enum(["cancelled", "nothing-active", "not-owned"]),
+          status: z.enum(["cancelled", "nothing-active", "not-running", "not-found"]),
         })
         .passthrough(),
       annotations: {

@@ -1,59 +1,152 @@
+import path from "node:path";
+import { randomUUID } from "node:crypto";
+
 /**
- * Owns at most one in-flight delegate. Cancel can run while delegate awaits.
+ * Each delegation is a whole Codex process competing for the same account quota,
+ * so the ceiling is deliberately low. Raise it with CODEX_DELEGATE_MAX_CONCURRENT
+ * when the workers are genuinely independent.
+ */
+export const DEFAULT_MAX_CONCURRENT = 3;
+
+/**
+ * Thread ids are remembered after their run ends so cancel can tell a finished
+ * thread (over, but still resumable) from an id that never existed. Bounded so a
+ * long-lived server does not grow without limit.
+ */
+const SEEN_THREAD_CAP = 500;
+
+/**
+ * Owns the in-flight delegations. Cancel can run while delegate awaits.
+ *
+ * Two structures, not one: `#active` is keyed by a delegation id this server
+ * mints, because that id exists from the moment a run is acquired, while Codex's
+ * thread id only arrives once the child announces it — a run that wedges before
+ * then would otherwise have no handle at all. `#byThread` maps thread id to a
+ * *set* of delegation ids, because a resume shares its thread id with the turn it
+ * resumes: both are live, both are cancellable, and storing one delegation per
+ * thread id would let whichever finished first deregister the other.
  */
 export class OperationRegistry {
-  #active = null;
+  /** @type {Map<string, any>} */
+  #active = new Map();
+  /** @type {Map<string, Set<string>>} */
+  #byThread = new Map();
+  /** @type {Set<string>} */
+  #seenThreads = new Set();
+  #maxConcurrent;
 
-  /** @param {{ threadId?: string | null, cancel?: Function }} [options] */
-  acquire({ threadId = null, cancel } = {}) {
+  /** @param {{ maxConcurrent?: number }} [options] */
+  constructor({ maxConcurrent = DEFAULT_MAX_CONCURRENT } = {}) {
+    this.#maxConcurrent = maxConcurrent > 0 ? Math.floor(maxConcurrent) : 1;
+  }
+
+  get maxConcurrent() {
+    return this.#maxConcurrent;
+  }
+
+  /** @param {{ threadId?: string | null, workspace?: string | null, cancel?: Function }} [options] */
+  acquire({ threadId = null, workspace = null, cancel } = {}) {
     if (typeof cancel !== "function") throw new TypeError("cancel must be a function");
-    if (this.#active) {
+    if (this.#active.size >= this.#maxConcurrent) {
       const err = /** @type {Error & { code?: string, details?: any }} */ (
-        new Error("Another Codex delegation is already active.")
+        new Error(
+          `Too many active Codex delegations (${this.#active.size} of ${this.#maxConcurrent}). Wait for one to finish or cancel it.`
+        )
       );
-      err.code = "operation_in_progress";
-      err.details = { threadId: this.#active.threadId };
+      err.code = "too_many_active";
+      err.details = { active: this.#describeActive(), maxConcurrent: this.#maxConcurrent };
       throw err;
     }
+
+    const warnings = this.#overlapWarnings(workspace);
+    const delegationId = randomUUID();
     const record = {
+      delegationId,
       threadId: threadId || null,
+      workspace: workspace || null,
       cancel,
       cancelPromise: null,
       cancellation: null,
     };
-    this.#active = record;
+    this.#active.set(delegationId, record);
+    this.#indexThread(record);
+
     return {
+      delegationId,
+      warnings,
+      /** @param {string} id */
       updateThreadId: (id) => {
-        if (this.#active === record && id) record.threadId = id;
+        if (!id || this.#active.get(delegationId) !== record) return;
+        record.threadId = id;
+        this.#indexThread(record);
       },
       getCancellation: () => record.cancellation,
       release: () => {
-        if (this.#active === record) this.#active = null;
+        if (this.#active.get(delegationId) !== record) return;
+        this.#active.delete(delegationId);
+        this.#deindexThread(record);
       },
     };
   }
 
-  /** @param {{ threadId?: string | null, cause?: string }} [options] */
-  async cancel({ threadId, cause = "user" } = {}) {
-    const active = this.#active;
-    if (!active) return { status: "nothing-active" };
-    if (threadId) {
-      // Require an exact match. If the active turn has not published a thread id
-      // yet, a caller-supplied id cannot be trusted (could be stale from a prior turn).
-      if (active.threadId !== threadId) {
-        return { status: "not-owned", threadId, activeThreadId: active.threadId };
-      }
+  /**
+   * `id` names either a delegation id or a Codex thread id; a thread id cancels
+   * every delegation running on it. Omitting it cancels everything active — with a
+   * single run that is exactly the old behaviour, and with several there is no
+   * defensible way to pick one.
+   *
+   * @param {{ id?: string | null, threadId?: string | null, cause?: string }} [options]
+   */
+  async cancel({ id = null, threadId = null, cause = "user" } = {}) {
+    const wanted = id || threadId || null;
+
+    if (!wanted) {
+      if (this.#active.size === 0) return { status: "nothing-active" };
+      const targets = [...this.#active.values()];
+      await Promise.all(targets.map((record) => this.#cancelOne(record, cause)));
+      return { status: "cancelled", cause, cancelled: targets.map(summarize) };
     }
-    if (!active.cancelPromise) {
-      active.cancellation = { status: "cancelling", cause };
-      active.cancelPromise = Promise.resolve()
-        .then(() => active.cancel({ cause }))
+
+    const targets = this.#resolveTargets(wanted);
+    if (targets.length === 0) {
+      // A finished thread and a garbage id used to be indistinguishable, which read
+      // as "bad id" for a thread that ran fine and is still resumable. Split them.
+      const known = this.#seenThreads.has(wanted);
+      return { status: known ? "not-running" : "not-found", id: wanted };
+    }
+    await Promise.all(targets.map((record) => this.#cancelOne(record, cause)));
+    return { status: "cancelled", cause, id: wanted, cancelled: targets.map(summarize) };
+  }
+
+  snapshot() {
+    if (this.#active.size === 0) return { active: false };
+    return {
+      active: true,
+      count: this.#active.size,
+      maxConcurrent: this.#maxConcurrent,
+      delegations: this.#describeActive(),
+    };
+  }
+
+  #describeActive() {
+    return [...this.#active.values()].map((record) => ({
+      ...summarize(record),
+      workspace: record.workspace,
+      cancellation: record.cancellation,
+    }));
+  }
+
+  /** @param {any} record */
+  #cancelOne(record, cause) {
+    if (!record.cancelPromise) {
+      record.cancellation = { status: "cancelling", cause };
+      record.cancelPromise = Promise.resolve()
+        .then(() => record.cancel({ cause }))
         .then(() => {
-          active.cancellation = { status: "cancelled", cause };
-          return { status: "cancelled", threadId: active.threadId, cause };
+          record.cancellation = { status: "cancelled", cause };
         })
         .catch((err) => {
-          active.cancellation = {
+          record.cancellation = {
             status: "failed",
             cause,
             message: err?.message || String(err),
@@ -61,19 +154,82 @@ export class OperationRegistry {
           throw err;
         });
     }
-    return active.cancelPromise;
+    return record.cancelPromise;
   }
 
-  snapshot() {
-    if (!this.#active) return { active: false };
-    return {
-      active: true,
-      threadId: this.#active.threadId,
-      cancellation: this.#active.cancellation,
-    };
+  /** @param {string} wanted */
+  #resolveTargets(wanted) {
+    const direct = this.#active.get(wanted);
+    if (direct) return [direct];
+    const ids = this.#byThread.get(wanted);
+    if (!ids) return [];
+    return [...ids].map((did) => this.#active.get(did)).filter(Boolean);
+  }
+
+  /** @param {any} record */
+  #indexThread(record) {
+    if (!record.threadId) return;
+    const ids = this.#byThread.get(record.threadId);
+    if (ids) ids.add(record.delegationId);
+    else this.#byThread.set(record.threadId, new Set([record.delegationId]));
+    this.#rememberThread(record.threadId);
+  }
+
+  /** @param {any} record */
+  #deindexThread(record) {
+    if (!record.threadId) return;
+    const ids = this.#byThread.get(record.threadId);
+    if (!ids) return;
+    ids.delete(record.delegationId);
+    if (ids.size === 0) this.#byThread.delete(record.threadId);
+  }
+
+  /** @param {string} threadId */
+  #rememberThread(threadId) {
+    if (this.#seenThreads.has(threadId)) return;
+    this.#seenThreads.add(threadId);
+    if (this.#seenThreads.size > SEEN_THREAD_CAP) {
+      this.#seenThreads.delete(this.#seenThreads.values().next().value);
+    }
+  }
+
+  /**
+   * Two agents writing one tree clobber each other, and neither the bridge nor the
+   * git diff can say which one did what. Worth saying out loud; not worth refusing,
+   * because two read-only runs over the same tree are perfectly reasonable.
+   *
+   * @param {string | null} workspace
+   */
+  #overlapWarnings(workspace) {
+    if (!workspace) return [];
+    const warnings = [];
+    for (const record of this.#active.values()) {
+      if (!record.workspace || !overlaps(record.workspace, workspace)) continue;
+      warnings.push(
+        `Another delegation is already running in an overlapping workspace (${record.workspace}). Concurrent agents writing one tree overwrite each other, and the git diff cannot say which one did what.`
+      );
+      break;
+    }
+    return warnings;
   }
 }
 
-export function createOperationRegistry() {
-  return new OperationRegistry();
+/** @param {any} record */
+function summarize(record) {
+  return { delegationId: record.delegationId, threadId: record.threadId };
+}
+
+/** True when either path is the other, or contains it. */
+function overlaps(a, b) {
+  const left = path.resolve(a);
+  const right = path.resolve(b);
+  if (left === right) return true;
+  const rel = path.relative(left, right);
+  const inside = (r) => r !== "" && !r.startsWith("..") && !path.isAbsolute(r);
+  return inside(rel) || inside(path.relative(right, left));
+}
+
+/** @param {{ maxConcurrent?: number }} [options] */
+export function createOperationRegistry(options = {}) {
+  return new OperationRegistry(options);
 }

@@ -4,13 +4,14 @@ import {
   buildServer,
   runDelegateTool,
   runCancelTool,
+  maxConcurrentFrom,
   SERVER_INSTRUCTIONS,
 } from "../src/server.js";
 import {
   DEFAULT_MODEL,
   DEFAULT_REASONING_EFFORT,
 } from "../src/command.js";
-import { createOperationRegistry } from "../src/ops.js";
+import { createOperationRegistry, DEFAULT_MAX_CONCURRENT } from "../src/ops.js";
 import { executeDelegate } from "../src/delegate.js";
 
 test("buildServer registers delegate, cancel, doctor", () => {
@@ -92,7 +93,7 @@ test("runDelegateTool returns isError payload on failure", async () => {
   assert.match(response.content[0].text, /boom/);
 });
 
-test("runCancelTool statuses: nothing-active, cancelled, not-owned", async () => {
+test("runCancelTool statuses: nothing-active, not-found, cancelled", async () => {
   const registry = createOperationRegistry();
 
   const idle = await runCancelTool({ args: {}, operationRegistry: registry });
@@ -107,17 +108,36 @@ test("runCancelTool statuses: nothing-active, cancelled, not-owned", async () =>
     args: { threadId: "other-tid" },
     operationRegistry: registry,
   });
-  assert.equal(wrong.structuredContent.status, "not-owned");
-  assert.equal(wrong.structuredContent.activeThreadId, "owned-tid");
+  assert.equal(wrong.structuredContent.status, "not-found");
 
   const cancelled = await runCancelTool({
     args: { threadId: "owned-tid" },
     operationRegistry: registry,
   });
   assert.equal(cancelled.structuredContent.status, "cancelled");
-  assert.equal(cancelled.structuredContent.threadId, "owned-tid");
+  assert.deepEqual(cancelled.structuredContent.cancelled, [
+    { delegationId: lease.delegationId, threadId: "owned-tid" },
+  ]);
   assert.match(cancelled.content[0].text, /cancelled/);
 
+  lease.release();
+});
+
+test("runCancelTool cancels by delegationId before a thread id exists", async () => {
+  const registry = createOperationRegistry();
+  let cancelled = false;
+  const lease = registry.acquire({
+    cancel: async () => {
+      cancelled = true;
+    },
+  });
+
+  const out = await runCancelTool({
+    args: { delegationId: lease.delegationId },
+    operationRegistry: registry,
+  });
+  assert.equal(out.structuredContent.status, "cancelled");
+  assert.equal(cancelled, true);
   lease.release();
 });
 
@@ -189,4 +209,15 @@ test("an unknowable exit code does not cost the caller the whole result", async 
   assert.equal(payload.threadId, "thr_immortal");
   assert.deepEqual(payload.filesReportedByEditTools, ["important.ts"]);
   assert.equal(payload.warnings.length, 1);
+});
+
+test("the concurrency ceiling comes from the environment, and typos do not cripple it", () => {
+  assert.equal(maxConcurrentFrom({}), DEFAULT_MAX_CONCURRENT);
+  assert.equal(maxConcurrentFrom({ CODEX_DELEGATE_MAX_CONCURRENT: "5" }), 5);
+  assert.equal(maxConcurrentFrom({ CODEX_DELEGATE_MAX_CONCURRENT: "2.7" }), 2);
+  // A ceiling below one would disable the tool outright; a typo is not consent to that.
+  assert.equal(maxConcurrentFrom({ CODEX_DELEGATE_MAX_CONCURRENT: "0" }), DEFAULT_MAX_CONCURRENT);
+  assert.equal(maxConcurrentFrom({ CODEX_DELEGATE_MAX_CONCURRENT: "-3" }), DEFAULT_MAX_CONCURRENT);
+  assert.equal(maxConcurrentFrom({ CODEX_DELEGATE_MAX_CONCURRENT: "lots" }), DEFAULT_MAX_CONCURRENT);
+  assert.equal(maxConcurrentFrom({ CODEX_DELEGATE_MAX_CONCURRENT: "" }), DEFAULT_MAX_CONCURRENT);
 });

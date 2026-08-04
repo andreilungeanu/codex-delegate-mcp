@@ -50,7 +50,8 @@ You  →  your agent (plans & reviews)
 - 💬 **Ask anything** — `ask` mode: read-only Q&A over your codebase, zero file changes.
 - 🕵️ **Native code review** — `review` mode runs Codex's own reviewer over uncommitted work, a base branch, or a single commit.
 - 🧵 **Resume** — continue the same Codex thread with `resumeThreadId`, and get told if the context didn't actually carry over.
-- 🛑 **Cancel that means it** — process-tree kill across platforms, and `cancel` returns once the process has *ended*, not once the kill was requested.
+- 🛑 **Cancel that means it** — process-tree kill across platforms, and `cancel` returns once the process has *ended*, not once the kill was requested. Name one run by `delegationId`, a whole thread by `threadId`, or cancel everything.
+- 🧑‍🤝‍🧑 **Several at once** — up to three delegations run in parallel: fan a question out across models, or put independent workers on independent directories. Overlapping workspaces warn, because two agents writing one tree overwrite each other.
 - 📊 **Token accounting** — per-turn input, cached, output, and reasoning counts, straight from Codex.
 - 🩺 **Self-diagnosing** — a `doctor` tool that tells you exactly what's missing if setup isn't right.
 - 🔌 **Works everywhere MCP does** — VS Code, JetBrains, Windsurf, Visual Studio, and more.

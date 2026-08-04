@@ -102,14 +102,18 @@ test("ask must not receive --output-schema even if a schema path is passed", () 
 
 // --- Cancel ownership edge cases ---
 
-test("cancel with threadId while active thread is still unknown is not-owned", async () => {
+test("a stale threadId cancels nothing while the active thread is still unknown", async () => {
   const reg = createOperationRegistry();
+  let hits = 0;
   const lease = reg.acquire({
     threadId: null,
-    cancel: async () => {},
+    cancel: async () => {
+      hits += 1;
+    },
   });
   const result = await reg.cancel({ threadId: "stale-from-previous-turn" });
-  assert.equal(result.status, "not-owned");
+  assert.equal(result.status, "not-found");
+  assert.equal(hits, 0);
   lease.release();
 });
 

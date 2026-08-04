@@ -371,3 +371,94 @@ test("a malformed timeout knob falls back instead of arming a broken deadline", 
   assert.equal(envMs("250", 5000), 250);
   assert.equal(envMs("0", 5000), 0);
 });
+
+test("the delegation id is announced before the run and returned with it", async () => {
+  const progress = [];
+  const result = await executeDelegate(
+    { spec: "x", mode: "ask", workspace: process.cwd() },
+    { ...delegateOptions("thread-1"), onProgress: (m) => progress.push(m) }
+  );
+
+  assert.ok(result.delegationId);
+  // First, so a caller has a cancel handle for a run that wedges before Codex
+  // ever announces a thread id.
+  assert.equal(progress[0], `delegation id: ${result.delegationId}`);
+});
+
+test("two delegations in one workspace warn about clobbering each other", async () => {
+  const registry = createOperationRegistry();
+  const options = { ...delegateOptions("thread-1"), operationRegistry: registry };
+
+  let releaseFirst;
+  const firstRunning = new Promise((resolve) => {
+    releaseFirst = resolve;
+  });
+  const first = executeDelegate(
+    { spec: "x", mode: "agent", workspace: process.cwd() },
+    {
+      ...options,
+      runProcess: async () => {
+        await firstRunning;
+        return {
+          status: "completed",
+          exitCode: 0,
+          threadId: "thread-1",
+          result: "done",
+          finalMessageAvailable: true,
+          warnings: [],
+          filesReportedByEditTools: [],
+        };
+      },
+    }
+  );
+  // Let the first delegation reach the registry before the second asks for a slot.
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const second = await executeDelegate(
+    { spec: "y", mode: "agent", workspace: process.cwd() },
+    options
+  );
+  assert.match(second.warnings?.join(" ") ?? "", /overlapping workspace/);
+
+  releaseFirst();
+  const firstResult = await first;
+  // The first delegation was alone when it started, so it says nothing.
+  assert.equal(firstResult.warnings, undefined);
+});
+
+test("delegations past the ceiling are refused, not queued", async () => {
+  const registry = createOperationRegistry({ maxConcurrent: 1 });
+  const options = { ...delegateOptions("thread-1"), operationRegistry: registry };
+
+  let releaseFirst;
+  const firstRunning = new Promise((resolve) => {
+    releaseFirst = resolve;
+  });
+  const first = executeDelegate(
+    { spec: "x", mode: "ask", workspace: process.cwd() },
+    {
+      ...options,
+      runProcess: async () => {
+        await firstRunning;
+        return {
+          status: "completed",
+          exitCode: 0,
+          threadId: "thread-1",
+          result: "done",
+          finalMessageAvailable: true,
+          warnings: [],
+          filesReportedByEditTools: [],
+        };
+      },
+    }
+  );
+  await new Promise((resolve) => setImmediate(resolve));
+
+  await assert.rejects(
+    () => executeDelegate({ spec: "y", mode: "ask", workspace: process.cwd() }, options),
+    (err) => err.code === "too_many_active"
+  );
+
+  releaseFirst();
+  await first;
+});

@@ -22,9 +22,30 @@ negative value falls back to its default rather than arming a guard that fails e
 | `CODEX_DELEGATE_HARD_CAP_MS` | `3600000` | Whole run; a per-call `timeoutMs` overrides it. |
 | `CODEX_DELEGATE_HEARTBEAT_MS` | `30000` | Progress heartbeat while quiet. `0` disables. |
 | `CODEX_DELEGATE_WINDOWS_SANDBOX` | `unelevated` | Windows sandbox mode: `unelevated`, `elevated`, or `off`. |
+| `CODEX_DELEGATE_MAX_CONCURRENT` | `3` | How many delegations may run at once. See below. |
 
 `CODEX_DELEGATE_DEPTH` is set on the child process as a recursion marker. If it is already set
 when `delegate` is called, the call is refused — a delegated agent must not spawn another one.
+
+## Running several at once
+
+Up to three delegations run concurrently by default. Each is a whole Codex process drawing on
+the same account, so the ceiling is deliberately low; raise it with
+`CODEX_DELEGATE_MAX_CONCURRENT` when the workers are genuinely independent. A call past the
+ceiling is refused with `too_many_active` rather than queued — the caller decides whether to
+wait or to cancel something.
+
+Concurrency is only safe across **disjoint workspaces**. Two agents writing one tree overwrite
+each other, and the git diff cannot say which one did what. Starting a delegation while another
+is running in the same directory, or in one that contains it, adds a warning to the result; it
+is not refused, because several read-only runs over one tree are perfectly reasonable.
+
+Every run announces a `delegationId` in its progress stream before it spawns, and returns it
+with the result. That is the handle `cancel` takes, and it is the only one that exists while a
+run is still starting up — Codex does not publish a thread id until the child is up, so a run
+that wedges during launch has nothing else to name it. `cancel` also accepts a `threadId`, which
+cancels every delegation on that thread (a resume and the turn it resumes share one). With
+neither, it cancels everything active.
 
 ## Network
 

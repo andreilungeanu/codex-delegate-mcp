@@ -154,8 +154,8 @@ export async function runCodexProcess({
   let killEscaped = false;
   /**
    * treeKill is best effort — taskkill can report success and leave the tree up.
-   * Without this the close we await never arrives and the delegation, and the
-   * single-slot registry behind it, wedge for the life of the process.
+   * Without this the close we await never arrives and the delegation wedges for
+   * the life of the process, holding its slot in the registry with it.
    */
   const armKillDeadline = () => {
     if (killTimer || killDeadlineMs <= 0) return;

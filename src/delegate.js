@@ -56,6 +56,7 @@ export async function executeDelegate(rawArgs, options = {}) {
   const tmp = await mkdtemp(path.join(tmpdir(), "codex-delegate-"));
   let processResult;
   let cancellation;
+  let delegationId;
   try {
     const resultFile = path.join(tmp, "last-message.txt");
     let outputSchemaFile = null;
@@ -95,11 +96,18 @@ export async function executeDelegate(rawArgs, options = {}) {
 
     const lease = operationRegistry.acquire({
       threadId: request.resumeThreadId || null,
+      workspace: request.workspace,
       cancel: async () => {
         controller.abort(new Error("cancelled"));
         await settled;
       },
     });
+    warnings.push(...(lease.warnings || []));
+    // Announced before the spawn, and before Codex has a thread id to announce:
+    // this is the only handle a caller has for cancelling a run that wedges during
+    // startup, and it arrives too late to be useful if it waits for the result.
+    delegationId = lease.delegationId;
+    onProgress?.(`delegation id: ${lease.delegationId}`);
 
     try {
       processResult = await runProcess({
@@ -174,6 +182,7 @@ export async function executeDelegate(rawArgs, options = {}) {
     status: processResult.status,
     reason: processResult.reason ?? (lateCancel ? "cancelled" : undefined),
     threadId: processResult.threadId || undefined,
+    delegationId,
     resumed: request.resumeThreadId ? resumed : undefined,
     workspace: request.workspace,
     cliVersion: codex.version,
