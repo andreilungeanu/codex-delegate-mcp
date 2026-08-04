@@ -1,10 +1,10 @@
 import process from "node:process";
 import { execFile } from "node:child_process";
-import { statSync, existsSync } from "node:fs";
-import path from "node:path";
+import { statSync } from "node:fs";
 import { promisify } from "node:util";
 import { refreshCodex, MIN_VERSION, clearCodexCache } from "./resolve-codex.js";
 import { resolveWindowsSandbox, WINDOWS_SANDBOX_MODES } from "./command.js";
+import { isGitRepo } from "./git-preflight.js";
 import { VERSION } from "./version.js";
 
 const execFileAsync = promisify(execFile);
@@ -68,7 +68,7 @@ export async function runDoctor({
     versionGate: { minimum: MIN_VERSION, status: codex.found ? "ok" : "unresolved" },
     login,
     recursionGuard: recursion,
-    workspace: describeWorkspace(workspace, warnings),
+    workspace: await describeWorkspace(workspace, warnings, execFileImpl),
     sandbox,
     runtime: {
       node: process.versions.node,
@@ -92,7 +92,7 @@ export async function runDoctor({
  * looked healthy here and failed on the next delegate call. `review` additionally
  * needs a repository, which is worth saying before a review is attempted.
  */
-function describeWorkspace(workspace, warnings) {
+async function describeWorkspace(workspace, warnings, execFileImpl) {
   const out = { path: workspace };
   let stat = null;
   try {
@@ -105,7 +105,12 @@ function describeWorkspace(workspace, warnings) {
   } else if (!out.isDirectory) {
     warnings.push(`workspace is not a directory: ${workspace}`);
   } else {
-    out.isGitRepo = existsSync(path.join(workspace, ".git"));
+    // Asking git rather than looking for a .git entry: the answer has to match the
+    // review preflight's, and the workspace the skill tells callers to pass is the
+    // smallest directory that fits the task — usually a subdirectory, where a
+    // .git lookup says "not a repository" about a perfectly reviewable path.
+    const repo = await isGitRepo(workspace, execFileImpl);
+    if (repo !== null) out.isGitRepo = repo;
   }
   return out;
 }
