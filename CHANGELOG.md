@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.14.1] - 2026-08-04
+
+### Fixed
+
+- Two tests passed only on Windows and only from a short checkout path: one asserted a
+  Windows-only sandbox warning, the other capped the plan-mode result at a byte budget the
+  workspace path counted against. `executeDelegate` now takes the platform as an option, like the
+  rest of the code already did, and the plan test counts occurrences instead of bytes. No behaviour
+  change.
+
+### Documentation
+
+- `SECURITY.md` covers concurrent delegations (safe only across disjoint workspaces) and the brief
+  now travelling on stdin, with `review` still the exception.
+
 ## [1.14.0] - 2026-08-04
 
 One delegation at a time became several, and the brief stopped travelling on the command line.
