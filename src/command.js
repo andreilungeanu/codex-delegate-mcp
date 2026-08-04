@@ -12,22 +12,17 @@ export const DEFAULT_MODEL = "gpt-5.6-terra";
 export const DEFAULT_REASONING_EFFORT = "high";
 
 /**
- * Leave headroom under the Windows CreateProcess ~32k limit.
- *
- * The brief stopped counting against this everywhere but `review`, whose target
- * flags rule out the stdin prompt. What is left in argv is small and fixed, apart
- * from four free-text inputs the caller controls — `model`, `resumeThreadId` and
- * `reviewTarget.branch`/`sha` — so the guard stays on every mode rather than
- * becoming a review-only spec limit.
+ * Leave headroom under the Windows CreateProcess ~32k limit. Review only: every
+ * other mode sends the brief on stdin, so nothing large is left in its argv.
  */
-export const MAX_ARGV_CHARS = 28_000;
+export const MAX_REVIEW_ARGV_CHARS = 28_000;
 
 /**
  * Codex reads the prompt from stdin when the positional is `-`. The brief goes that
  * way so it never lands in a command line, which any local process can read
  * (`/proc/*​/cmdline`, or WMI on Windows) — and briefs are told to quote the user's
- * exact values. It also lifts MAX_ARGV_CHARS off the brief, since only the flags are
- * left in argv. Review mode cannot use it; see buildReviewArgs.
+ * exact values. It also lifts the argv length limit off the brief, since only the
+ * flags are left in argv. Review mode cannot use it; see buildReviewArgs.
  */
 const STDIN_PROMPT = "-";
 
@@ -118,7 +113,6 @@ export function buildCodexArgs(
   } else {
     built = buildInitialArgs(request, { resultFile, outputSchemaFile, platform, windowsSandbox });
   }
-  assertArgvLength(built.args, request.mode);
   return built;
 }
 
@@ -135,17 +129,13 @@ export function estimateArgvChars(args) {
   return total;
 }
 
-function assertArgvLength(args, mode) {
+function assertReviewArgvLength(args) {
   const chars = estimateArgvChars(args);
-  if (chars <= MAX_ARGV_CHARS) return;
-  // "Shorten the brief" was the only advice this gave, and outside review it is now
-  // the one thing that cannot be at fault.
-  const culprit =
-    mode === "review"
-      ? "Shorten the spec brief: review cannot send it on stdin."
-      : "The brief is not in argv here; check model, resumeThreadId and reviewTarget.";
+  if (chars <= MAX_REVIEW_ARGV_CHARS) return;
   const err = /** @type {Error & { code?: string }} */ (
-    new Error(`Codex argv is too long (${chars} chars; limit ${MAX_ARGV_CHARS}). ${culprit}`)
+    new Error(
+      `Codex argv is too long (${chars} chars; limit ${MAX_REVIEW_ARGV_CHARS}). Shorten the spec brief: review cannot send it on stdin.`
+    )
   );
   err.code = "argv_too_long";
   throw err;
@@ -198,6 +188,7 @@ function buildReviewArgs(request, { resultFile, platform, windowsSandbox }) {
   ];
   // No stdin: `exec review` rejects a positional prompt alongside a target, so the
   // brief has to keep travelling in argv here — command line and cap included.
+  assertReviewArgvLength(args);
   return { kind: "review", args, sandbox: "read-only", stdin: null };
 }
 

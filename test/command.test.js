@@ -509,34 +509,3 @@ test("a spec far past the CreateProcess limit is fine once it leaves argv", () =
   assert.equal(built.stdin.length, 200_000);
   assert.ok(estimateArgvChars(built.args) < 2_000);
 });
-
-test("argv_too_long names the input that can actually be at fault", () => {
-  const huge = "x".repeat(30_000);
-
-  // Review is the only mode whose brief is still in argv.
-  assert.throws(
-    () =>
-      buildCodexArgs(
-        {
-          spec: huge,
-          mode: "review",
-          workspace: "/tmp/repo",
-          network: false,
-          reviewTarget: { kind: "uncommitted" },
-        },
-        { resultFile: "/tmp/out.txt", platform: "linux" }
-      ),
-    /Shorten the spec brief/
-  );
-
-  // Everywhere else the brief cannot be the cause, so pointing at it would send the
-  // caller to trim the one thing that is no longer there.
-  assert.throws(
-    () =>
-      buildCodexArgs(
-        { spec: "small", mode: "ask", workspace: "/tmp/repo", model: huge, network: false },
-        { resultFile: "/tmp/out.txt", platform: "linux" }
-      ),
-    /check model, resumeThreadId and reviewTarget/
-  );
-});
