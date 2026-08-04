@@ -224,8 +224,15 @@ test("the temp directory is removed when argv construction throws", async () => 
   const before = (await readdir(tmpdir())).filter((n) => n.startsWith("codex-delegate-")).length;
   await assert.rejects(
     executeDelegate(
-      { spec: "x".repeat(40_000), workspace: process.cwd() },
-      delegateOptions("tid-big")
+      {
+        // Only review still builds the brief into argv, so it is the only mode left
+        // that can fail this way.
+        spec: "x".repeat(40_000),
+        mode: "review",
+        reviewTarget: { kind: "uncommitted" },
+        workspace: process.cwd(),
+      },
+      { ...delegateOptions("tid-big"), preflight: async () => {} }
     ),
     /argv is too long/
   );

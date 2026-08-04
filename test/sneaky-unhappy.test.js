@@ -55,21 +55,25 @@ test("whitespace-only model is rejected; blank reasoningEffort falls back", () =
   assert.equal(req.reasoningEffort, "high");
 });
 
-test("spec that looks like CLI flags stays after -- separator", () => {
-  const { args } = buildCodexArgs(
+test("a spec that looks like CLI flags never reaches argv at all", () => {
+  const spec = "--json --help; rm -rf /";
+  const { args, stdin } = buildCodexArgs(
     {
-      spec: "--json --help; rm -rf /",
+      spec,
       mode: "ask",
       workspace: "/tmp/r",
       network: false,
     },
     { resultFile: "/tmp/o.txt", platform: "linux" }
   );
+  // It travels on stdin now, which is a stronger guarantee than a `--` separator:
+  // there is no token for Codex to reinterpret, and nothing for another process on
+  // the machine to read out of the command line.
+  assert.equal(stdin, spec);
+  assert.ok(!args.includes(spec));
   const sep = args.indexOf("--");
   assert.ok(sep > 0);
-  assert.equal(args[sep + 1], "--json --help; rm -rf /");
-  // Ensure we did not inject the spec as an earlier flag-bearing token alone.
-  assert.equal(args.indexOf("--json --help; rm -rf /"), sep + 1);
+  assert.equal(args[sep + 1], "-");
 });
 
 test("resume does not pass --cd (cwd is the workspace contract)", () => {

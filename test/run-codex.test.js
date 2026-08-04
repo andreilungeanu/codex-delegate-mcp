@@ -4,7 +4,7 @@ import { EventEmitter } from "node:events";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { Readable } from "node:stream";
+import { Readable, Writable } from "node:stream";
 import {
   capResultBytes,
   describeFailedItem,
@@ -1010,4 +1010,112 @@ test("runCodexProcess does not time out a silent mid-turn run", async () => {
   assert.equal(result.status, "completed");
   assert.equal(result.reason, undefined);
   assert.equal(result.result, "quiet but fine");
+});
+
+/**
+ * The brief travels on stdin so it never lands in a command line. That adds the one
+ * pipe the run has to close itself: the delegation waits for the child's 'close',
+ * which does not arrive while any stdio pipe is still open.
+ */
+function stdinChild({ lines = [], exitCode = 0, writeResult, stdinImpl } = {}) {
+  const child = new EventEmitter();
+  child.pid = 4243;
+  child.stdout = Readable.from(lines.map((l) => `${l}\n`));
+  child.stderr = Readable.from([]);
+  child.exitCode = null;
+  child.signalCode = null;
+  child.stdin = stdinImpl ?? new Writable({ write: (_c, _e, cb) => cb() });
+  child.stdin.written = "";
+  queueMicrotask(async () => {
+    if (writeResult) await writeResult();
+    child.exitCode = exitCode;
+    child.emit("close", exitCode);
+  });
+  return child;
+}
+
+test("the spec is written to stdin, and the pipe is closed rather than left open", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-stdin-"));
+  const resultFile = path.join(dir, "last.txt");
+  const chunks = [];
+  let ended = false;
+  const sink = new Writable({
+    write(chunk, _enc, cb) {
+      chunks.push(chunk.toString("utf8"));
+      cb();
+    },
+  });
+  sink.on("finish", () => {
+    ended = true;
+  });
+
+  let sawStdio;
+  const out = await runCodexProcess({
+    command: "codex",
+    args: ["exec", "--", "-"],
+    cwd: dir,
+    resultFile,
+    stdin: "the whole brief",
+    spawnImpl: (_cmd, _args, opts) => {
+      sawStdio = opts.stdio;
+      return stdinChild({
+        lines: ['{"type":"thread.started","thread_id":"t-stdin"}'],
+        stdinImpl: sink,
+        writeResult: () => writeFile(resultFile, "OK", "utf8"),
+      });
+    },
+  });
+
+  assert.equal(sawStdio[0], "pipe");
+  assert.equal(chunks.join(""), "the whole brief");
+  assert.equal(ended, true);
+  assert.equal(out.status, "completed");
+  assert.equal(out.threadId, "t-stdin");
+});
+
+test("stdin stays closed when there is nothing to send", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-nostdin-"));
+  const resultFile = path.join(dir, "last.txt");
+  let sawStdio;
+
+  // Review mode sends no stdin; inheriting the parent's would feed the MCP channel
+  // straight into the prompt.
+  const out = await runCodexProcess({
+    command: "codex",
+    args: ["exec", "review"],
+    cwd: dir,
+    resultFile,
+    spawnImpl: (_cmd, _args, opts) => {
+      sawStdio = opts.stdio;
+      return fakeChild({ writeResult: () => writeFile(resultFile, "OK", "utf8") });
+    },
+  });
+
+  assert.equal(sawStdio[0], "ignore");
+  assert.equal(out.status, "completed");
+});
+
+test("a child that dies mid-write does not take the server down with it", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-epipe-"));
+  const resultFile = path.join(dir, "last.txt");
+  // EPIPE on a stream with no error listener is an unhandled 'error' event, which
+  // is fatal to the process, not to the run.
+  const exploding = new Writable({
+    write(_chunk, _enc, cb) {
+      cb(Object.assign(new Error("write EPIPE"), { code: "EPIPE" }));
+    },
+  });
+
+  const out = await runCodexProcess({
+    command: "codex",
+    args: ["exec", "--", "-"],
+    cwd: dir,
+    resultFile,
+    stdin: "brief that never lands",
+    spawnImpl: () =>
+      stdinChild({ stdinImpl: exploding, exitCode: 1 }),
+  });
+
+  assert.equal(out.status, "failed");
+  assert.equal(out.exitCode, 1);
 });

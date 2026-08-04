@@ -15,6 +15,15 @@ export const DEFAULT_REASONING_EFFORT = "high";
 export const MAX_ARGV_CHARS = 28_000;
 
 /**
+ * Codex reads the prompt from stdin when the positional is `-`. The brief goes that
+ * way so it never lands in a command line, which any local process can read
+ * (`/proc/*​/cmdline`, or WMI on Windows) — and briefs are told to quote the user's
+ * exact values. It also lifts MAX_ARGV_CHARS off the brief, since only the flags are
+ * left in argv. Review mode cannot use it; see buildReviewArgs.
+ */
+const STDIN_PROMPT = "-";
+
+/**
  * Windows only, and not optional: --ignore-user-config strips the user's own
  * [windows] setting, and Codex without one degrades workspace-write to read-only,
  * so agent mode cannot write at all. The default was `elevated`, which needs an
@@ -142,9 +151,9 @@ function buildInitialArgs(request, { resultFile, outputSchemaFile, platform, win
     request.workspace,
     "--skip-git-repo-check",
     "--",
-    request.spec,
+    STDIN_PROMPT,
   ];
-  return { kind: "initial", args, sandbox };
+  return { kind: "initial", args, sandbox, stdin: request.spec };
 }
 
 function buildResumeArgs(request, { resultFile, outputSchemaFile, platform, windowsSandbox }) {
@@ -158,9 +167,9 @@ function buildResumeArgs(request, { resultFile, outputSchemaFile, platform, wind
     "--skip-git-repo-check",
     request.resumeThreadId,
     "--",
-    request.spec,
+    STDIN_PROMPT,
   ];
-  return { kind: "resume", args, sandbox };
+  return { kind: "resume", args, sandbox, stdin: request.spec };
 }
 
 function buildReviewArgs(request, { resultFile, platform, windowsSandbox }) {
@@ -176,7 +185,9 @@ function buildReviewArgs(request, { resultFile, platform, windowsSandbox }) {
     "--skip-git-repo-check",
     ...reviewTargetArgs(request.reviewTarget),
   ];
-  return { kind: "review", args, sandbox: "read-only" };
+  // No stdin: `exec review` rejects a positional prompt alongside a target, so the
+  // brief has to keep travelling in argv here — command line and cap included.
+  return { kind: "review", args, sandbox: "read-only", stdin: null };
 }
 
 function commonFlags(request, resultFile, outputSchemaFile, platform, windowsSandbox) {

@@ -115,6 +115,7 @@ export async function executeDelegate(rawArgs, options = {}) {
         cwd: request.workspace,
         env,
         resultFile,
+        stdin: built.stdin,
         signal: controller.signal,
         timeoutMs: request.timeoutMs ?? envMs(env.CODEX_DELEGATE_HARD_CAP_MS, DEFAULT_HARD_CAP_MS),
         startupMs: envMs(env.CODEX_DELEGATE_STARTUP_MS, DEFAULT_STARTUP_MS),

@@ -38,6 +38,7 @@ export const DEFAULT_HARD_CAP_MS = 3_600_000;
  *   cwd?: string,
  *   env?: NodeJS.ProcessEnv,
  *   resultFile?: string,
+ *   stdin?: string | null,
  *   signal?: AbortSignal,
  *   onProgress?: (message: string) => void,
  *   onThreadId?: (threadId: string) => void,
@@ -58,6 +59,7 @@ export async function runCodexProcess({
   cwd,
   env = process.env,
   resultFile,
+  stdin = null,
   signal,
   onProgress,
   onThreadId,
@@ -126,10 +128,14 @@ export async function runCodexProcess({
 
   await unlink(resultFile).catch(() => {});
 
+  // The parent's own stdin is the MCP channel and must never reach the child, which
+  // would read it straight into the prompt. A pipe we create and close ourselves is
+  // a different thing: the child sees only what we write.
+  const sendsStdin = typeof stdin === "string";
   const spawnOpts = {
     cwd,
     env: childEnv,
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: [sendsStdin ? "pipe" : "ignore", "pipe", "pipe"],
     windowsHide: true,
     shell: false,
   };
@@ -137,6 +143,18 @@ export async function runCodexProcess({
 
   if (signal?.aborted) return interruptedBeforeSpawn();
   child = spawnImpl(command, args, spawnOpts);
+
+  // Written and closed immediately. Codex waits for EOF before it starts, and an
+  // open pipe would also hold back the 'close' this run waits on — so a stdin left
+  // dangling wedges the delegation as surely as an escaped child does.
+  if (sendsStdin && child.stdin) {
+    // A child that dies mid-write raises EPIPE/ERR_STREAM_DESTROYED on a stream
+    // nobody is listening to, which takes down the whole server.
+    child.stdin.on("error", () => {});
+    try {
+      child.stdin.end(stdin);
+    } catch {}
+  }
 
   // 'exit' means the process is gone. 'close' additionally waits for every stdio
   // pipe, including any a background process Codex started inherited — that can

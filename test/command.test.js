@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   buildCodexArgs,
+  estimateArgvChars,
   validateDelegateInput,
   resolveWindowsSandbox,
   PLAN_SCHEMA,
@@ -297,7 +298,9 @@ test("build initial agent args", () => {
   assert.ok(args.includes("workspace-write"));
   assert.ok(args.includes("--ignore-user-config"));
   assert.ok(args.includes("--skip-git-repo-check"));
-  assert.equal(args.at(-1), "fix it");
+  // The brief goes down stdin, so argv carries only the marker that says so.
+  assert.equal(args.at(-1), "-");
+  assert.ok(!args.includes("fix it"));
 });
 
 test("agent network true/false flags appear in argv", () => {
@@ -423,16 +426,27 @@ test("build resume args", () => {
   assert.ok(args.includes("--skip-git-repo-check"));
 });
 
-test("buildCodexArgs rejects oversized specs", () => {
+test("an oversized spec rides stdin instead of being refused", () => {
+  const huge = "x".repeat(30_000);
+  const built = buildCodexArgs(
+    { spec: huge, mode: "ask", workspace: "/tmp/repo", network: false },
+    { resultFile: "/tmp/out.txt", platform: "linux" }
+  );
+  assert.equal(built.stdin, huge);
+  assert.equal(built.args.at(-1), "-");
+});
+
+test("review still refuses an oversized spec, because its brief is still argv", () => {
   const huge = "x".repeat(30_000);
   assert.throws(
     () =>
       buildCodexArgs(
         {
           spec: huge,
-          mode: "ask",
+          mode: "review",
           workspace: "/tmp/repo",
           network: false,
+          reviewTarget: { kind: "uncommitted" },
         },
         { resultFile: "/tmp/out.txt", platform: "linux" }
       ),
@@ -489,10 +503,9 @@ test("resolveWindowsSandbox defaults, and passes an unknown mode through with a 
   assert.deepEqual(resolveWindowsSandbox("some-future-mode", { platform: "linux" }).warnings, []);
 });
 
-test("an oversized spec is rejected before it reaches CreateProcess", () => {
-  const req = validateDelegateInput({ spec: "x".repeat(29_000), workspace: process.cwd() });
-  assert.throws(
-    () => buildCodexArgs(req, { resultFile: "/tmp/o.txt", platform: "linux" }),
-    /argv is too long/
-  );
+test("a spec far past the CreateProcess limit is fine once it leaves argv", () => {
+  const req = validateDelegateInput({ spec: "x".repeat(200_000), workspace: process.cwd() });
+  const built = buildCodexArgs(req, { resultFile: "/tmp/o.txt", platform: "win32" });
+  assert.equal(built.stdin.length, 200_000);
+  assert.ok(estimateArgvChars(built.args) < 2_000);
 });
