@@ -38,6 +38,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run typecheck
       - name: Coverage floor
         run: >
           node --test --experimental-test-coverage --test-coverage-include='src/**'

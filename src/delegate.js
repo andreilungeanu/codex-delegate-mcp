@@ -34,8 +34,10 @@ export async function executeDelegate(rawArgs, options = {}) {
   } = options;
 
   if (env.CODEX_DELEGATE_DEPTH && String(env.CODEX_DELEGATE_DEPTH).trim() !== "") {
-    const err = new Error(
-      "Refusing nested delegation (CODEX_DELEGATE_DEPTH is already set). The orchestrator should call this MCP server, not nest workers."
+    const err = /** @type {Error & { code?: string }} */ (
+      new Error(
+        "Refusing nested delegation (CODEX_DELEGATE_DEPTH is already set). The orchestrator should call this MCP server, not nest workers."
+      )
     );
     err.code = "recursion_refused";
     throw err;

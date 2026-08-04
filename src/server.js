@@ -75,6 +75,7 @@ const delegateOutputSchema = z
   })
   .passthrough();
 
+/** @param {{ args?: any, operationRegistry: any }} params */
 export async function runCancelTool({ args = {}, operationRegistry }) {
   try {
     const result = await operationRegistry.cancel({
@@ -82,7 +83,7 @@ export async function runCancelTool({ args = {}, operationRegistry }) {
       cause: "user",
     });
     return {
-      content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+      content: [{ type: /** @type {"text"} */ ("text"), text: JSON.stringify(result, null, 2) }],
       structuredContent: result,
     };
   } catch (err) {
@@ -91,7 +92,7 @@ export async function runCancelTool({ args = {}, operationRegistry }) {
       message: err?.message || String(err),
     };
     return {
-      content: [{ type: "text", text: JSON.stringify(payload, null, 2) }],
+      content: [{ type: /** @type {"text"} */ ("text"), text: JSON.stringify(payload, null, 2) }],
       isError: true,
     };
   }
@@ -104,6 +105,7 @@ export async function runDelegateTool({
   operationRegistry,
 }) {
   const progressToken = extra?._meta?.progressToken;
+  /** @type {(message: string) => void} */
   let onProgress = () => {};
   if (progressToken != null) {
     let progress = 0;
@@ -127,7 +129,7 @@ export async function runDelegateTool({
       // Compact: this is the same object as structuredContent, kept only for hosts
       // that do not read structured output, and indenting it costs ~15% of the
       // larger of the two copies of every result.
-      content: [{ type: "text", text: JSON.stringify(result) }],
+      content: [{ type: /** @type {"text"} */ ("text"), text: JSON.stringify(result) }],
       structuredContent: result,
     };
   } catch (err) {
@@ -137,7 +139,7 @@ export async function runDelegateTool({
     };
     if (err?.details) payload.details = err.details;
     return {
-      content: [{ type: "text", text: JSON.stringify(payload, null, 2) }],
+      content: [{ type: /** @type {"text"} */ ("text"), text: JSON.stringify(payload, null, 2) }],
       isError: true,
     };
   }
@@ -280,7 +282,7 @@ export function buildServer({
         }),
       });
       return {
-        content: [{ type: "text", text: JSON.stringify(out, null, 2) }],
+        content: [{ type: /** @type {"text"} */ ("text"), text: JSON.stringify(out, null, 2) }],
         structuredContent: out,
       };
     }

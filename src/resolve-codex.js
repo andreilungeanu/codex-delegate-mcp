@@ -72,7 +72,7 @@ export function resolveCodexUncached({
 
   const pathLookup = lookupOnPath("codex", platform, env);
   const which = typeof pathLookup === "string" ? pathLookup : pathLookup?.command;
-  if (pathLookup?.unusable) {
+  if (typeof pathLookup === "object" && pathLookup?.unusable) {
     warnings.push(
       "Codex on PATH is a .cmd shim that cannot be spawned directly; install the standalone Codex or set CODEX_DELEGATE_COMMAND to codex.exe."
     );
@@ -193,6 +193,7 @@ function defaultRunVersion(command) {
   return `${result.stdout || ""}${result.stderr || ""}`;
 }
 
+/** @returns {[number, number, number] | null} */
 export function parseVersion(text) {
   const m = String(text || "").match(/(\d+)\.(\d+)\.(\d+)/);
   if (!m) return null;

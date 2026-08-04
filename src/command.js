@@ -2,6 +2,7 @@ import process from "node:process";
 import path from "node:path";
 import { statSync } from "node:fs";
 
+/** @type {readonly [string, ...string[]]} */
 export const MODES = Object.freeze(["agent", "plan", "ask", "review"]);
 
 /** Default worker model — orchestrator overrides only when the user asks. */
@@ -27,6 +28,7 @@ export const WINDOWS_SANDBOX_MODES = Object.freeze(["unelevated", "elevated", "o
  * gpt-5.6-* take none|low|medium|high|xhigh and reject minimal, which older
  * models take. A rejected value comes back as the model's own error.
  */
+/** @type {readonly [string, ...string[]]} */
 export const REASONING_EFFORTS = Object.freeze([
   "none",
   "minimal",
@@ -60,6 +62,15 @@ export const PLAN_SCHEMA = Object.freeze({
 /**
  * Build argv for one `codex exec` invocation.
  * Codex binary is resolved separately; this only returns args after the executable.
+ */
+/**
+ * @param {any} request
+ * @param {{
+ *   resultFile?: string,
+ *   outputSchemaFile?: string | null,
+ *   platform?: string,
+ *   windowsSandbox?: string,
+ * }} [options]
  */
 export function buildCodexArgs(
   request,
@@ -107,8 +118,10 @@ export function estimateArgvChars(args) {
 function assertArgvLength(args) {
   const chars = estimateArgvChars(args);
   if (chars > MAX_ARGV_CHARS) {
-    const err = new Error(
-      `Codex argv is too long (${chars} chars; limit ${MAX_ARGV_CHARS}). Shorten the spec brief.`
+    const err = /** @type {Error & { code?: string }} */ (
+      new Error(
+        `Codex argv is too long (${chars} chars; limit ${MAX_ARGV_CHARS}). Shorten the spec brief.`
+      )
     );
     err.code = "argv_too_long";
     throw err;
@@ -228,6 +241,10 @@ function tomlString(value) {
  * reads as a broken bridge rather than a typo'd env var. "off" is worse than its
  * name: the flag is omitted, workspace-write degrades to read-only, and a run
  * where every write was denied still comes back completed with nothing to say so.
+ */
+/**
+ * @param {unknown} raw
+ * @param {{ platform?: string, mode?: string }} [options]
  */
 export function resolveWindowsSandbox(raw, { platform = process.platform, mode } = {}) {
   const warnings = [];
@@ -366,7 +383,7 @@ function normalizeReviewTarget(value) {
 }
 
 function bad(code, message) {
-  const err = new Error(message);
+  const err = /** @type {Error & { code?: string }} */ (new Error(message));
   err.code = code;
   return err;
 }

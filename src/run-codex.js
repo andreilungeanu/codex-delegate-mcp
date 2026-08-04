@@ -31,6 +31,26 @@ export const DEFAULT_HARD_CAP_MS = 3_600_000;
 /**
  * Spawn `codex …`, reduce JSONL for threadId + coarse progress, accept only
  * the private --output-last-message file after a clean exit.
+ *
+ * @param {{
+ *   command?: string,
+ *   args?: string[],
+ *   cwd?: string,
+ *   env?: NodeJS.ProcessEnv,
+ *   resultFile?: string,
+ *   signal?: AbortSignal,
+ *   onProgress?: (message: string) => void,
+ *   onThreadId?: (threadId: string) => void,
+ *   timeoutMs?: number,
+ *   startupMs?: number,
+ *   heartbeatMs?: number,
+ *   killDeadlineMs?: number,
+ *   drainMs?: number,
+ *   maxResultBytes?: number,
+ *   spawnImpl?: any,
+ *   treeKillImpl?: any,
+ *   platform?: string,
+ * }} [options]
  */
 export async function runCodexProcess({
   command,
@@ -527,6 +547,15 @@ export function readAgentError(source, maxChars = 600) {
   return message.length > maxChars ? `${message.slice(0, maxChars)}…` : message;
 }
 
+/**
+ * @param {{
+ *   filePath?: string,
+ *   status?: string,
+ *   exitCode?: number | null,
+ *   maxResultBytes?: number,
+ *   readFileImpl?: any,
+ * }} [options]
+ */
 export async function readFinalResult({
   filePath,
   status,

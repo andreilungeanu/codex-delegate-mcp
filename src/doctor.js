@@ -9,6 +9,17 @@ import { VERSION } from "./version.js";
 
 const execFileAsync = promisify(execFile);
 
+/**
+ * @param {{
+ *   deep?: boolean,
+ *   workspace?: string,
+ *   resolve?: any,
+ *   env?: NodeJS.ProcessEnv,
+ *   getClientInfo?: any,
+ *   execFileImpl?: any,
+ *   platform?: string,
+ * }} [options]
+ */
 export async function runDoctor({
   deep = false,
   workspace = process.cwd(),

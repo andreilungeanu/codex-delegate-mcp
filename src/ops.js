@@ -4,10 +4,13 @@
 export class OperationRegistry {
   #active = null;
 
+  /** @param {{ threadId?: string | null, cancel?: Function }} [options] */
   acquire({ threadId = null, cancel } = {}) {
     if (typeof cancel !== "function") throw new TypeError("cancel must be a function");
     if (this.#active) {
-      const err = new Error("Another Codex delegation is already active.");
+      const err = /** @type {Error & { code?: string, details?: any }} */ (
+        new Error("Another Codex delegation is already active.")
+      );
       err.code = "operation_in_progress";
       err.details = { threadId: this.#active.threadId };
       throw err;
@@ -30,6 +33,7 @@ export class OperationRegistry {
     };
   }
 
+  /** @param {{ threadId?: string | null, cause?: string }} [options] */
   async cancel({ threadId, cause = "user" } = {}) {
     const active = this.#active;
     if (!active) return { status: "nothing-active" };

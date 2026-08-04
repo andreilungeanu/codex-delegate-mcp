@@ -9,9 +9,13 @@ export function isChildAlive(child) {
 export async function treeKill(pid) {
   if (!pid) return;
   if (process.platform === "win32") {
-    await new Promise((resolve) => {
-      execFile("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true }, () => resolve());
-    });
+    await /** @type {Promise<void>} */ (
+      new Promise((resolve) => {
+        execFile("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true }, () =>
+          resolve()
+        );
+      })
+    );
     return;
   }
   try {

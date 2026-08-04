@@ -12,6 +12,12 @@ const execFileAsync = promisify(execFile);
  * A git that will not run at all answers nothing and therefore blocks nothing —
  * refusing a run because the check itself is unavailable would be worse than the
  * failure it guards against.
+ *
+ * @param {{
+ *   workspace?: string,
+ *   reviewTarget?: any,
+ *   execFileImpl?: any,
+ * }} [options]
  */
 export async function preflightReviewTarget({
   workspace,
@@ -99,7 +105,7 @@ function gitRunner(workspace, execFileImpl) {
 }
 
 function bad(code, message) {
-  const err = new Error(message);
+  const err = /** @type {Error & { code?: string }} */ (new Error(message));
   err.code = code;
   return err;
 }
