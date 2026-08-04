@@ -4,6 +4,50 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.14.0] - 2026-08-04
+
+One delegation at a time became several, and the brief stopped travelling on the command line.
+Both were long-standing limits the code had reasons for; the reasons no longer held.
+
+### Added
+
+- Delegations run **concurrently**, as many as you start. Each gets a `delegationId`, announced in
+  its progress stream *before* it spawns and returned with the result — the only cancel handle that
+  exists while a run is still starting up, since Codex publishes no thread id until the child is up.
+- `cancel` addresses one run by `delegationId`, or every run on a thread by `threadId` (a resume and
+  the turn it resumes share one), or all of them when given neither.
+- Starting a delegation in a workspace that overlaps a running one warns. Two agents writing one
+  tree overwrite each other and the diff cannot say which did what. It is a warning, not a refusal:
+  several read-only runs over one tree are fine.
+- A `typecheck` script and CI gate (`tsc --noEmit` over `src`), which found a union that was never
+  narrowed and a version tuple typed as a plain array.
+
+### Changed
+
+- **Breaking**: `cancel` statuses are now `cancelled`, `nothing-active`, `not-running` and
+  `not-found`. `not-owned` is gone — with several runs live, an id either names one or it does not.
+  A thread whose turn has ended reports `not-running` (still resumable), not `not-found`.
+- **Breaking**: `CODEX_DELEGATE_WINDOWS_SANDBOX="off"` is removed. It omitted the flag, which
+  degrades `workspace-write` to read-only, so every write was denied on a turn that still reported
+  `completed`. Any value the bridge does not recognize is now passed to Codex as given, with a
+  warning: the knob exists to survive a Codex change we have not shipped support for, and a list of
+  modes we already knew about cannot do that.
+- The Codex version is reported, never gated on. The old `0.144.0` floor was the version installed
+  when the CLI was first investigated, not a measured minimum, and refusing an install on that basis
+  breaks setups that work to guard against ones nobody tried. `doctor` drops `versionGate`.
+- Node 20 is the declared floor, matching what CI has always tested.
+- `MAX_ARGV_CHARS` is now `MAX_REVIEW_ARGV_CHARS` and applies to `review` alone.
+
+### Fixed
+
+- The brief travels on **stdin**, so it no longer appears in the child's command line, which any
+  local process can read (`/proc/*/cmdline`, or WMI on Windows) — and briefs are told to quote the
+  user's exact values. This also lifts the 28,000-character cap: a 60,000-character brief now runs.
+  `review` is unchanged, since its target flags rule out a positional prompt.
+- `SECURITY.md` named a result field the bridge does not ship (`filesReportedByAgent`).
+- Lockfile refreshed past two high-severity advisories reaching us through the MCP SDK
+  (`ip-address` SSRF, `fast-uri` host confusion). Neither is reachable from a stdio server.
+
 ## [1.13.0] - 2026-08-04
 
 A live audit against Codex 0.145.0 found the default Windows configuration broken: every shell
