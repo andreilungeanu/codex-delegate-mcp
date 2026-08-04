@@ -4,14 +4,13 @@ import {
   buildServer,
   runDelegateTool,
   runCancelTool,
-  maxConcurrentFrom,
   SERVER_INSTRUCTIONS,
 } from "../src/server.js";
 import {
   DEFAULT_MODEL,
   DEFAULT_REASONING_EFFORT,
 } from "../src/command.js";
-import { createOperationRegistry, DEFAULT_MAX_CONCURRENT } from "../src/ops.js";
+import { createOperationRegistry } from "../src/ops.js";
 import { executeDelegate } from "../src/delegate.js";
 
 test("buildServer registers delegate, cancel, doctor", () => {
@@ -209,15 +208,4 @@ test("an unknowable exit code does not cost the caller the whole result", async 
   assert.equal(payload.threadId, "thr_immortal");
   assert.deepEqual(payload.filesReportedByEditTools, ["important.ts"]);
   assert.equal(payload.warnings.length, 1);
-});
-
-test("the concurrency ceiling comes from the environment, and typos do not cripple it", () => {
-  assert.equal(maxConcurrentFrom({}), DEFAULT_MAX_CONCURRENT);
-  assert.equal(maxConcurrentFrom({ CODEX_DELEGATE_MAX_CONCURRENT: "5" }), 5);
-  assert.equal(maxConcurrentFrom({ CODEX_DELEGATE_MAX_CONCURRENT: "2.7" }), 2);
-  // A ceiling below one would disable the tool outright; a typo is not consent to that.
-  assert.equal(maxConcurrentFrom({ CODEX_DELEGATE_MAX_CONCURRENT: "0" }), DEFAULT_MAX_CONCURRENT);
-  assert.equal(maxConcurrentFrom({ CODEX_DELEGATE_MAX_CONCURRENT: "-3" }), DEFAULT_MAX_CONCURRENT);
-  assert.equal(maxConcurrentFrom({ CODEX_DELEGATE_MAX_CONCURRENT: "lots" }), DEFAULT_MAX_CONCURRENT);
-  assert.equal(maxConcurrentFrom({ CODEX_DELEGATE_MAX_CONCURRENT: "" }), DEFAULT_MAX_CONCURRENT);
 });

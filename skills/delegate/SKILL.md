@@ -38,7 +38,7 @@ You orchestrate; Codex implements. Use the **codex-delegate-mcp** MCP server —
 
 ## Running several at once
 
-Up to three delegations run concurrently (`CODEX_DELEGATE_MAX_CONCURRENT`). Worth doing for:
+Delegations run concurrently. Worth doing for:
 
 - **the same question to different models** — issue one call per `model` and compare the answers;
 - **independent work in independent directories** — one worker per `workspace`.
@@ -47,10 +47,9 @@ Not worth doing when the tasks touch the same files. Two agents writing one tree
 other and the diff cannot attribute the damage; the result warns when workspaces overlap, but
 the warning arrives after the runs are already racing. Split the work by directory, or serialize.
 
-A call past the ceiling is refused with `too_many_active` — it is not queued, so decide whether
-to wait or to cancel. To cancel one of several, pass its `delegationId` (announced in progress
-before the run spawns, and returned with the result). `threadId` cancels every delegation on
-that thread; passing neither cancels all of them.
+To cancel one of several, pass its `delegationId` (announced in progress before the run spawns,
+and returned with the result). `threadId` cancels every delegation on that thread; passing
+neither cancels all of them.
 
 ## Defaults
 

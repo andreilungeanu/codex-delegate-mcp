@@ -1,42 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { createOperationRegistry, DEFAULT_MAX_CONCURRENT } from "../src/ops.js";
+import { createOperationRegistry } from "../src/ops.js";
 
-test("acquire admits delegations up to the ceiling and refuses past it", () => {
-  const reg = createOperationRegistry({ maxConcurrent: 2 });
-  const a = reg.acquire({ cancel: async () => {} });
-  const b = reg.acquire({ cancel: async () => {} });
-  assert.throws(() => reg.acquire({ cancel: async () => {} }), /Too many active/);
-  a.release();
-  const c = reg.acquire({ cancel: async () => {} });
-  b.release();
-  c.release();
-});
-
-test("the ceiling error names what is holding the slots", () => {
-  const reg = createOperationRegistry({ maxConcurrent: 1 });
-  const lease = reg.acquire({ threadId: "busy", cancel: async () => {} });
-  try {
-    reg.acquire({ cancel: async () => {} });
-    assert.fail("expected a refusal");
-  } catch (err) {
-    assert.equal(err.code, "too_many_active");
-    assert.equal(err.details.maxConcurrent, 1);
-    assert.equal(err.details.active[0].threadId, "busy");
-  }
-  lease.release();
-});
-
-test("a non-positive ceiling still admits one delegation", () => {
-  const reg = createOperationRegistry({ maxConcurrent: 0 });
-  assert.equal(reg.maxConcurrent, 1);
-  const lease = reg.acquire({ cancel: async () => {} });
-  lease.release();
-});
-
-test("the default ceiling is what the module advertises", () => {
-  assert.equal(createOperationRegistry().maxConcurrent, DEFAULT_MAX_CONCURRENT);
+test("delegations are not rationed", () => {
+  const reg = createOperationRegistry();
+  const leases = Array.from({ length: 25 }, () => reg.acquire({ cancel: async () => {} }));
+  assert.equal(reg.snapshot().count, 25);
+  for (const lease of leases) lease.release();
+  assert.deepEqual(reg.snapshot(), { active: false });
 });
 
 test("every delegation gets a distinct id, available before it runs", () => {
@@ -222,15 +194,14 @@ test("a cancel that throws is reported on the delegation and rethrown", async ()
   lease.release();
 });
 
-test("snapshot reports the active delegations and the ceiling", async () => {
-  const reg = createOperationRegistry({ maxConcurrent: 2 });
+test("snapshot reports the active delegations", async () => {
+  const reg = createOperationRegistry();
   assert.deepEqual(reg.snapshot(), { active: false });
 
   const lease = reg.acquire({ threadId: "in-flight", cancel: async () => {} });
   const snap = reg.snapshot();
   assert.equal(snap.active, true);
   assert.equal(snap.count, 1);
-  assert.equal(snap.maxConcurrent, 2);
   assert.equal(snap.delegations[0].threadId, "in-flight");
   assert.equal(snap.delegations[0].cancellation, null);
 

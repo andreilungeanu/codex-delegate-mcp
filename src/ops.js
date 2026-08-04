@@ -2,13 +2,6 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 
 /**
- * Each delegation is a whole Codex process competing for the same account quota,
- * so the ceiling is deliberately low. Raise it with CODEX_DELEGATE_MAX_CONCURRENT
- * when the workers are genuinely independent.
- */
-export const DEFAULT_MAX_CONCURRENT = 3;
-
-/**
  * Thread ids are remembered after their run ends so cancel can tell a finished
  * thread (over, but still resumable) from an id that never existed. Bounded so a
  * long-lived server does not grow without limit.
@@ -33,30 +26,10 @@ export class OperationRegistry {
   #byThread = new Map();
   /** @type {Set<string>} */
   #seenThreads = new Set();
-  #maxConcurrent;
-
-  /** @param {{ maxConcurrent?: number }} [options] */
-  constructor({ maxConcurrent = DEFAULT_MAX_CONCURRENT } = {}) {
-    this.#maxConcurrent = maxConcurrent > 0 ? Math.floor(maxConcurrent) : 1;
-  }
-
-  get maxConcurrent() {
-    return this.#maxConcurrent;
-  }
 
   /** @param {{ threadId?: string | null, workspace?: string | null, cancel?: Function }} [options] */
   acquire({ threadId = null, workspace = null, cancel } = {}) {
     if (typeof cancel !== "function") throw new TypeError("cancel must be a function");
-    if (this.#active.size >= this.#maxConcurrent) {
-      const err = /** @type {Error & { code?: string, details?: any }} */ (
-        new Error(
-          `Too many active Codex delegations (${this.#active.size} of ${this.#maxConcurrent}). Wait for one to finish or cancel it.`
-        )
-      );
-      err.code = "too_many_active";
-      err.details = { active: this.#describeActive(), maxConcurrent: this.#maxConcurrent };
-      throw err;
-    }
 
     const warnings = this.#overlapWarnings(workspace);
     const delegationId = randomUUID();
@@ -123,7 +96,6 @@ export class OperationRegistry {
     return {
       active: true,
       count: this.#active.size,
-      maxConcurrent: this.#maxConcurrent,
       delegations: this.#describeActive(),
     };
   }
@@ -229,7 +201,6 @@ function overlaps(a, b) {
   return inside(rel) || inside(path.relative(right, left));
 }
 
-/** @param {{ maxConcurrent?: number }} [options] */
-export function createOperationRegistry(options = {}) {
-  return new OperationRegistry(options);
+export function createOperationRegistry() {
+  return new OperationRegistry();
 }

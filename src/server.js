@@ -13,7 +13,7 @@ import {
 } from "./command.js";
 import { executeDelegate as executeDelegateDefault } from "./delegate.js";
 import { runDoctor as runDoctorDefault } from "./doctor.js";
-import { createOperationRegistry, DEFAULT_MAX_CONCURRENT } from "./ops.js";
+import { createOperationRegistry } from "./ops.js";
 import { VERSION } from "./version.js";
 
 const nodeMajor = Number(process.versions.node.split(".")[0]);
@@ -75,17 +75,6 @@ const delegateOutputSchema = z
     exitCode: z.number().int().optional(),
   })
   .passthrough();
-
-/**
- * A ceiling below 1 would disable the tool outright, and a non-numeric one is a
- * typo; both fall back to the default rather than silently crippling the server.
- *
- * @param {NodeJS.ProcessEnv} env
- */
-export function maxConcurrentFrom(env = process.env) {
-  const raw = Number(env.CODEX_DELEGATE_MAX_CONCURRENT);
-  return Number.isFinite(raw) && raw >= 1 ? Math.floor(raw) : DEFAULT_MAX_CONCURRENT;
-}
 
 /** @param {{ args?: any, operationRegistry: any }} params */
 export async function runCancelTool({ args = {}, operationRegistry }) {
@@ -162,16 +151,12 @@ export async function runDelegateTool({
  *   executeDelegate?: any,
  *   doctorRunner?: any,
  *   operationRegistry?: any,
- *   env?: NodeJS.ProcessEnv,
  * }} [options]
  */
 export function buildServer({
   executeDelegate = executeDelegateDefault,
   doctorRunner = runDoctorDefault,
-  env = process.env,
-  operationRegistry = createOperationRegistry({
-    maxConcurrent: maxConcurrentFrom(env),
-  }),
+  operationRegistry = createOperationRegistry(),
 } = {}) {
   const server = new McpServer(
     { name: "codex-delegate-mcp", version: VERSION },
