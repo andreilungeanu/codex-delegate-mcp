@@ -4,6 +4,35 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.13.0] - 2026-08-04
+
+A live audit against Codex 0.145.0 found the default Windows configuration broken: every shell
+command failed, in every mode, and the run still reported `status: "completed"`.
+
+### Fixed
+
+- The Windows sandbox defaults to `unelevated`. `elevated` needs an elevated session — on a normal
+  one Codex cannot spawn its sandbox helper (`CreateProcessAsUserW failed: 5`) and every command
+  fails. The flag is in `commonFlags`, so this hit `ask`, `plan` and `review` too.
+- `CODEX_DELEGATE_WINDOWS_SANDBOX="off"` now warns in `agent` mode: it degrades `workspace-write`
+  to read-only, so writes are denied on a turn that still completes. `CONFIGURATION.md` documents
+  all three modes instead of recommending this one.
+- An unknown sandbox mode falls back to the default with a warning, rather than reaching Codex and
+  failing the run at config load.
+- `doctor` files resolver notes under `codex.notes`, so `warnings` is empty when nothing is wrong.
+  It also reports the effective Windows sandbox mode and checks the `workspace` it is given.
+
+### Changed
+
+- **Breaking**: `review` rejects a non-repository workspace or an unresolvable base/commit before
+  spawning (`invalid_workspace` / `invalid_review_target`). The base check consults remotes as well
+  as local refs, since Codex resolves `main` to `origin/main`; a git that cannot run blocks nothing.
+- **Breaking**: `usage` is omitted when every count is 0 — `codex exec review` always reports zeros.
+- Each Codex item is announced once, on `item.started`. Both events used to emit, so every command
+  and edit notified twice and completion was announced as "running".
+- The docs no longer claim an empty `warnings` means a clean run: the bridge sees failures Codex
+  reports as failed tool calls, not ones it narrates in prose.
+
 ## [1.12.0] - 2026-08-03
 
 A stress test drove the bridge end to end — real MCP client, real `spawn`, a scripted Codex — and
