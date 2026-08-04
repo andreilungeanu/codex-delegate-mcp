@@ -11,7 +11,15 @@ export const DEFAULT_MODEL = "gpt-5.6-terra";
 /** Default reasoning effort — quality over speed unless the user asks otherwise. */
 export const DEFAULT_REASONING_EFFORT = "high";
 
-/** Leave headroom under Windows CreateProcess ~32k limit. */
+/**
+ * Leave headroom under the Windows CreateProcess ~32k limit.
+ *
+ * The brief stopped counting against this everywhere but `review`, whose target
+ * flags rule out the stdin prompt. What is left in argv is small and fixed, apart
+ * from four free-text inputs the caller controls — `model`, `resumeThreadId` and
+ * `reviewTarget.branch`/`sha` — so the guard stays on every mode rather than
+ * becoming a review-only spec limit.
+ */
 export const MAX_ARGV_CHARS = 28_000;
 
 /**
@@ -110,7 +118,7 @@ export function buildCodexArgs(
   } else {
     built = buildInitialArgs(request, { resultFile, outputSchemaFile, platform, windowsSandbox });
   }
-  assertArgvLength(built.args);
+  assertArgvLength(built.args, request.mode);
   return built;
 }
 
@@ -127,17 +135,20 @@ export function estimateArgvChars(args) {
   return total;
 }
 
-function assertArgvLength(args) {
+function assertArgvLength(args, mode) {
   const chars = estimateArgvChars(args);
-  if (chars > MAX_ARGV_CHARS) {
-    const err = /** @type {Error & { code?: string }} */ (
-      new Error(
-        `Codex argv is too long (${chars} chars; limit ${MAX_ARGV_CHARS}). Shorten the spec brief.`
-      )
-    );
-    err.code = "argv_too_long";
-    throw err;
-  }
+  if (chars <= MAX_ARGV_CHARS) return;
+  // "Shorten the brief" was the only advice this gave, and outside review it is now
+  // the one thing that cannot be at fault.
+  const culprit =
+    mode === "review"
+      ? "Shorten the spec brief: review cannot send it on stdin."
+      : "The brief is not in argv here; check model, resumeThreadId and reviewTarget.";
+  const err = /** @type {Error & { code?: string }} */ (
+    new Error(`Codex argv is too long (${chars} chars; limit ${MAX_ARGV_CHARS}). ${culprit}`)
+  );
+  err.code = "argv_too_long";
+  throw err;
 }
 
 function buildInitialArgs(request, { resultFile, outputSchemaFile, platform, windowsSandbox }) {
