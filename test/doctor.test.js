@@ -105,10 +105,11 @@ test("doctor stays quiet about the sandbox unless the mode breaks something", as
   assert.equal(clean.sandbox.windowsSandbox, "unelevated");
   assert.deepEqual(clean.warnings, []);
 
-  const off = await runDoctor(
-    options({ platform: "win32", env: { CODEX_DELEGATE_WINDOWS_SANDBOX: "off" } })
+  const unknown = await runDoctor(
+    options({ platform: "win32", env: { CODEX_DELEGATE_WINDOWS_SANDBOX: "some-future-mode" } })
   );
-  assert.match(off.warnings.join("\n"), /read-only/);
+  assert.equal(unknown.sandbox.windowsSandbox, "some-future-mode");
+  assert.match(unknown.warnings.join("\n"), /passed to Codex as given/);
 
   const elevated = await runDoctor(
     options({ platform: "win32", env: { CODEX_DELEGATE_WINDOWS_SANDBOX: "elevated" } })

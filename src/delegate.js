@@ -67,7 +67,6 @@ export async function executeDelegate(rawArgs, options = {}) {
 
     const windows = resolveWindowsSandbox(env.CODEX_DELEGATE_WINDOWS_SANDBOX, {
       platform: process.platform,
-      mode: request.mode,
     });
     warnings.push(...windows.warnings);
 

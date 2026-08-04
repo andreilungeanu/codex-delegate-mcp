@@ -21,7 +21,7 @@ negative value falls back to its default rather than arming a guard that fails e
 | `CODEX_DELEGATE_STARTUP_MS` | `60000` | Spawn to first JSONL event. `0` disables. |
 | `CODEX_DELEGATE_HARD_CAP_MS` | `3600000` | Whole run; a per-call `timeoutMs` overrides it. |
 | `CODEX_DELEGATE_HEARTBEAT_MS` | `30000` | Progress heartbeat while quiet. `0` disables. |
-| `CODEX_DELEGATE_WINDOWS_SANDBOX` | `unelevated` | Windows sandbox mode: `unelevated`, `elevated`, or `off`. |
+| `CODEX_DELEGATE_WINDOWS_SANDBOX` | `unelevated` | Windows sandbox mode. Passed to Codex as given. |
 
 `CODEX_DELEGATE_DEPTH` is set on the child process as a recursion marker. If it is already set
 when `delegate` is called, the call is refused — a delegated agent must not spawn another one.
@@ -74,15 +74,20 @@ shim, which cannot be spawned directly without a shell. If resolution looks wron
 ## Windows sandbox
 
 `--ignore-user-config` strips any `[windows]` sandbox setting from your own Codex config, and
-without one `workspace-write` degrades to read-only — so the bridge passes one itself. Codex
-accepts two values; `off` is the bridge's own and omits the flag.
+without one `workspace-write` degrades to read-only — agent mode could not write at all. So the
+bridge always passes a setting of its own on Windows. This is not optional; the only question is
+which value.
 
 | Mode | Shell commands | Writes | Notes |
 |---|---|---|---|
 | `unelevated` (default) | work | work | What a normal session should use. |
 | `elevated` | **all fail** on a non-elevated session | work | Needs an elevated session: otherwise Codex cannot spawn the sandbox helper (`CreateProcessAsUserW failed: 5`). Applies to `ask`, `plan` and `review` too, not just `agent`. |
-| `off` | work | **all denied** | `workspace-write` degrades to read-only. |
 
-Both failure modes still report `status: "completed"`, because Codex treats a denied write or a
-dead helper as something to mention in prose rather than a failed turn. `off` warns for that
-reason; if you set `elevated`, make sure the session really is elevated.
+A failing helper still reports `status: "completed"`, because Codex treats it as something to
+mention in prose rather than a failed turn — so if you set `elevated`, make sure the session
+really is elevated. `doctor` warns when you have.
+
+Any other value is **passed to Codex as given**, with a warning. The point of the variable is to
+survive a Codex change this bridge has not shipped support for yet; a list of modes we already
+knew about could not rescue anyone from a new one. If Codex does not recognize the value either,
+the run fails at config load and says so.

@@ -15,13 +15,16 @@ export const DEFAULT_REASONING_EFFORT = "high";
 export const MAX_ARGV_CHARS = 28_000;
 
 /**
- * Codex takes `elevated` or `unelevated`; "off" is ours and omits the flag. The
- * default was `elevated`, which needs an elevated session — on a normal one Codex
- * cannot spawn the sandbox helper (CreateProcessAsUserW failed: 5), so every shell
- * command in every mode fails while the turn still reports as completed.
+ * Windows only, and not optional: --ignore-user-config strips the user's own
+ * [windows] setting, and Codex without one degrades workspace-write to read-only,
+ * so agent mode cannot write at all. The default was `elevated`, which needs an
+ * elevated session — on a normal one Codex cannot spawn the sandbox helper
+ * (CreateProcessAsUserW failed: 5), so every shell command in every mode fails
+ * while the turn still reports as completed.
  */
 export const DEFAULT_WINDOWS_SANDBOX = "unelevated";
-export const WINDOWS_SANDBOX_MODES = Object.freeze(["unelevated", "elevated", "off"]);
+/** What Codex accepts today. Not a whitelist — an unknown value is passed through. */
+export const WINDOWS_SANDBOX_MODES = Object.freeze(["unelevated", "elevated"]);
 
 /**
  * Which values a model accepts is not discoverable up front and differs by model:
@@ -202,9 +205,8 @@ function commonFlags(request, resultFile, outputSchemaFile, platform, windowsSan
 
   if (outputSchemaFile) args.push("--output-schema", outputSchemaFile);
   // --ignore-user-config strips the user's [windows] sandbox setting, and without
-  // one workspace-write degrades to read-only. See resolveWindowsSandbox for what
-  // each mode costs; this only decides whether the flag is passed at all.
-  if (platform === "win32" && windowsSandbox !== "off") {
+  // one workspace-write degrades to read-only, so this always goes.
+  if (platform === "win32") {
     args.push("-c", `windows.sandbox=${tomlString(windowsSandbox)}`);
   }
   if (request.model) args.push("--model", request.model);
@@ -237,32 +239,25 @@ function tomlString(value) {
 }
 
 /**
- * An unknown mode used to travel to Codex and fail the run at config load, which
- * reads as a broken bridge rather than a typo'd env var. "off" is worse than its
- * name: the flag is omitted, workspace-write degrades to read-only, and a run
- * where every write was denied still comes back completed with nothing to say so.
- */
-/**
+ * The point of this knob is to work around a Codex change we did not see coming,
+ * so an unrecognized value travels rather than being replaced by one we like: a
+ * list of modes we already knew about cannot rescue anyone from a new one. What
+ * we do owe is a warning, since the same passthrough carries typos, and Codex
+ * rejects an invalid mode at config load rather than at the write it affects.
+ *
  * @param {unknown} raw
- * @param {{ platform?: string, mode?: string }} [options]
+ * @param {{ platform?: string }} [options]
  */
-export function resolveWindowsSandbox(raw, { platform = process.platform, mode } = {}) {
+export function resolveWindowsSandbox(raw, { platform = process.platform } = {}) {
   const warnings = [];
   const requested = raw == null ? "" : String(raw).trim();
-  let sandbox = requested || DEFAULT_WINDOWS_SANDBOX;
+  const sandbox = requested || DEFAULT_WINDOWS_SANDBOX;
 
-  if (!WINDOWS_SANDBOX_MODES.includes(sandbox)) {
+  if (platform === "win32" && !WINDOWS_SANDBOX_MODES.includes(sandbox)) {
     warnings.push(
-      `CODEX_DELEGATE_WINDOWS_SANDBOX="${requested}" is not one of ${WINDOWS_SANDBOX_MODES.join(
+      `CODEX_DELEGATE_WINDOWS_SANDBOX="${sandbox}" is not one of ${WINDOWS_SANDBOX_MODES.join(
         ", "
-      )}; using "${DEFAULT_WINDOWS_SANDBOX}".`
-    );
-    sandbox = DEFAULT_WINDOWS_SANDBOX;
-  }
-
-  if (platform === "win32" && sandbox === "off" && mode === "agent") {
-    warnings.push(
-      'CODEX_DELEGATE_WINDOWS_SANDBOX="off" omits the Windows sandbox flag, which degrades workspace-write to read-only: Codex can run commands but every write is denied, and it reports that as a completed turn.'
+      )}. It is passed to Codex as given; if Codex does not know it either, the run fails at config load.`
     );
   }
 

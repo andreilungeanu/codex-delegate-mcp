@@ -440,17 +440,10 @@ test("buildCodexArgs rejects oversized specs", () => {
   );
 });
 
-test("the Windows sandbox mode is overridable and can be omitted", () => {
+test("the Windows sandbox flag always goes, whatever the mode", () => {
   const req = validateDelegateInput({ spec: "x", workspace: process.cwd() });
   const on = buildCodexArgs(req, { resultFile: "/tmp/o.txt", platform: "win32" }).args;
   assert.ok(on.includes('windows.sandbox="unelevated"'));
-
-  const off = buildCodexArgs(req, {
-    resultFile: "/tmp/o.txt",
-    platform: "win32",
-    windowsSandbox: "off",
-  }).args;
-  assert.ok(!off.some((a) => String(a).startsWith("windows.sandbox")));
 
   const custom = buildCodexArgs(req, {
     resultFile: "/tmp/o.txt",
@@ -458,33 +451,42 @@ test("the Windows sandbox mode is overridable and can be omitted", () => {
     windowsSandbox: "elevated",
   }).args;
   assert.ok(custom.includes('windows.sandbox="elevated"'));
+
+  // Omitting it is not an option: without a [windows] setting Codex degrades
+  // workspace-write to read-only, so agent mode could not write at all.
+  const future = buildCodexArgs(req, {
+    resultFile: "/tmp/o.txt",
+    platform: "win32",
+    windowsSandbox: "some-future-mode",
+  }).args;
+  assert.ok(future.includes('windows.sandbox="some-future-mode"'));
+
+  // Windows only.
+  const linux = buildCodexArgs(req, { resultFile: "/tmp/o.txt", platform: "linux" }).args;
+  assert.ok(!linux.some((a) => String(a).startsWith("windows.sandbox")));
 });
 
-test("resolveWindowsSandbox defaults, validates, and flags the off degradation", () => {
-  assert.deepEqual(resolveWindowsSandbox(undefined, { platform: "win32", mode: "agent" }), {
+test("resolveWindowsSandbox defaults, and passes an unknown mode through with a warning", () => {
+  assert.deepEqual(resolveWindowsSandbox(undefined, { platform: "win32" }), {
     sandbox: "unelevated",
     warnings: [],
   });
-  assert.deepEqual(resolveWindowsSandbox("  ", { platform: "win32", mode: "agent" }).sandbox, "unelevated");
-  assert.deepEqual(resolveWindowsSandbox("elevated", { platform: "win32", mode: "agent" }), {
+  assert.equal(resolveWindowsSandbox("  ", { platform: "win32" }).sandbox, "unelevated");
+  assert.deepEqual(resolveWindowsSandbox("elevated", { platform: "win32" }), {
     sandbox: "elevated",
     warnings: [],
   });
 
-  // An unknown value used to reach Codex and fail the run at config load.
-  const bogus = resolveWindowsSandbox("bogusvalue", { platform: "win32", mode: "agent" });
-  assert.equal(bogus.sandbox, "unelevated");
-  assert.equal(bogus.warnings.length, 1);
-  assert.match(bogus.warnings[0], /bogusvalue/);
+  // The knob exists to survive a Codex change we did not see coming, so a mode we
+  // do not recognize travels rather than being replaced by one we do.
+  const future = resolveWindowsSandbox("some-future-mode", { platform: "win32" });
+  assert.equal(future.sandbox, "some-future-mode");
+  assert.equal(future.warnings.length, 1);
+  assert.match(future.warnings[0], /some-future-mode/);
+  assert.match(future.warnings[0], /passed to Codex as given/);
 
-  const off = resolveWindowsSandbox("off", { platform: "win32", mode: "agent" });
-  assert.equal(off.sandbox, "off");
-  assert.equal(off.warnings.length, 1);
-  assert.match(off.warnings[0], /read-only/);
-
-  // Nothing to degrade when the mode cannot write, and nothing at all off Windows.
-  assert.deepEqual(resolveWindowsSandbox("off", { platform: "win32", mode: "ask" }).warnings, []);
-  assert.deepEqual(resolveWindowsSandbox("off", { platform: "linux", mode: "agent" }).warnings, []);
+  // Nothing to say off Windows, where the flag is never sent.
+  assert.deepEqual(resolveWindowsSandbox("some-future-mode", { platform: "linux" }).warnings, []);
 });
 
 test("an oversized spec is rejected before it reaches CreateProcess", () => {

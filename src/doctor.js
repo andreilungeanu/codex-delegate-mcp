@@ -127,10 +127,9 @@ async function describeWorkspace(workspace, warnings, execFileImpl) {
 }
 
 /**
- * Only the two modes that break anything are worth a warning. `elevated` cannot
- * spawn its helper on a normal session and fails every shell command in every
- * mode; `off` degrades workspace-write to read-only. Both still report the run as
- * completed, so nothing downstream will say it for us.
+ * `elevated` is the one mode we know breaks: it cannot spawn its helper on a
+ * normal session and fails every shell command in every mode, while the run still
+ * reports as completed, so nothing downstream will say it for us.
  */
 function describeSandbox(env, warnings, platform) {
   if (platform !== "win32") return { platform };
@@ -141,12 +140,8 @@ function describeSandbox(env, warnings, platform) {
     warnings.push(
       'CODEX_DELEGATE_WINDOWS_SANDBOX="elevated" only works from an elevated session. On a normal one Codex cannot spawn the sandbox helper (CreateProcessAsUserW failed: 5) and every shell command fails while the turn still completes.'
     );
-  } else if (sandbox === "off") {
-    warnings.push(
-      'CODEX_DELEGATE_WINDOWS_SANDBOX="off" degrades workspace-write to read-only: agent-mode writes are denied and the turn still completes.'
-    );
   }
-  return { platform: "win32", windowsSandbox: sandbox, modes: [...WINDOWS_SANDBOX_MODES] };
+  return { platform: "win32", windowsSandbox: sandbox, known: [...WINDOWS_SANDBOX_MODES] };
 }
 
 async function probeLogin(command, execFileImpl = execFileAsync) {
