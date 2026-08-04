@@ -17,8 +17,8 @@ import { createOperationRegistry } from "./ops.js";
 import { VERSION } from "./version.js";
 
 const nodeMajor = Number(process.versions.node.split(".")[0]);
-if (nodeMajor < 18) {
-  console.error(`codex-delegate-mcp requires Node 18+ (found ${process.versions.node})`);
+if (nodeMajor < 20) {
+  console.error(`codex-delegate-mcp requires Node 20+ (found ${process.versions.node})`);
   process.exit(1);
 }
 
