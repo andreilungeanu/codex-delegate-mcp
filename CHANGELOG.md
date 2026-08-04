@@ -42,8 +42,9 @@ Both were long-standing limits the code had reasons for; the reasons no longer h
 
 - The brief travels on **stdin**, so it no longer appears in the child's command line, which any
   local process can read (`/proc/*/cmdline`, or WMI on Windows) — and briefs are told to quote the
-  user's exact values. This also lifts the 28,000-character cap: a 60,000-character brief now runs.
-  `review` is unchanged, since its target flags rule out a positional prompt.
+  user's exact values. It also removes the 28,000-character limit on the brief outright — nothing
+  in the bridge measures it any more. `review` is unchanged, since its target flags rule out a
+  positional prompt.
 - `SECURITY.md` named a result field the bridge does not ship (`filesReportedByAgent`).
 - Lockfile refreshed past two high-severity advisories reaching us through the MCP SDK
   (`ip-address` SSRF, `fast-uri` host confusion). Neither is reachable from a stdio server.
