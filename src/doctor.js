@@ -2,7 +2,7 @@ import process from "node:process";
 import { execFile } from "node:child_process";
 import { statSync } from "node:fs";
 import { promisify } from "node:util";
-import { refreshCodex, MIN_VERSION, clearCodexCache } from "./resolve-codex.js";
+import { refreshCodex, clearCodexCache } from "./resolve-codex.js";
 import { resolveWindowsSandbox, WINDOWS_SANDBOX_MODES } from "./command.js";
 import { isGitRepo } from "./git-preflight.js";
 import { VERSION } from "./version.js";
@@ -76,7 +76,6 @@ export async function runDoctor({
     plugin: { version: VERSION, name: "codex-delegate-mcp" },
     client,
     codex,
-    versionGate: { minimum: MIN_VERSION, status: codex.found ? "ok" : "unresolved" },
     login,
     recursionGuard: recursion,
     workspace: await describeWorkspace(workspace, warnings, execFileImpl),

@@ -4,9 +4,6 @@ import path from "node:path";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 
-export const MIN_VERSION = "0.144.0";
-const MIN = [0, 144, 0];
-
 export class CodexResolveError extends Error {
   constructor(message, { code = "codex_resolve_failed", details = {} } = {}) {
     super(message);
@@ -97,29 +94,14 @@ export function resolveCodexUncached({
   let lastError = null;
   for (const candidate of candidates) {
     try {
-      const versionText = runVersion(candidate.command);
-      const version = parseVersion(versionText);
-      if (!version) {
-        lastError = new CodexResolveError(
-          `Could not parse Codex version from: ${String(versionText).slice(0, 120)}`,
-          { code: "version_unparsed", details: { command: candidate.command } }
-        );
-        continue;
-      }
-      if (compareSemver(version, MIN) < 0) {
-        lastError = new CodexResolveError(
-          `Codex ${formatVersion(version)} is below required ${MIN_VERSION}.`,
-          {
-            code: "version_too_old",
-            details: { command: candidate.command, version: formatVersion(version) },
-          }
-        );
-        continue;
-      }
+      // The version is reported, never gated on. A floor here could only ever say
+      // "older than what we happened to test", and refusing an install on that
+      // basis breaks setups that work to protect against ones we never tried.
+      const version = parseVersion(runVersion(candidate.command));
       return {
         command: candidate.command,
         source: candidate.source,
-        version: formatVersion(version),
+        version: version ? formatVersion(version) : null,
         warnings,
       };
     } catch (err) {

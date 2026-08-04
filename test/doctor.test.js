@@ -28,7 +28,6 @@ test("doctor reports a resolved CLI, login and runtime", async () => {
   assert.equal(out.codex.found, true);
   assert.equal(out.codex.command, "/bin/codex");
   assert.equal(out.codex.version, "0.145.0");
-  assert.equal(out.versionGate.status, "ok");
   assert.equal(out.login.status, "ok");
   assert.equal(out.login.detail, "Logged in");
   assert.equal(out.workspace.path, process.cwd());
@@ -61,7 +60,6 @@ test("doctor surfaces a resolution failure instead of throwing", async () => {
   assert.equal(out.codex.found, false);
   assert.equal(out.codex.code, "not_found");
   assert.match(out.codex.error, /not found/);
-  assert.equal(out.versionGate.status, "unresolved");
   assert.equal(out.login.status, "skipped");
   assert.equal(out.login.reason, "codex_not_found");
 });

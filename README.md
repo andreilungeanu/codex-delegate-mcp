@@ -58,7 +58,7 @@ You  →  your agent (plans & reviews)
 
 ## Quick start
 
-You need [Node.js 20+](https://nodejs.org/) and the [OpenAI Codex CLI](https://github.com/openai/codex) **0.144.0+**, already logged in (`codex login`).
+You need [Node.js 20+](https://nodejs.org/) and the [OpenAI Codex CLI](https://github.com/openai/codex), already logged in (`codex login`).
 
 ### Claude Code
 

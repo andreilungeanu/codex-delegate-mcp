@@ -31,17 +31,26 @@ test("resolveCodexUncached uses override and version gate", () => {
   assert.equal(resolved.version, "0.144.4");
 });
 
-test("resolveCodexUncached rejects old versions", () => {
+test("resolveCodexUncached reports the version without gating on it", () => {
   clearCodexCache();
-  assert.throws(
-    () =>
-      resolveCodexUncached({
-        env: { CODEX_DELEGATE_COMMAND: process.execPath },
-        platform: "linux",
-        homeDir: "/nonexistent-home",
-        runVersion: () => "codex-cli 0.100.0",
-      }),
-    /below required/
+  const base = {
+    env: { CODEX_DELEGATE_COMMAND: process.execPath },
+    platform: "linux",
+    homeDir: "/nonexistent-home",
+  };
+
+  // An old CLI is the caller's business, not ours to refuse: any floor we set
+  // could only mean "older than we happened to test".
+  assert.equal(
+    resolveCodexUncached({ ...base, runVersion: () => "codex-cli 0.100.0" }).version,
+    "0.100.0"
+  );
+
+  // An unreadable version does not block resolution either.
+  clearCodexCache();
+  assert.equal(
+    resolveCodexUncached({ ...base, runVersion: () => "no version here" }).version,
+    null
   );
 });
 
@@ -142,8 +151,14 @@ test("refreshCodex clears the cache when its fresh probe fails", () => {
 
   resolveCodex({ ...options, runVersion: () => "codex-cli 0.144.4" });
   assert.throws(
-    () => refreshCodex({ ...options, runVersion: () => "codex-cli 0.100.0" }),
-    /below required/
+    () =>
+      refreshCodex({
+        ...options,
+        runVersion: () => {
+          throw new Error("probe exploded");
+        },
+      }),
+    /probe exploded/
   );
 
   assert.equal(
