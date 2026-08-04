@@ -31,6 +31,7 @@ export async function executeDelegate(rawArgs, options = {}) {
     onProgress,
     signal: outerSignal,
     preflight = preflightReviewTarget,
+    platform = process.platform,
   } = options;
 
   if (env.CODEX_DELEGATE_DEPTH && String(env.CODEX_DELEGATE_DEPTH).trim() !== "") {
@@ -65,15 +66,13 @@ export async function executeDelegate(rawArgs, options = {}) {
       await writeFile(outputSchemaFile, JSON.stringify(PLAN_SCHEMA), "utf8");
     }
 
-    const windows = resolveWindowsSandbox(env.CODEX_DELEGATE_WINDOWS_SANDBOX, {
-      platform: process.platform,
-    });
+    const windows = resolveWindowsSandbox(env.CODEX_DELEGATE_WINDOWS_SANDBOX, { platform });
     warnings.push(...windows.warnings);
 
     const built = buildCodexArgs(request, {
       resultFile,
       outputSchemaFile,
-      platform: process.platform,
+      platform,
       windowsSandbox: windows.sandbox,
     });
 

@@ -44,7 +44,7 @@ test("executeDelegate warns about an unusable Windows sandbox mode instead of pa
   const options = delegateOptions("thread-1");
   const result = await executeDelegate(
     { spec: "x", mode: "ask", workspace: process.cwd() },
-    { ...options, env: { CODEX_DELEGATE_WINDOWS_SANDBOX: "bogusvalue" } }
+    { ...options, env: { CODEX_DELEGATE_WINDOWS_SANDBOX: "bogusvalue" }, platform: "win32" }
   );
 
   assert.equal(result.status, "completed");
@@ -294,7 +294,13 @@ test("plan mode returns the plan once, with result holding only the overview", a
   assert.deepEqual(result.plan, plan);
   assert.equal(result.result, plan.overview);
   assert.ok(!result.result.includes("steps"), "result must not repeat the plan JSON");
-  assert.ok(JSON.stringify(result).length < raw.length * 2);
+  // The plan must be carried once, not once in `plan` and again in `result`.
+  // Counting an occurrence beats budgeting bytes: the envelope also holds the
+  // workspace path and a uuid, so a byte cap passes or fails on cwd length.
+  const serialized = JSON.stringify(result);
+  for (const step of plan.steps) {
+    assert.equal(serialized.split(step.detail).length - 1, 1, `${step.title} detail sent twice`);
+  }
 });
 
 test("an unparseable plan keeps the raw final message in result", async () => {
