@@ -4,6 +4,30 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.16.0] - 2026-08-10
+
+### Changed
+
+- `delegate`, `cancel` and `doctor` return their result once, as a single compact JSON text
+  block. No tool declares an `outputSchema` any more: declaring one obliges the server to also
+  send `structuredContent`, and a host that reads both — Codex does — put the whole payload in
+  the model's context twice. Hosts that read the text block are unaffected; a host that read
+  only `structuredContent` must now parse the text block. The field list is unchanged, and a
+  strict test copy fails if a new field ever ships undocumented.
+
+### Added
+
+- Tag pushes publish to npm from the release workflow via OIDC trusted publishing, with
+  provenance, and then publish `server.json` to the MCP Registry. Requires one-time trusted
+  publishing setup on npmjs.com before the first run.
+- Dependabot keeps the npm dependencies and the workflow action pins current.
+
+### Security
+
+- Workflow actions are pinned to commit SHAs rather than moving tags, and `permissions` is
+  scoped per job instead of workflow-wide.
+- `.codexignore` keeps local scratch, logs and build artifacts out of plugin packaging.
+
 ## [1.15.0] - 2026-08-10
 
 ### Added
