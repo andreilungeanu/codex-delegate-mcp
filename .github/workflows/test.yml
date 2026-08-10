@@ -39,10 +39,13 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      # Floors sit just under measured coverage, so a regression trips them rather than
+      # spending headroom that was never noticed. Raise them when coverage rises, not to
+      # whatever a run happens to report.
       - name: Coverage floor
         run: >
           node --test --experimental-test-coverage --test-coverage-include='src/**'
-          --test-coverage-lines=93 --test-coverage-branches=85 --test-coverage-functions=87
+          --test-coverage-lines=95 --test-coverage-branches=87 --test-coverage-functions=90
       - run: npm audit --omit=dev --audit-level=high
 
   # The lockfile resolves a newer SDK; make sure the declared minimum keeps working.
