@@ -28,11 +28,11 @@ You orchestrate; Codex implements. Use the **codex-delegate-mcp** MCP server —
    - **Done when** — verifiable acceptance criteria.
    Point at files to read; don't paste large code blocks.
 2. **Call `delegate`** on codex-delegate-mcp.
-3. **Review** — read `warnings` first, then `filesReportedByEditTools`, then the git diff; run tests/lint. The diff is what actually changed; the field only tells you which of it Codex edited directly.
-   - A `warnings` entry always means something real; an empty `warnings` does not mean a clean run. The bridge sees failures Codex reports as failed tool calls, not ones it narrates in prose — a run that could not do the work often says so in `result` and nowhere else. A failed-tool-call warning means the reply may describe work that did not happen: verify against the diff before believing it.
-   - `resultSource: "stream-fallback"` means the run never finished and `result` is the last thing Codex said, not an answer. Resume the thread.
-   - If criteria fail: resume the **same thread** with `resumeThreadId` and a specific fix brief (pass the same `workspace`).
-   - If a resume returns `resumed: false` with a new `threadId`, Codex minted a fresh thread and prior context did not carry over.
+3. **Review** — check `status`, then `warnings`, then the git diff; run tests/lint. The diff is
+   authoritative. Codex narrates prose the bridge cannot check, so a run that did not do the work
+   often says so in `result` and nowhere else — verify before believing it.
+   - Criteria fail, or `resultSource: "stream-fallback"` → resume the **same thread**:
+     `resumeThreadId` + a specific fix brief + the same `workspace`.
    - After 2 failed resumes, start a fresh thread with a rewritten brief.
 4. **Report** — summarize what changed and whether acceptance criteria are met.
 
@@ -44,12 +44,12 @@ Delegations run concurrently. Worth doing for:
 - **independent work in independent directories** — one worker per `workspace`.
 
 Not worth doing when the tasks touch the same files. Two agents writing one tree overwrite each
-other and the diff cannot attribute the damage; the result warns when workspaces overlap, but
-the warning arrives after the runs are already racing. Split the work by directory, or serialize.
+other and the diff cannot attribute the damage; the overlap warning arrives after the runs are
+already racing. Split the work by directory, or serialize.
 
-To cancel one of several, pass its `delegationId` (announced in progress before the run spawns,
-and returned with the result). `threadId` cancels every delegation on that thread; passing
-neither cancels all of them.
+To cancel one of several, pass its `delegationId` — announced in progress before the run spawns,
+so it is the only handle for a run that wedges during startup. `threadId` cancels every
+delegation on that thread; passing neither cancels all of them.
 
 ## Defaults
 
@@ -90,16 +90,16 @@ non-empty `result` under any non-`completed` status as salvage, not an answer.
 
 | Field | When present | Meaning |
 |---|---|---|
-| `result` | always | The final answer. Empty only when nothing could be salvaged. |
+| `result` | always | The final answer. Empty when nothing could be salvaged |
 | `status` | always | `completed` \| `failed` \| `interrupted` |
 | `reason` | not `completed` | `cancelled`, `startup-timeout`, `hard-cap`, `agent-error`, `died-mid-turn`, `exit-nonzero` |
-| `resultSource` | salvage only | `stream-fallback` — `result` is the last thing Codex said, not a final answer |
+| `resultSource` | salvage only | `stream-fallback` — the run never finished; resume the thread |
 | `warnings` | non-empty only | Real diagnostics. Read first — but absence is not proof of a clean run |
-| `filesReportedByEditTools` | non-empty only | Only what Codex's edit tool reported. Files written by a shell command it ran are **not** listed. The git diff is authoritative. |
+| `filesReportedByEditTools` | non-empty only | Only what Codex's edit tool reported; shell-written files are **not** listed |
 | `resumed` | resume requested | `false` means a fresh thread was minted and prior context was lost |
 | `usage` | when reported | Per-turn token counts. Absent in `review`, which reports all zeros |
 | `exitCode` | not `completed` | Process exit code |
-| `delegationId` | always | This run's cancel handle. Also announced in progress before the run spawns |
+| `delegationId` | always | This run's cancel handle |
 | `threadId`, `workspace`, `cliVersion`, `plan` | as applicable | |
 
 ## Timeouts
