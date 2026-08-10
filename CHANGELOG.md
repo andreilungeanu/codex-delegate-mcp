@@ -4,6 +4,32 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.17.0] - 2026-08-10
+
+### Changed
+
+- `workspace` guidance has a floor. The schema description, the delegate skill and `SECURITY.md`
+  now say the smallest directory *holding the task's files*, with the project root as the floor
+  and never one created for the call — callers were inventing narrower directories, which does
+  not scope a run, it just moves it somewhere Codex cannot do the work.
+- The CI coverage floor rises to 95% lines, 87% branches and 90% functions, just under measured
+  coverage, so a regression trips it instead of spending headroom nobody noticed.
+
+### Added
+
+- A Codex plugin manifest (`.codex-plugin/plugin.json`), held to the listing rules by tests: a
+  short description, support URL, brand colour, and assets the repo actually ships.
+- `TECHNICAL.md` — architecture, the tool contract, and local development.
+- `llms-install.md`, setup instructions written for an agent rather than a human.
+- `CONTRIBUTING.md` and issue templates for installation problems, host compatibility, and
+  delegation reports.
+- `glama.json`, claiming the Glama registry listing.
+
+### Documentation
+
+- The delegate skill is split into a workflow (`SKILL.md`) and a field reference
+  (`reference.md`), so the always-loaded half is the part you act on.
+
 ## [1.16.0] - 2026-08-10
 
 ### Changed

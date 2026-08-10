@@ -3,7 +3,7 @@
   "name": "io.github.andreilungeanu/codex-delegate-mcp",
   "title": "Codex Delegate",
   "description": "Bridge AI coding hosts to the OpenAI Codex CLI for delegated implementation.",
-  "version": "1.16.0",
+  "version": "1.17.0",
   "websiteUrl": "https://github.com/andreilungeanu/codex-delegate-mcp",
   "repository": {
     "url": "https://github.com/andreilungeanu/codex-delegate-mcp",
@@ -13,7 +13,7 @@
     {
       "registryType": "npm",
       "identifier": "codex-delegate-mcp",
-      "version": "1.16.0",
+      "version": "1.17.0",
       "transport": {
         "type": "stdio"
       }
