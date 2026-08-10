@@ -4,6 +4,36 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.18.0] - 2026-08-10
+
+### Fixed
+
+- A failing test suite no longer reads as a fabricated reply. Codex marks a `command_execution`
+  `failed` on any non-zero exit, so delegating against a project with red tests ended almost every
+  run with "The reply may describe work that did not happen" — an accusation the event does not
+  support. The warning now reports the status Codex reported and asks for verification of the
+  claims that depend on those calls, without inferring a cause.
+- Exit codes could not carry that inference on Windows anyway. The code in the event is the
+  shell's, not the program's: `pwsh -Command` collapses a sandbox denial, a red suite, a missing
+  binary and a clean `process.exit(3)` all to exit 1 — verified against a live CLI, where a command
+  that ran perfectly and exited 3 is reported as exit 1. Nothing keys off the value; it is shown,
+  not read.
+
+### Added
+
+- Tool calls Codex reports as `declined` are surfaced instead of dropped. Only `failed` was
+  collected, so a command blocked by policy left no trace in `warnings` at all — the shape a
+  Windows sandbox-helper failure takes, per `docs/phase0/findings.md`. `declined` is reported as
+  itself: it can be a benign refusal, and is never presented as a failure or a denial.
+
+### Changed
+
+- `describeFailedItem` is now `describeNonSuccessfulItem` and includes the item's status beside its
+  exit code, so a reader can tell `failed exit 1` from `declined` at a glance. The old name would
+  have been false once declined items were included.
+- The delegate skill and its field reference no longer tell orchestrators to read a
+  failed-tool-call warning as evidence of fabrication.
+
 ## [1.17.0] - 2026-08-10
 
 ### Changed
