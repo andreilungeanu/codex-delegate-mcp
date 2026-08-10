@@ -1,0 +1,46 @@
+name: Host compatibility report
+description: Report whether an MCP host works, so compatibility claims rest on real evidence.
+labels: ["compatibility"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The server is developed against a handful of hosts and contract-tested against the MCP
+        SDK. Anything beyond that is unverified until someone reports it, so exact versions
+        matter more than prose.
+  - type: input
+    id: host
+    attributes:
+      label: Host and version
+      placeholder: "Windsurf 1.12 / JetBrains AI Assistant 2026.2 / Visual Studio 17.14"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS
+    validations:
+      required: true
+  - type: input
+    id: product-version
+    attributes:
+      label: codex-delegate-mcp version
+      placeholder: "1.16.0"
+    validations:
+      required: true
+  - type: checkboxes
+    id: results
+    attributes:
+      label: What worked
+      options:
+        - label: "`doctor` reported client identity and resolved the Codex CLI"
+        - label: "`ask` mode answered without changing files"
+        - label: "`plan` mode returned a structured plan and changed no files"
+        - label: "Resuming the plan thread in `agent` mode produced the expected edit"
+        - label: "`review` mode reviewed a diff, branch, or commit"
+        - label: "`cancel` stopped a running delegation"
+        - label: "Progress notifications arrived while the run was in flight"
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything that broke or surprised you
