@@ -40,7 +40,7 @@ export const WINDOWS_SANDBOX_MODES = Object.freeze(["unelevated", "elevated"]);
 
 /**
  * Which values a model accepts is not discoverable up front and differs by model:
- * gpt-5.6-* take none|low|medium|high|xhigh and reject minimal, which older
+ * gpt-5.6-* take none|low|medium|high|xhigh|max and reject minimal, which older
  * models take. A rejected value comes back as the model's own error.
  */
 /** @type {readonly [string, ...string[]]} */
@@ -51,6 +51,7 @@ export const REASONING_EFFORTS = Object.freeze([
   "medium",
   "high",
   "xhigh",
+  "max",
 ]);
 
 export const PLAN_SCHEMA = Object.freeze({

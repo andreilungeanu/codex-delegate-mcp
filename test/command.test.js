@@ -49,8 +49,9 @@ test("resume requires an explicit workspace because resume has no --cd", () => {
   assert.equal(ok.resumeThreadId, "tid-1");
 });
 
-test("reasoningEffort accepts none, which gpt-5.6 models take", () => {
+test("reasoningEffort accepts none and max, which gpt-5.6 models take", () => {
   assert.equal(validateDelegateInput({ spec: "x", reasoningEffort: "none" }).reasoningEffort, "none");
+  assert.equal(validateDelegateInput({ spec: "x", reasoningEffort: "max" }).reasoningEffort, "max");
   assert.throws(
     () => validateDelegateInput({ spec: "x", reasoningEffort: "ultra" }),
     /reasoningEffort must be one of/
