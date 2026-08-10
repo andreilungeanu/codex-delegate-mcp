@@ -12,6 +12,9 @@ description: >
 You orchestrate; Codex implements. Use the **codex-delegate-mcp** MCP server — never run
 `codex` from the shell for these tasks.
 
+For the full input and result field semantics, the mode rules, and the concurrency and timeout
+guarantees, read [reference.md](reference.md) in this skill directory.
+
 ## When to delegate
 
 - **Trivial** (one-liner, rename, typo): do it yourself.
@@ -38,18 +41,13 @@ You orchestrate; Codex implements. Use the **codex-delegate-mcp** MCP server —
 
 ## Running several at once
 
-Delegations run concurrently. Worth doing for:
+Delegations run concurrently. Worth doing for **the same question to different models** (one
+call per `model`, then compare) and for **independent work in independent directories** (one
+worker per `workspace`). Not worth doing when the tasks touch the same files — two agents
+writing one tree overwrite each other and the diff cannot attribute the damage. Split by
+directory, or serialize.
 
-- **the same question to different models** — issue one call per `model` and compare the answers;
-- **independent work in independent directories** — one worker per `workspace`.
-
-Not worth doing when the tasks touch the same files. Two agents writing one tree overwrite each
-other and the diff cannot attribute the damage; the result warns when workspaces overlap, but
-the warning arrives after the runs are already racing. Split the work by directory, or serialize.
-
-To cancel one of several, pass its `delegationId` (announced in progress before the run spawns,
-and returned with the result). `threadId` cancels every delegation on that thread; passing
-neither cancels all of them.
+To cancel one of several, pass its `delegationId`. See [reference.md](reference.md).
 
 ## Defaults
 
@@ -82,21 +80,13 @@ Review cannot be resumed. Put focus instructions in `spec`.
 
 ## Reading the result
 
-Fields that carry no signal are omitted, so anything present is worth reading.
+The result is one compact JSON block. Fields that carry no signal are omitted, so anything
+present is worth reading. Check `status` before trusting `result`: a run that spawns and then
+fails returns normally rather than raising, so a caller that only catches errors reads a
+failure as an empty success.
 
-| Field | When present | Meaning |
-|---|---|---|
-| `result` | always | The final answer. Empty only when nothing could be salvaged. |
-| `status` | always | `completed` \| `failed` \| `interrupted` |
-| `reason` | not `completed` | `cancelled`, `startup-timeout`, `hard-cap`, `agent-error`, `died-mid-turn`, `exit-nonzero` |
-| `resultSource` | salvage only | `stream-fallback` — `result` is the last thing Codex said, not a final answer |
-| `warnings` | non-empty only | Real diagnostics. Read first — but absence is not proof of a clean run |
-| `filesReportedByEditTools` | non-empty only | Only what Codex's edit tool reported. Files written by a shell command it ran are **not** listed. The git diff is authoritative. |
-| `resumed` | resume requested | `false` means a fresh thread was minted and prior context was lost |
-| `usage` | when reported | Per-turn token counts. Absent in `review`, which reports all zeros |
-| `exitCode` | not `completed` | Process exit code |
-| `delegationId` | always | This run's cancel handle. Also announced in progress before the run spawns |
-| `threadId`, `workspace`, `cliVersion`, `plan` | as applicable | |
+Read `warnings` first, then `filesReportedByEditTools`, then the git diff. Every field's exact
+meaning — and what its absence proves — is in [reference.md](reference.md).
 
 ## Timeouts
 
