@@ -179,7 +179,12 @@ export function buildServer({
             "Task brief: goal, scope, decisions already made (quote the user's exact values), acceptance criteria. Point at files to read rather than pasting code."
           ),
         mode: z.enum([...MODES]).default("agent"),
-        workspace: z.string().optional().describe("Working directory for Codex (defaults to cwd)"),
+        workspace: z
+          .string()
+          .optional()
+          .describe(
+            "Working directory for Codex. Optional; defaults to the server process cwd, which for npx and plugin launches is not necessarily your project root — pass it explicitly. Smallest directory holding the task's files; none → project root. Must already exist — never create one for the call. Required when resuming: codex exec resume has no --cd."
+          ),
         resumeThreadId: z
           .string()
           .optional()

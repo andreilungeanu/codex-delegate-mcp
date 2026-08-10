@@ -32,7 +32,10 @@ travels in the command line. Keep secrets out of a review brief.
 
 ## Recommendations
 
-- Point `workspace` at the smallest directory that contains the task.
+- Point `workspace` at the smallest directory that holds the task's files — never `$HOME`, a
+  filesystem root, or a directory created for the call. With no such directory, the project root
+  is the floor; inventing a narrower one does not scope the run, it just moves it somewhere Codex
+  cannot do the work.
 - Review `filesReportedByEditTools` and the git diff before committing.
 - Use `mode: "plan"` or `mode: "ask"` when you do not want writes.
 - Give concurrent delegations disjoint workspaces.
