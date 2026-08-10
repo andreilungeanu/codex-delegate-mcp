@@ -10,7 +10,8 @@ const pkg = read("package.json");
 const pin = `codex-delegate-mcp@${pkg.version}`;
 
 test("logo assets exist as PNGs", () => {
-  for (const rel of ["assets/logo-light.png", "assets/logo-dark.png"]) {
+  // logo-400.png is the square size marketplace submissions ask for.
+  for (const rel of ["assets/logo-light.png", "assets/logo-dark.png", "assets/logo-400.png"]) {
     const target = resolve(ROOT, rel);
     assert.ok(existsSync(target), `${rel} must exist`);
     assert.deepEqual([...readFileSync(target).subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
@@ -45,9 +46,24 @@ test("Claude plugin launches bundled code and bootstraps its runtime dependencie
   assert.ok(existsSync(resolve(ROOT, ".claude-plugin/ensure-deps.mjs")));
 });
 
+test("Codex plugin manifest pins the package and points at assets that exist", () => {
+  const manifest = read(".codex-plugin/plugin.json");
+  assert.deepEqual(manifest.mcpServers["codex-delegate-mcp"].args, ["-y", pin]);
+  assert.ok(existsSync(resolve(ROOT, manifest.skills)));
+
+  // Codex rejects a listing whose short description, support URL or brand colour is
+  // missing, and a manifest that points at an asset the repo does not ship.
+  const ui = manifest.interface;
+  assert.ok(ui.shortDescription && ui.shortDescription.length <= 40);
+  assert.match(ui.supportURL, /^https:\/\//);
+  assert.match(ui.brandColor, /^#[0-9A-Fa-f]{6}$/);
+  for (const rel of [ui.logo, ui.composerIcon, ...(ui.screenshots || [])]) {
+    assert.ok(existsSync(resolve(ROOT, rel)), `${rel} must exist`);
+  }
+});
+
 test("no host auto-discovery leak configs at conventional paths", () => {
   assert.ok(!existsSync(resolve(ROOT, ".mcp.json")), ".mcp.json at the repo root leaks into Copilot installs");
   assert.ok(!existsSync(resolve(ROOT, "hooks/hooks.json")), "hooks/hooks.json is auto-discovered by some hosts");
-  assert.ok(!existsSync(resolve(ROOT, ".codex-plugin")), "Codex plugin packaging is not used");
   assert.ok(!existsSync(resolve(ROOT, ".agents/plugins")), "Codex marketplace packaging is not used");
 });

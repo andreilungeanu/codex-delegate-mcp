@@ -10,6 +10,7 @@ test("package and plugin manifest versions stay in sync", () => {
   const lock = read("../package-lock.json");
   const manifests = [
     read("../.claude-plugin/plugin.json"),
+    read("../.codex-plugin/plugin.json"),
     read("../plugin.json"),
   ];
   const copilotMarketplace = read("../.github/plugin/marketplace.json");
@@ -27,6 +28,10 @@ test("package and plugin manifest versions stay in sync", () => {
   assert.ok(
     JSON.stringify(read("../.mcp.copilot.json")).includes(pin),
     `.mcp.copilot.json must pin ${pin}`
+  );
+  assert.ok(
+    JSON.stringify(manifests[1].mcpServers).includes(pin),
+    `Codex inline MCP config must pin ${pin}`
   );
 });
 

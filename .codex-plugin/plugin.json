@@ -1,0 +1,41 @@
+{
+  "name": "codex-delegate-mcp",
+  "version": "1.16.0",
+  "description": "Delegate local coding work to the OpenAI Codex CLI through MCP.",
+  "author": {
+    "name": "Andrei Lungeanu",
+    "email": "andrei@lungeanu.ro",
+    "url": "https://github.com/andreilungeanu"
+  },
+  "homepage": "https://github.com/andreilungeanu/codex-delegate-mcp",
+  "repository": "https://github.com/andreilungeanu/codex-delegate-mcp",
+  "license": "MIT",
+  "keywords": ["mcp", "codex", "openai", "delegation", "coding-agent"],
+  "skills": "./skills/",
+  "mcpServers": {
+    "codex-delegate-mcp": {
+      "command": "npx",
+      "args": ["-y", "codex-delegate-mcp@1.16.0"]
+    }
+  },
+  "interface": {
+    "displayName": "Codex Delegate",
+    "shortDescription": "Delegate coding to Codex",
+    "longDescription": "Plan and orchestrate in your assistant of choice, delegate local implementation to the OpenAI Codex CLI, then review structured results and the files it changed.",
+    "developerName": "Andrei Lungeanu",
+    "category": "Developer Tools",
+    "capabilities": ["Read", "Write"],
+    "websiteURL": "https://github.com/andreilungeanu/codex-delegate-mcp",
+    "privacyPolicyURL": "https://github.com/andreilungeanu/codex-delegate-mcp/blob/main/PRIVACY.md",
+    "termsOfServiceURL": "https://github.com/andreilungeanu/codex-delegate-mcp/blob/main/TERMS.md",
+    "supportURL": "https://github.com/andreilungeanu/codex-delegate-mcp/issues",
+    "defaultPrompt": [
+      "Delegate this implementation to Codex and review the diff.",
+      "Ask Codex to draft a plan for this change.",
+      "Use Codex to inspect this code without editing files."
+    ],
+    "brandColor": "#6B7AE8",
+    "composerIcon": "./assets/logo-light.png",
+    "logo": "./assets/logo-light.png"
+  }
+}
