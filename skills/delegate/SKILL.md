@@ -84,6 +84,10 @@ Review cannot be resumed. Put focus instructions in `spec`.
 
 Fields that carry no signal are omitted, so anything present is worth reading.
 
+**Check `status` before trusting `result`.** A run that spawns and then fails — bad model, nonzero
+exit, hard cap — returns a normal result, not an error; only bad arguments raise. Treat a
+non-empty `result` under any non-`completed` status as salvage, not an answer.
+
 | Field | When present | Meaning |
 |---|---|---|
 | `result` | always | The final answer. Empty only when nothing could be salvaged. |
