@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.18.1] - 2026-08-10
+
+### Fixed
+
+- Tool-call warnings name the command instead of the interpreter. Codex reports the whole
+  invocation, so on Windows the first 50 characters of every entry were the same `pwsh.exe` path
+  — against a 120 character budget that left 70 for the command itself. Long commands truncated
+  exactly where they differ, and an agent retrying `vitest` with different pool flags rendered as
+  one line repeated. Of seven commands captured from real runs, five truncated; the two that fit
+  still carried the boilerplate. A recognised shell wrapper (`pwsh -Command`, `bash -lc`, `sh -c`,
+  `cmd /c`) is now stripped before truncating. Display only: nothing reads the result, and no
+  cause is inferred from it. The leading token must name a shell — matching any executable would
+  turn `git -c core.pager=cat log` into `core.pager=cat log`.
+
 ## [1.18.0] - 2026-08-10
 
 ### Fixed
