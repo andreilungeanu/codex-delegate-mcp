@@ -1,6 +1,7 @@
 {
   "name": "codex-delegate-mcp",
   "version": "1.15.0",
+  "mcpName": "io.github.andreilungeanu/codex-delegate-mcp",
   "type": "module",
   "description": "MCP bridge that lets Claude Code and other hosts delegate implementation to the OpenAI Codex CLI.",
   "license": "MIT",
