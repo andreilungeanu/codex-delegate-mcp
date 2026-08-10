@@ -86,7 +86,7 @@ export async function runCodexProcess({
   let agentError = null;
   let lastAgentMessage = null;
   let usage = null;
-  const failedItems = [];
+  const nonSuccessfulItems = [];
   const stderrChunks = [];
   let stderrBytes = 0;
   const reportedPaths = new Set();
@@ -281,10 +281,17 @@ export async function runCodexProcess({
       // so only the first is worth a notification — the second used to repeat it,
       // and announced a finished command with the word "running".
       const started = event.type === "item.started";
-      // A denied or failing tool call leaves the turn "completed"; without this
+      // A failed or declined tool call leaves the turn "completed"; without this
       // a run where nothing worked is indistinguishable from one that did.
-      if (!started && item.status === "failed") {
-        failedItems.push(describeFailedItem(item));
+      // Report the producer's status as fact and nothing more: Codex marks a
+      // command_execution "failed" on any non-zero exit, which is the normal
+      // outcome of a red test suite, so this cannot stand in for proof that the
+      // work did not happen. On Windows the reported code is the shell's, not the
+      // program's — pwsh -Command collapses a denial, a red suite, a missing binary
+      // and a clean `process.exit(3)` all to exit 1 — so neither the status nor the
+      // code is evidence of which one occurred. Report both; infer neither.
+      if (!started && (item.status === "failed" || item.status === "declined")) {
+        nonSuccessfulItems.push(describeNonSuccessfulItem(item));
       }
       if (item.type === "command_execution") {
         const cmd = String(item.command || item.command_line || "").slice(0, 120);
@@ -437,11 +444,12 @@ export async function runCodexProcess({
       `Codex reported more than ${MAX_REPORTED_PATHS} edited files; ${droppedPaths} are missing from the list. Read the git diff for the full set.`
     );
   }
-  if (failedItems.length) {
-    const shown = failedItems.slice(0, 3).join("; ");
-    const more = failedItems.length > 3 ? ` (+${failedItems.length - 3} more)` : "";
+  if (nonSuccessfulItems.length) {
+    const shown = nonSuccessfulItems.slice(0, 3).join("; ");
+    const more =
+      nonSuccessfulItems.length > 3 ? ` (+${nonSuccessfulItems.length - 3} more)` : "";
     warnings.push(
-      `${failedItems.length} Codex tool call(s) failed during this turn: ${shown}${more}. The reply may describe work that did not happen.`
+      `${nonSuccessfulItems.length} Codex tool call(s) reported failed or declined during this turn: ${shown}${more}. A non-zero exit is normal for tests and type-checks, but can also mean execution was blocked. Verify any claim that depends on these calls.`
     );
   }
   if (killEscaped) {
@@ -530,12 +538,13 @@ export function readUsage(raw) {
   return Object.fromEntries(kept);
 }
 
-export function describeFailedItem(item, maxChars = 120) {
+export function describeNonSuccessfulItem(item, maxChars = 120) {
   const kind = String(item?.type || "item");
   const detail = String(item?.command || item?.command_line || "").trim();
+  const status = item?.status ? ` ${item.status}` : "";
   const exit = Number.isInteger(item?.exit_code) ? ` exit ${item.exit_code}` : "";
   const label = detail ? `${kind} "${detail.slice(0, maxChars)}"` : kind;
-  return `${label}${exit}`;
+  return `${label}${status}${exit}`;
 }
 
 /** Codex prints this on every non-TTY run; it is not a diagnosis. */

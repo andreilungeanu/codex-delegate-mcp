@@ -7,7 +7,7 @@ import path from "node:path";
 import { Readable, Writable } from "node:stream";
 import {
   capResultBytes,
-  describeFailedItem,
+  describeNonSuccessfulItem,
   readUsage,
   meaningfulStderr,
   readAgentError,
@@ -361,8 +361,96 @@ test("a turn whose tool calls all failed does not read as clean success", async 
 
   assert.equal(result.status, "completed");
   assert.ok(
-    result.warnings.some((w) => /1 Codex tool call\(s\) failed/.test(w) && /npm test/.test(w)),
-    `expected a failed-tool-call warning, got ${JSON.stringify(result.warnings)}`
+    result.warnings.some(
+      (w) => /1 Codex tool call\(s\) reported failed or declined/.test(w) && /npm test/.test(w)
+    ),
+    `expected a non-successful-tool-call warning, got ${JSON.stringify(result.warnings)}`
+  );
+  // The warning states what the producer reported; it must not assert fabrication.
+  assert.ok(
+    !result.warnings.some((w) => /work that did not happen/.test(w)),
+    `warning must not accuse the reply of fabrication, got ${JSON.stringify(result.warnings)}`
+  );
+});
+
+test("a declined tool call is reported rather than dropped", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-declined-"));
+  const resultFile = path.join(dir, "last.txt");
+
+  const result = await runCodexProcess({
+    command: "codex",
+    args: ["exec"],
+    cwd: dir,
+    resultFile,
+    spawnImpl: () =>
+      fakeChild({
+        lines: [
+          JSON.stringify({ type: "thread.started", thread_id: "tid-dec" }),
+          JSON.stringify({ type: "turn.started" }),
+          JSON.stringify({
+            type: "item.completed",
+            item: { type: "command_execution", command: "mkdir out", status: "declined" },
+          }),
+          JSON.stringify({ type: "turn.completed", usage: {} }),
+        ],
+        writeResult: () => writeFile(resultFile, "Created the directory.", "utf8"),
+      }),
+    platform: "linux",
+    heartbeatMs: 0,
+    timeoutMs: 5000,
+  });
+
+  assert.equal(result.status, "completed");
+  assert.ok(
+    result.warnings.some((w) => /declined/.test(w) && /mkdir out/.test(w)),
+    `expected the declined call to surface, got ${JSON.stringify(result.warnings)}`
+  );
+});
+
+test("a command that merely exits non-zero is not called a failure", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-redsuite-"));
+  const resultFile = path.join(dir, "last.txt");
+
+  const result = await runCodexProcess({
+    command: "codex",
+    args: ["exec"],
+    cwd: dir,
+    resultFile,
+    spawnImpl: () =>
+      fakeChild({
+        lines: [
+          JSON.stringify({ type: "thread.started", thread_id: "tid-red" }),
+          JSON.stringify({ type: "turn.started" }),
+          JSON.stringify({
+            type: "item.completed",
+            item: { type: "command_execution", command: "npx vitest run", status: "completed" },
+          }),
+          JSON.stringify({
+            type: "item.completed",
+            item: {
+              type: "command_execution",
+              command: "npx tsc --noEmit",
+              exit_code: 2,
+              status: "failed",
+            },
+          }),
+          JSON.stringify({ type: "turn.completed", usage: {} }),
+        ],
+        writeResult: () => writeFile(resultFile, "5 of 6 tests fail; here is why.", "utf8"),
+      }),
+    platform: "linux",
+    heartbeatMs: 0,
+    timeoutMs: 5000,
+  });
+
+  assert.equal(result.status, "completed");
+  assert.ok(
+    result.warnings.some((w) => /exit 2/.test(w) && /npx tsc --noEmit/.test(w)),
+    `expected the non-zero exit to be reported factually, got ${JSON.stringify(result.warnings)}`
+  );
+  assert.ok(
+    !result.warnings.some((w) => /work that did not happen/.test(w)),
+    `a red type-check must not read as fabrication, got ${JSON.stringify(result.warnings)}`
   );
 });
 
@@ -518,12 +606,25 @@ test("readUsage keeps only the counts Codex actually reported", () => {
   });
 });
 
-test("describeFailedItem names the tool and its exit code", () => {
+test("describeNonSuccessfulItem names the tool, its status and its exit code", () => {
   assert.equal(
-    describeFailedItem({ type: "command_execution", command: "ls", exit_code: -1 }),
-    'command_execution "ls" exit -1'
+    describeNonSuccessfulItem({
+      type: "command_execution",
+      command: "ls",
+      status: "failed",
+      exit_code: -1,
+    }),
+    'command_execution "ls" failed exit -1'
   );
-  assert.equal(describeFailedItem({ type: "file_change" }), "file_change");
+  assert.equal(
+    describeNonSuccessfulItem({
+      type: "command_execution",
+      command: "mkdir out",
+      status: "declined",
+    }),
+    'command_execution "mkdir out" declined'
+  );
+  assert.equal(describeNonSuccessfulItem({ type: "file_change" }), "file_change");
 });
 
 test("readAgentError unwraps the nested Codex error envelope", () => {

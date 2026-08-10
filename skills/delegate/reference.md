@@ -34,7 +34,7 @@ anything present is worth reading.
 | `status` | always | `completed`, `failed` or `interrupted`. |
 | `reason` | not `completed` | `cancelled`, `startup-timeout`, `hard-cap`, `agent-error`, `died-mid-turn`, `exit-nonzero`. |
 | `resultSource` | salvage only | `stream-fallback` — the run never finished and `result` is the last thing Codex said, not an answer. Resume the thread. |
-| `warnings` | non-empty only | Real diagnostics; read them first. Absence is **not** a clean bill of health: the bridge sees failures Codex reports as failed tool calls, not ones it narrates in prose. A failed-tool-call warning means the reply may describe work that never happened — verify against the diff before believing it. |
+| `warnings` | non-empty only | Real diagnostics; read them first. Absence is **not** a clean bill of health: the bridge sees failures Codex reports as failed or declined tool calls, not ones it narrates in prose. Such a warning reports what Codex reported, not a verdict: Codex marks a command `failed` on any non-zero exit, which is normal for tests and type-checks, but it can also mean execution was blocked. Verify any claim that depends on those calls. |
 | `filesReportedByEditTools` | non-empty only | Only what Codex's edit tool reported. Files written by a shell command it ran are **not** listed. The git diff is authoritative. |
 | `resumed` | resume requested | `false` means Codex minted a fresh thread and prior context did not carry over. |
 | `usage` | when reported | Per-turn token counts. Absent in `review`, which reports all zeros. |
