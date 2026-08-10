@@ -30,51 +30,58 @@ const reviewTargetSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("commit"), sha: z.string() }).strict(),
 ]);
 
-const delegateOutputSchema = z
-  .object({
-    result: z.string(),
-    resultSource: z.literal("stream-fallback").optional(),
-    status: z.enum(["completed", "failed", "interrupted"]),
-    reason: z
-      .enum([
-        "cancelled",
-        "startup-timeout",
-        "hard-cap",
-        "agent-error",
-        "died-mid-turn",
-        "exit-nonzero",
-      ])
-      .optional(),
-    threadId: z.string().optional(),
-    delegationId: z.string().optional(),
-    resumed: z.boolean().optional(),
-    workspace: z.string(),
-    cliVersion: z.string().optional(),
-    usage: z
-      .object({
-        inputTokens: z.number().optional(),
-        cachedInputTokens: z.number().optional(),
-        cacheWriteInputTokens: z.number().optional(),
-        outputTokens: z.number().optional(),
-        reasoningOutputTokens: z.number().optional(),
-      })
-      .optional(),
-    filesReportedByEditTools: z.array(z.string()).optional(),
-    plan: z
-      .object({
-        overview: z.string(),
-        steps: z.array(
-          z.object({
-            title: z.string(),
-            detail: z.string(),
-          })
-        ),
-      })
-      .optional(),
-    warnings: z.array(z.string()).optional(),
-    exitCode: z.number().int().optional(),
-  })
-  .passthrough();
+// No tool declares an outputSchema: declaring one obliges the server to also return
+// structuredContent, and a host that reads both it and the text block — Codex does — puts the
+// payload in the model's context twice. Every tool returns one compact JSON text block instead.
+// So this is an in-repo contract, enforced by the .strict() copy in server.test.js, which
+// fails when a field added in delegate.js is forgotten here. cancel's status vocabulary is
+// published in its tool description, which is now its only schema.
+//
+// Types only. What each field means, and what its absence means, is documented once in
+// skills/delegate/reference.md.
+export const delegateOutputShape = {
+  result: z.string(),
+  resultSource: z.literal("stream-fallback").optional(),
+  status: z.enum(["completed", "failed", "interrupted"]),
+  reason: z
+    .enum([
+      "cancelled",
+      "startup-timeout",
+      "hard-cap",
+      "agent-error",
+      "died-mid-turn",
+      "exit-nonzero",
+    ])
+    .optional(),
+  threadId: z.string().optional(),
+  delegationId: z.string().optional(),
+  resumed: z.boolean().optional(),
+  workspace: z.string(),
+  cliVersion: z.string().optional(),
+  usage: z
+    .object({
+      inputTokens: z.number().optional(),
+      cachedInputTokens: z.number().optional(),
+      cacheWriteInputTokens: z.number().optional(),
+      outputTokens: z.number().optional(),
+      reasoningOutputTokens: z.number().optional(),
+    })
+    .optional(),
+  filesReportedByEditTools: z.array(z.string()).optional(),
+  plan: z
+    .object({
+      overview: z.string(),
+      steps: z.array(
+        z.object({
+          title: z.string(),
+          detail: z.string(),
+        })
+      ),
+    })
+    .optional(),
+  warnings: z.array(z.string()).optional(),
+  exitCode: z.number().int().optional(),
+};
 
 /** @param {{ args?: any, operationRegistry: any }} params */
 export async function runCancelTool({ args = {}, operationRegistry }) {
@@ -84,8 +91,7 @@ export async function runCancelTool({ args = {}, operationRegistry }) {
       cause: "user",
     });
     return {
-      content: [{ type: /** @type {"text"} */ ("text"), text: JSON.stringify(result, null, 2) }],
-      structuredContent: result,
+      content: [{ type: /** @type {"text"} */ ("text"), text: JSON.stringify(result) }],
     };
   } catch (err) {
     const payload = {
@@ -93,7 +99,7 @@ export async function runCancelTool({ args = {}, operationRegistry }) {
       message: err?.message || String(err),
     };
     return {
-      content: [{ type: /** @type {"text"} */ ("text"), text: JSON.stringify(payload, null, 2) }],
+      content: [{ type: /** @type {"text"} */ ("text"), text: JSON.stringify(payload) }],
       isError: true,
     };
   }
@@ -127,11 +133,7 @@ export async function runDelegateTool({
       signal: extra?.signal,
     });
     return {
-      // Compact: this is the same object as structuredContent, kept only for hosts
-      // that do not read structured output, and indenting it costs ~15% of the
-      // larger of the two copies of every result.
       content: [{ type: /** @type {"text"} */ ("text"), text: JSON.stringify(result) }],
-      structuredContent: result,
     };
   } catch (err) {
     const payload = {
@@ -140,7 +142,7 @@ export async function runDelegateTool({
     };
     if (err?.details) payload.details = err.details;
     return {
-      content: [{ type: /** @type {"text"} */ ("text"), text: JSON.stringify(payload, null, 2) }],
+      content: [{ type: /** @type {"text"} */ ("text"), text: JSON.stringify(payload) }],
       isError: true,
     };
   }
@@ -211,7 +213,6 @@ export function buildServer({
           .optional()
           .describe("Required in review mode: uncommitted, base branch, or commit sha"),
       }).strict(),
-      outputSchema: delegateOutputSchema,
       annotations: {
         title: "Delegate coding task to Codex",
         readOnlyHint: false,
@@ -228,7 +229,7 @@ export function buildServer({
     "cancel",
     {
       description:
-        "Cancel in-flight Codex delegations owned by this server. Returns once the processes have actually ended, not when the kill was requested. Name one with delegationId (announced in progress before the run starts, and the only handle for a run that wedges during startup) or threadId (cancels every delegation on that thread). With neither, every active delegation is cancelled.",
+        "Cancel in-flight Codex delegations owned by this server. Returns once the processes have actually ended, not when the kill was requested. Name one with delegationId (announced in progress before the run starts, and the only handle for a run that wedges during startup) or threadId (cancels every delegation on that thread). With neither, every active delegation is cancelled. Returns a status of cancelled, nothing-active, not-running, or not-found.",
       inputSchema: z
         .object({
           delegationId: z
@@ -241,11 +242,6 @@ export function buildServer({
             .describe("Cancel every delegation running on this Codex thread"),
         })
         .strict(),
-      outputSchema: z
-        .object({
-          status: z.enum(["cancelled", "nothing-active", "not-running", "not-found"]),
-        })
-        .passthrough(),
       annotations: {
         title: "Cancel Codex delegation",
         readOnlyHint: false,
@@ -271,14 +267,6 @@ export function buildServer({
           workspace: z.string().optional(),
         })
         .strict(),
-      outputSchema: z
-        .object({
-          plugin: z.object({ version: z.string() }).passthrough(),
-          codex: z.object({ found: z.boolean() }).passthrough(),
-          runtime: z.object({ node: z.string(), platform: z.string() }).passthrough(),
-          warnings: z.array(z.string()),
-        })
-        .passthrough(),
       annotations: {
         title: "Diagnose Codex delegation setup",
         readOnlyHint: true,
@@ -297,8 +285,7 @@ export function buildServer({
         }),
       });
       return {
-        content: [{ type: /** @type {"text"} */ ("text"), text: JSON.stringify(out, null, 2) }],
-        structuredContent: out,
+        content: [{ type: /** @type {"text"} */ ("text"), text: JSON.stringify(out) }],
       };
     }
   );

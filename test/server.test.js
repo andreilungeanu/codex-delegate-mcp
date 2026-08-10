@@ -1,9 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { z } from "zod";
 import {
   buildServer,
   runDelegateTool,
   runCancelTool,
+  delegateOutputShape,
   SERVER_INSTRUCTIONS,
 } from "../src/server.js";
 import {
@@ -35,7 +37,7 @@ test("delegate tool derives defaults and descriptions from command constants", (
   assert.ok(!SERVER_INSTRUCTIONS.includes(DEFAULT_MODEL));
 });
 
-test("runDelegateTool returns structuredContent on success", async () => {
+test("runDelegateTool returns the result as its only payload on success", async () => {
   const registry = createOperationRegistry();
   const response = await runDelegateTool({
     args: { spec: "hi" },
@@ -52,11 +54,11 @@ test("runDelegateTool returns structuredContent on success", async () => {
       warnings: [],
     }),
   });
-  assert.equal(response.structuredContent.status, "completed");
+  assert.equal(JSON.parse(response.content[0].text).status, "completed");
   assert.equal(response.isError, undefined);
 });
 
-test("the text copy of a result is compact", async () => {
+test("a result is returned once, as one compact JSON block", async () => {
   const payload = {
     result: "done",
     status: "completed",
@@ -70,8 +72,10 @@ test("the text copy of a result is compact", async () => {
     execute: async () => payload,
   });
 
-  // It duplicates structuredContent for hosts that ignore structured output;
-  // indenting the larger of the two copies is pure cost.
+  // structuredContent plus a text copy puts the whole payload in the model's context
+  // twice on any host that reads both — Codex does. One block, and not indented.
+  assert.equal(response.structuredContent, undefined);
+  assert.equal(response.content.length, 1);
   assert.equal(response.content[0].text, JSON.stringify(payload));
   assert.ok(!response.content[0].text.includes("\n"));
   assert.deepEqual(JSON.parse(response.content[0].text), payload);
@@ -96,7 +100,7 @@ test("runCancelTool statuses: nothing-active, not-found, cancelled", async () =>
   const registry = createOperationRegistry();
 
   const idle = await runCancelTool({ args: {}, operationRegistry: registry });
-  assert.equal(idle.structuredContent.status, "nothing-active");
+  assert.equal(JSON.parse(idle.content[0].text).status, "nothing-active");
 
   const lease = registry.acquire({
     threadId: "owned-tid",
@@ -107,14 +111,15 @@ test("runCancelTool statuses: nothing-active, not-found, cancelled", async () =>
     args: { threadId: "other-tid" },
     operationRegistry: registry,
   });
-  assert.equal(wrong.structuredContent.status, "not-found");
+  assert.equal(JSON.parse(wrong.content[0].text).status, "not-found");
 
   const cancelled = await runCancelTool({
     args: { threadId: "owned-tid" },
     operationRegistry: registry,
   });
-  assert.equal(cancelled.structuredContent.status, "cancelled");
-  assert.deepEqual(cancelled.structuredContent.cancelled, [
+  const cancelledPayload = JSON.parse(cancelled.content[0].text);
+  assert.equal(cancelledPayload.status, "cancelled");
+  assert.deepEqual(cancelledPayload.cancelled, [
     { delegationId: lease.delegationId, threadId: "owned-tid" },
   ]);
   assert.match(cancelled.content[0].text, /cancelled/);
@@ -135,7 +140,7 @@ test("runCancelTool cancels by delegationId before a thread id exists", async ()
     args: { delegationId: lease.delegationId },
     operationRegistry: registry,
   });
-  assert.equal(out.structuredContent.status, "cancelled");
+  assert.equal(JSON.parse(out.content[0].text).status, "cancelled");
   assert.equal(cancelled, true);
   lease.release();
 });
@@ -176,9 +181,11 @@ test("an unknown delegate input is rejected instead of silently dropped", () => 
 });
 
 test("an unknowable exit code does not cost the caller the whole result", async () => {
-  // Output validation runs after the handler succeeded: an exitCode the schema
-  // rejects throws away the thread id, the edited files and every warning, which
-  // is exactly the payload a killed-but-unreaped run needs to deliver.
+  // No outputSchema is declared any more, so nothing rejects a payload at runtime.
+  // This is the compensating check: strict, so a field delegate.js starts returning
+  // and delegateOutputShape never learned about fails here rather than shipping
+  // undocumented. An exitCode the shape rejects would throw away the thread id, the
+  // edited files and every warning — exactly what a killed-but-unreaped run must deliver.
   const payload = await executeDelegate(
     { spec: "x", mode: "agent", workspace: process.cwd() },
     {
@@ -199,11 +206,11 @@ test("an unknowable exit code does not cost the caller the whole result", async 
     }
   );
 
-  const validated = buildServer()._registeredTools.delegate.outputSchema.safeParse(payload);
+  const validated = z.object(delegateOutputShape).strict().safeParse(payload);
   assert.equal(
     validated.success,
     true,
-    `payload rejected by the output schema: ${JSON.stringify(validated.error?.issues)}`
+    `payload rejected by the documented shape: ${JSON.stringify(validated.error?.issues)}`
   );
   assert.equal(payload.threadId, "thr_immortal");
   assert.deepEqual(payload.filesReportedByEditTools, ["important.ts"]);
