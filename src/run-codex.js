@@ -538,9 +538,39 @@ export function readUsage(raw) {
   return Object.fromEntries(kept);
 }
 
+/**
+ * Codex reports the whole interpreter invocation, so half the budget below went
+ * to the same shell path on every line — long commands truncated exactly where
+ * they differ, and a retry storm rendered as one repeated entry. Spend the
+ * characters on the command instead. Display only: nothing reads the result.
+ */
+// The leading token must name a shell. Matching any executable would maul
+// ordinary commands: `git -c core.pager=cat log` looks exactly like `sh -c`.
+const SHELL_WRAPPERS = [
+  /^(?:"[^"]*(?:pwsh|powershell)(?:\.exe)?"|\S*(?:pwsh|powershell)(?:\.exe)?)\s+(?:-\w+\s+)*-Command\s+/i,
+  /^(?:"[^"]*\b(?:bash|zsh|dash|sh)(?:\.exe)?"|\S*\b(?:bash|zsh|dash|sh)(?:\.exe)?)\s+-l?c\s+/i,
+  /^(?:"[^"]*\bcmd(?:\.exe)?"|\S*\bcmd(?:\.exe)?)\s+\/c\s+/i,
+];
+
+export function unwrapShellCommand(detail) {
+  const text = String(detail || "").trim();
+  for (const wrapper of SHELL_WRAPPERS) {
+    const match = text.match(wrapper);
+    if (!match) continue;
+    let rest = text.slice(match[0].length).trim();
+    const quote = rest[0];
+    if ((quote === "'" || quote === '"') && rest.length > 1 && rest.endsWith(quote)) {
+      rest = rest.slice(1, -1).trim();
+    }
+    // An unwrap that leaves nothing is a mismatch, not a command worth showing.
+    return rest || text;
+  }
+  return text;
+}
+
 export function describeNonSuccessfulItem(item, maxChars = 120) {
   const kind = String(item?.type || "item");
-  const detail = String(item?.command || item?.command_line || "").trim();
+  const detail = unwrapShellCommand(item?.command || item?.command_line || "");
   const status = item?.status ? ` ${item.status}` : "";
   const exit = Number.isInteger(item?.exit_code) ? ` exit ${item.exit_code}` : "";
   const label = detail ? `${kind} "${detail.slice(0, maxChars)}"` : kind;
