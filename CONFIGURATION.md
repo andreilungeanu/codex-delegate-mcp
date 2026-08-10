@@ -52,16 +52,6 @@ Pass `network: false` to seal a run: no web search, no shell egress. Worth doing
 workspace contains untrusted content, since an agent that can both read your repo and reach
 the network is the combination that turns a prompt injection into an exfiltration.
 
-On Windows, `network: true` has been seen to enable web search normally while the sandboxed
-shell still fails HTTPS at the TLS handshake — `schannel: AcquireCredentialsHandle failed:
-SEC_E_NO_CREDENTIALS` from `curl.exe`, `Authentication failed` from `Invoke-WebRequest` — on a
-host whose own egress works. The child process is not getting the credential store, which is
-upstream of this bridge; nothing in `network: true` is mis-wired. A sealed run fails at a
-different layer (`Failed to connect ... over proxy 127.0.0.1`), so the two are told apart by the
-error, not by whether one appears. Observed on an `unelevated` session; whether `elevated`
-completes the handshake is untested. Don't count on shell egress on Windows — web search is
-unaffected.
-
 ## Timeouts
 
 Codex emits nothing while a shell command runs or the model reasons, so **a quiet run is not a

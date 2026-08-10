@@ -4,6 +4,28 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.15.0] - 2026-08-10
+
+### Added
+
+- `reasoningEffort` accepts `max`, the top tier the gpt-5.6 models take. The enum stopped at
+  `xhigh`, so the level was unreachable through this bridge even though the API accepted it — the
+  same lag OpenAI's own Codex config reference still has, which lists `minimal` through `xhigh` and
+  no `max`. `minimal` stays for the older models that take it; as before, the enum is an allowlist
+  and not a promise, and a level the model refuses comes back as the model's own error.
+
+### Documentation
+
+- `CONFIGURATION.md` records that on Windows a `network: true` run can have working web search and
+  a sandboxed shell that still fails HTTPS at the TLS handshake. The child process is not getting
+  the credential store, which is upstream of this bridge. A sealed run fails at a different layer,
+  so the two are told apart by the error rather than by whether one appears.
+- The delegate skill says to check `status` before trusting `result`. A run that spawns and then
+  fails returns a normal result rather than raising, so a caller that only catches errors reads a
+  failure as an empty success.
+- The result fields are described once in the skill instead of in both the workflow steps and the
+  table.
+
 ## [1.14.1] - 2026-08-04
 
 ### Fixed
