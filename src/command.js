@@ -26,18 +26,7 @@ export const MAX_REVIEW_ARGV_CHARS = 28_000;
  */
 const STDIN_PROMPT = "-";
 
-/**
- * No sandbox, in every mode. Codex's own sandbox blocks a child process from
- * spawning one of its own — measured as EPERM under both workspace-write and
- * read-only — which stops the worker running `npm test`, `node --test` or any
- * build tool, since those all spawn. Disk access was never the problem: writes
- * to the workspace and to the OS temp dir both succeeded under workspace-write.
- *
- * The cost is total: nothing now confines the worker to the workspace, or to the
- * repository, or to anything else the user account can reach. Every mode is
- * write-capable, including `ask` and `plan`, and `web_search:false` does not stop
- * the shell reaching the network — it only turns off web search.
- */
+/** No sandbox, in every mode. Deliberate, not a default; see SECURITY.md. */
 const SANDBOX = "danger-full-access";
 
 /**
@@ -184,12 +173,8 @@ function buildReviewArgs(request, { resultFile }) {
 }
 
 function commonFlags(request, resultFile, outputSchemaFile) {
-  // On unless the caller opts out. This is now only the web_search switch:
-  // `sandbox_workspace_write.network_access` bound the workspace-write sandbox,
-  // and with no sandbox there is nothing for it to bind, so it is gone rather
-  // than sent and ignored. Nothing here stops the worker's shell reaching the
-  // network.
-  const webSearch = request.web_search !== false;
+  // On unless the caller opts out. Drives Codex's `web_search` and nothing else.
+  const webSearch = request.webSearch !== false;
   const args = [
     "--json",
     "--output-last-message",
@@ -257,9 +242,8 @@ export function validateDelegateInput(raw, { cwd = process.cwd() } = {}) {
     throw bad("invalid_workspace", `workspace is not a directory: ${workspace}`);
   }
 
-  // Live web search is on unless the caller opts out. The worker's unsandboxed
-  // shell reaches the network either way.
-  const web_search = raw.web_search !== false;
+  // Live web search is on unless the caller opts out.
+  const webSearch = raw.webSearch !== false;
 
   let resumeThreadId;
   if (raw.resumeThreadId != null && String(raw.resumeThreadId).trim()) {
@@ -318,7 +302,7 @@ export function validateDelegateInput(raw, { cwd = process.cwd() } = {}) {
     model,
     reasoningEffort,
     fast,
-    web_search,
+    webSearch,
     timeoutMs,
     reviewTarget,
   };

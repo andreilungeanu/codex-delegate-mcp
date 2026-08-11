@@ -14,7 +14,7 @@ concurrency and timeout guarantees. [SKILL.md](SKILL.md) carries the workflow it
 | `model` | `gpt-5.6-terra` | Codex model id. Other families (`gpt-5.6-sol`, `gpt-5.6-luna`) are available; pass one only when the user asks. |
 | `reasoningEffort` | `high` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. `gpt-5.6-*` reject `minimal`; older models reject `none`. A rejected value fails the turn, and the model's own message names what it takes. |
 | `fast` | `false` | Codex Fast mode (`service_tier=fast`). Higher credit use — only when the user asks. |
-| `web_search` | `true` | Web search. `false` disables it and nothing else — the worker's shell reaches the network either way. |
+| `webSearch` | `true` | Web search. `false` disables it and nothing else — the worker's shell reaches the network either way. |
 | `workspace` | server cwd | Working directory for Codex. The default is the **MCP server process's** cwd, which for `npx` and plugin launches is not necessarily your project root — pass it explicitly. Smallest directory holding the task's files; with no such directory the project root is the floor. Must already exist; never create one for the call. |
 | `resumeThreadId` | — | Resume an existing Codex thread. Pass the same `workspace`: `codex exec resume` has no `--cd`, so an omitted one runs the thread in the server's directory rather than the one it started in. |
 | `timeoutMs` | `3600000` | Hard cap for the whole run. |

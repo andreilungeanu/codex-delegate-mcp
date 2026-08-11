@@ -62,7 +62,7 @@ test("a spec that looks like CLI flags never reaches argv at all", () => {
       spec,
       mode: "ask",
       workspace: "/tmp/r",
-      web_search: false,
+      webSearch: false,
     },
     { resultFile: "/tmp/o.txt" }
   );
@@ -83,7 +83,7 @@ test("resume does not pass --cd (cwd is the workspace contract)", () => {
       mode: "agent",
       workspace: "D:\\other\\workspace",
       resumeThreadId: "019f64c2-4592-7213-ab3c-253dd1a1c42c",
-      web_search: false,
+      webSearch: false,
     },
     { resultFile: "D:\\tmp\\o.txt" }
   );
@@ -97,7 +97,7 @@ test("ask must not receive --output-schema even if a schema path is passed", () 
   assert.throws(
     () =>
       buildCodexArgs(
-        { spec: "q", mode: "ask", workspace: "/r", web_search: false },
+        { spec: "q", mode: "ask", workspace: "/r", webSearch: false },
         { resultFile: "/tmp/o.txt", outputSchemaFile: "/tmp/schema.json" }
       ),
     /output schema is not supported in ask mode/i
