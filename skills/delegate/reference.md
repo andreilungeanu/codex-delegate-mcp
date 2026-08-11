@@ -1,7 +1,5 @@
 # delegate tool reference
 
-Architecture: MCP host → MCP `delegate` → codex-delegate-mcp → **`codex exec`**.
-
 Read this when you need the full meaning of a result field, the rules for a mode, or how
 concurrency and timeouts behave. [SKILL.md](SKILL.md) carries the workflow itself.
 
@@ -43,17 +41,11 @@ anything present is worth reading.
 | `threadId` | when Codex reported one | Pass as `resumeThreadId` to continue this thread. |
 | `workspace`, `cliVersion`, `plan` | as applicable | |
 
-The field list is an in-repo contract: `src/server.js` exports `delegateOutputShape`, and a
-strict copy in `test/server.test.js` fails if `delegate.js` starts returning a field the shape
-never learned about.
-
 ## Modes
 
 ### plan
 
-1. `delegate(spec, mode="plan")` → save `threadId`, read `plan`.
-2. Present the plan and wait for approval.
-3. `delegate("implement the approved plan", mode="agent", resumeThreadId=<threadId>, workspace=<same workspace>)`.
+Workflow in [SKILL.md](SKILL.md#plan-mode).
 
 ### review
 

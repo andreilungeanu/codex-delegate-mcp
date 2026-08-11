@@ -31,7 +31,7 @@ behave, read [reference.md](reference.md) in this skill directory.
    - **Done when** — verifiable acceptance criteria.
    Point at files to read; don't paste large code blocks.
 2. **Call `delegate`** on codex-delegate-mcp.
-3. **Review** — read `warnings` first, then `filesReportedByEditTools`, then the git diff; run tests/lint. The diff is what actually changed; the field only tells you which of it Codex edited directly.
+3. **Review** — check `status` before trusting `result`: a run that spawns and then fails returns normally rather than raising, so a caller that only catches errors reads a failure as an empty success. Then read `warnings`, then `filesReportedByEditTools`, then the git diff; run tests/lint. The field lists only what Codex's edit tool reported — shell-written files and anything outside the workspace are missing, so the diff is the better record, not a complete one.
    - A `warnings` entry always means something real; empty `warnings` is not a clean bill of health — the bridge sees only failures Codex reports as failed or declined tool calls, not ones it narrates in `result`. Such a warning is Codex's status, not a verdict: any non-zero exit reads as `failed` — normal for a red suite, but also how a blocked command looks. Verify claims that depend on those calls.
    - `resultSource: "stream-fallback"` means the run never finished and `result` is the last thing Codex said, not an answer. Resume the thread.
    - If criteria fail: resume the **same thread** with `resumeThreadId` and a specific fix brief (pass the same `workspace`).
@@ -49,18 +49,10 @@ directory, or serialize.
 
 To cancel one of several, pass its `delegationId`. See [reference.md](reference.md).
 
-## Defaults
-
-| Parameter | Default | Notes |
-|---|---|---|
-| `mode` | `agent` | `plan` / `ask` / `review` as needed |
-| `model` | `gpt-5.6-terra` | Override **only** when the user asks for another model |
-| `reasoningEffort` | `high` | Override **only** when the user asks (none\|minimal\|low\|medium\|high\|xhigh\|max). gpt-5.6-* reject `minimal`; older models reject `none`. A rejected value fails the turn and the model's own message says which values it takes |
-| `fast` | `false` | Codex Fast mode (`service_tier` / `/fast`). Leave false; set true **only** when the user asks |
-| `webSearch` | `true` | Web search. `false` disables it only — the shell reaches the network regardless |
-| `workspace` | server cwd | Pass it — the default is the MCP **server's** cwd, not always your project root. Smallest directory holding the task's files; none → project root. Never one created for the call. **Required when resuming** — `codex exec resume` has no `--cd`, so an omitted workspace would run the thread in the server's directory, not the one it started in |
-
-Other models (e.g. `gpt-5.6-sol`, `gpt-5.6-luna`) are available — pass `model` when the user requests one.
+Leave `model`, `reasoningEffort` and `fast` at their defaults unless the user asks. Other models
+(`gpt-5.6-sol`, `gpt-5.6-luna`) are available — pass `model` only on request. Always pass
+`workspace`: the default is the MCP **server's** cwd, not always your project root, and it is
+required when resuming because `codex exec resume` has no `--cd`.
 
 ## Plan mode
 
@@ -77,16 +69,6 @@ Pass exactly one `reviewTarget`:
 - `{ "kind": "commit", "sha": "..." }`
 
 Review cannot be resumed. Put focus instructions in `spec`.
-
-## Reading the result
-
-The result is one compact JSON block. Fields that carry no signal are omitted, so anything
-present is worth reading. Check `status` before trusting `result`: a run that spawns and then
-fails returns normally rather than raising, so a caller that only catches errors reads a
-failure as an empty success.
-
-Read `warnings` first, then `filesReportedByEditTools`, then the git diff. Every field's exact
-meaning — and what its absence proves — is in [reference.md](reference.md).
 
 ## Timeouts
 
