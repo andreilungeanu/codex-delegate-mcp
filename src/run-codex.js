@@ -81,23 +81,18 @@ export async function runCodexProcess({
   let timedOut = false;
   let timeoutReason = null;
   let cancelled = false;
-  let threadId = null;
-  let turnStatus = "running";
-  let agentError = null;
-  let lastAgentMessage = null;
-  let usage = null;
-  const nonSuccessfulItems = [];
-  const stderrChunks = [];
-  let stderrBytes = 0;
-  const reportedPaths = new Set();
-  let droppedPaths = 0;
-  let unusableThreadIdChars = 0;
 
   const emit = (message) => {
     try {
       onProgress?.(message);
     } catch {}
   };
+
+  // Everything the JSONL stream reports, and the rolling stderr tail, keep their
+  // own state. What is left in this scope is the child and the flags that say how
+  // the run ended — the things the lifecycle below actually manipulates.
+  const { state: events, handleLine } = createEventReducer({ emit, onThreadId });
+  const stderrBuffer = createStderrTail(DEFAULT_STDERR_BYTES);
 
   const interruptedBeforeSpawn = async () => {
     const status = "interrupted";
@@ -112,7 +107,7 @@ export async function runCodexProcess({
       status,
       reason: "cancelled",
       exitCode,
-      threadId,
+      threadId: events.threadId,
       result: final.result,
       finalMessageAvailable: final.finalMessageAvailable,
       warnings: final.warnings,
@@ -196,7 +191,6 @@ export async function runCodexProcess({
   const hardCapMs = timeoutMs > 0 ? timeoutMs : 0;
   const startedAt = Date.now();
   let lastActivityAt = startedAt;
-  let lastCommand = null;
   let sawFirstEvent = false;
   let hardCapTimer;
   let startupTimer;
@@ -234,120 +228,21 @@ export async function runCodexProcess({
   const heartbeat = () => {
     const elapsed = Math.round((Date.now() - startedAt) / 1000);
     const quiet = Math.round((Date.now() - lastActivityAt) / 1000);
-    const running = lastCommand ? `, running: ${lastCommand}` : "";
+    const running = events.lastCommand ? `, running: ${events.lastCommand}` : "";
     emit(`still working — ${elapsed}s elapsed, last event ${quiet}s ago${running}`);
   };
 
   const rl = createInterface({ input: child.stdout, crlfDelay: Infinity });
   rl.on("line", (line) => {
     noteActivity();
-    let event;
-    try {
-      event = JSON.parse(line);
-    } catch {
-      return;
-    }
-    if (event?.type === "thread.started" && event.thread_id) {
-      const id = String(event.thread_id);
-      // Truncating would produce a plausible id that resumes nothing and matches
-      // no cancel; refusing it loses the same run and says so.
-      if (id.length > MAX_THREAD_ID_CHARS) {
-        unusableThreadIdChars = id.length;
-        return;
-      }
-      threadId = id;
-      try {
-        onThreadId?.(threadId);
-      } catch {}
-      emit(`thread started: ${threadId}`);
-    } else if (event?.type === "turn.started") {
-      turnStatus = "in_progress";
-      emit("turn started");
-    } else if (event?.type === "turn.completed") {
-      turnStatus = "completed";
-      usage = readUsage(event.usage) ?? usage;
-      emit("turn completed");
-    } else if (event?.type === "turn.failed") {
-      turnStatus = "failed";
-      agentError = agentError || readAgentError(event.error);
-      emit("turn failed");
-    } else if (event?.type === "error") {
-      // Codex reports the actionable reason here; the turn.failed that follows repeats it.
-      agentError = agentError || readAgentError(event);
-    } else if (event?.type === "item.started" || event?.type === "item.completed") {
-      const item = event.item;
-      if (!item) return;
-      // Codex announces each item twice. The two events carry the same description,
-      // so only the first is worth a notification — the second used to repeat it,
-      // and announced a finished command with the word "running".
-      const started = event.type === "item.started";
-      // A failed or declined tool call leaves the turn "completed"; without this
-      // a run where nothing worked is indistinguishable from one that did.
-      // Report the producer's status as fact and nothing more: Codex marks a
-      // command_execution "failed" on any non-zero exit, which is the normal
-      // outcome of a red test suite, so this cannot stand in for proof that the
-      // work did not happen. On Windows the reported code is the shell's, not the
-      // program's — pwsh -Command collapses a denial, a red suite, a missing binary
-      // and a clean `process.exit(3)` all to exit 1 — so neither the status nor the
-      // code is evidence of which one occurred. Report both; infer neither.
-      if (!started && (item.status === "failed" || item.status === "declined")) {
-        nonSuccessfulItems.push(describeNonSuccessfulItem(item));
-      }
-      if (item.type === "command_execution") {
-        const cmd = String(item.command || item.command_line || "").slice(0, 120);
-        if (started) {
-          lastCommand = cmd || null;
-          emit(cmd ? `running: ${cmd}` : "running command");
-        } else {
-          lastCommand = null;
-        }
-      } else if (item.type === "file_change") {
-        // Collected from both events: either one alone may carry the full list.
-        for (const p of pathsFromFileChangeItem(item)) {
-          if (reportedPaths.has(p)) continue;
-          if (reportedPaths.size >= MAX_REPORTED_PATHS) {
-            droppedPaths += 1;
-            continue;
-          }
-          reportedPaths.add(p);
-        }
-        if (started) {
-          const n = Array.isArray(item.changes) ? item.changes.length : 0;
-          emit(n ? `editing ${n} file(s)` : "editing files");
-        }
-      } else if (item.type === "agent_message") {
-        // Narration, not the answer. Kept only to salvage something when the
-        // authoritative --output-last-message file never gets written.
-        const text = String(item.text || "").trim();
-        if (text) lastAgentMessage = text;
-      } else if (item.type === "web_search") {
-        emit("web search");
-      }
-    }
+    handleLine(line);
   });
 
   const drained = new Promise((resolve) => rl.once("close", resolve));
 
-  // A rolling tail, not the first 64 KB: the diagnosis is the last thing a dying
-  // process writes, and stderrTail then takes the tail of whatever this kept. Keep
-  // the head and a megabyte of noise buries the one line that says why.
   child.stderr.on("data", (chunk) => {
     noteActivity();
-    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    if (!buffer.length) return;
-    stderrChunks.push(buffer);
-    stderrBytes += buffer.length;
-    while (stderrBytes > DEFAULT_STDERR_BYTES) {
-      const excess = stderrBytes - DEFAULT_STDERR_BYTES;
-      const oldest = stderrChunks[0];
-      if (oldest.length <= excess) {
-        stderrChunks.shift();
-        stderrBytes -= oldest.length;
-      } else {
-        stderrChunks[0] = oldest.subarray(excess);
-        stderrBytes -= excess;
-      }
-    }
+    stderrBuffer.push(chunk);
   });
 
   let exitCode;
@@ -377,29 +272,13 @@ export async function runCodexProcess({
     child.stderr?.destroy();
   }
 
-  const interrupted = cancelled || timedOut || signal?.aborted;
-  let status = "failed";
-  // One outcome, one reason. `reason` replaces the timedOut/cancelled booleans:
-  // it says which of the several ways to not finish actually happened.
-  let reason;
-  if (interrupted) {
-    status = "interrupted";
-    reason = timedOut ? timeoutReason : "cancelled";
-  } else if (turnStatus === "failed") {
-    status = "failed";
-    reason = "agent-error";
-  } else if (exitCode === 0 && turnStatus === "in_progress") {
-    // Process died mid-turn: do not treat a partial --output-last-message as final.
-    status = "failed";
-    reason = "died-mid-turn";
-  } else if (exitCode === 0 && (turnStatus === "completed" || turnStatus === "running")) {
-    // Some review paths exit cleanly without turn events; still require exit 0.
-    status = "completed";
-  } else {
-    reason = "exit-nonzero";
-  }
-
-  const stderr = Buffer.concat(stderrChunks, stderrBytes).toString("utf8");
+  const { status, reason } = classifyOutcome({
+    interrupted: cancelled || timedOut || signal?.aborted,
+    timedOut,
+    timeoutReason,
+    turnStatus: events.turnStatus,
+    exitCode,
+  });
 
   const final = await readFinalResult({
     filePath: resultFile,
@@ -414,19 +293,237 @@ export async function runCodexProcess({
   let result = final.result;
   let resultSource;
   const fallbackWarnings = [];
-  if (!final.finalMessageAvailable && lastAgentMessage) {
+  if (!final.finalMessageAvailable && events.lastAgentMessage) {
     // Capped like the file path: a run whose authoritative file is missing is the
     // more likely one to be pathological, not the less, and this path used to
     // hand back whatever the CLI streamed at whatever size it streamed it.
-    const capped = capResultBytes(lastAgentMessage, maxResultBytes);
+    const capped = capResultBytes(events.lastAgentMessage, maxResultBytes);
     result = capped.text;
     resultSource = "stream-fallback";
     fallbackWarnings.push(...capped.warnings);
   }
 
+  const stderrTail = meaningfulStderr(stderrBuffer.text()).slice(-STDERR_TAIL_CHARS);
+
+  const warnings = buildRunWarnings({
+    agentError: events.agentError,
+    resultWarnings: [...final.warnings, ...fallbackWarnings],
+    timedOut,
+    timeoutReason,
+    startupMs,
+    hardCapMs,
+    unusableThreadIdChars: events.unusableThreadIdChars,
+    droppedPaths: events.droppedPaths,
+    nonSuccessfulItems: events.nonSuccessfulItems,
+    killEscaped,
+    killDeadlineMs,
+    drainEscaped,
+    drainMs,
+    status,
+    stderrTail,
+  });
+
+  return {
+    status,
+    reason,
+    exitCode,
+    threadId: events.threadId,
+    agentError: events.agentError,
+    usage: events.usage,
+    result,
+    resultSource,
+    finalMessageAvailable: final.finalMessageAvailable,
+    warnings,
+    stderrBytes: stderrBuffer.bytes,
+    stderrTail: status !== "completed" ? stderrTail : "",
+    filesReportedByEditTools: [...events.reportedPaths],
+  };
+}
+
+/**
+ * Reduce the JSONL event stream to the handful of facts the result is built from.
+ * Everything it accumulates is read once, after the run settles — `lastCommand` is
+ * the exception, and the heartbeat reads it while the run is still going.
+ */
+function createEventReducer({ emit, onThreadId }) {
+  const state = {
+    threadId: null,
+    turnStatus: "running",
+    agentError: null,
+    lastAgentMessage: null,
+    usage: null,
+    nonSuccessfulItems: [],
+    reportedPaths: new Set(),
+    droppedPaths: 0,
+    unusableThreadIdChars: 0,
+    lastCommand: null,
+  };
+
+  const handleLine = (line) => {
+    let event;
+    try {
+      event = JSON.parse(line);
+    } catch {
+      return;
+    }
+    if (event?.type === "thread.started" && event.thread_id) {
+      const id = String(event.thread_id);
+      // Truncating would produce a plausible id that resumes nothing and matches
+      // no cancel; refusing it loses the same run and says so.
+      if (id.length > MAX_THREAD_ID_CHARS) {
+        state.unusableThreadIdChars = id.length;
+        return;
+      }
+      state.threadId = id;
+      try {
+        onThreadId?.(state.threadId);
+      } catch {}
+      emit(`thread started: ${state.threadId}`);
+    } else if (event?.type === "turn.started") {
+      state.turnStatus = "in_progress";
+      emit("turn started");
+    } else if (event?.type === "turn.completed") {
+      state.turnStatus = "completed";
+      state.usage = readUsage(event.usage) ?? state.usage;
+      emit("turn completed");
+    } else if (event?.type === "turn.failed") {
+      state.turnStatus = "failed";
+      state.agentError = state.agentError || readAgentError(event.error);
+      emit("turn failed");
+    } else if (event?.type === "error") {
+      // Codex reports the actionable reason here; the turn.failed that follows repeats it.
+      state.agentError = state.agentError || readAgentError(event);
+    } else if (event?.type === "item.started" || event?.type === "item.completed") {
+      const item = event.item;
+      if (!item) return;
+      // Codex announces each item twice. The two events carry the same description,
+      // so only the first is worth a notification — the second used to repeat it,
+      // and announced a finished command with the word "running".
+      const started = event.type === "item.started";
+      // A failed or declined tool call leaves the turn "completed"; without this
+      // a run where nothing worked is indistinguishable from one that did.
+      // Report the producer's status as fact and nothing more: Codex marks a
+      // command_execution "failed" on any non-zero exit, which is the normal
+      // outcome of a red test suite, so this cannot stand in for proof that the
+      // work did not happen. On Windows the reported code is the shell's, not the
+      // program's — pwsh -Command collapses a denial, a red suite, a missing binary
+      // and a clean `process.exit(3)` all to exit 1 — so neither the status nor the
+      // code is evidence of which one occurred. Report both; infer neither.
+      if (!started && (item.status === "failed" || item.status === "declined")) {
+        state.nonSuccessfulItems.push(describeNonSuccessfulItem(item));
+      }
+      if (item.type === "command_execution") {
+        const cmd = String(item.command || item.command_line || "").slice(0, 120);
+        if (started) {
+          state.lastCommand = cmd || null;
+          emit(cmd ? `running: ${cmd}` : "running command");
+        } else {
+          state.lastCommand = null;
+        }
+      } else if (item.type === "file_change") {
+        // Collected from both events: either one alone may carry the full list.
+        for (const p of pathsFromFileChangeItem(item)) {
+          if (state.reportedPaths.has(p)) continue;
+          if (state.reportedPaths.size >= MAX_REPORTED_PATHS) {
+            state.droppedPaths += 1;
+            continue;
+          }
+          state.reportedPaths.add(p);
+        }
+        if (started) {
+          const n = Array.isArray(item.changes) ? item.changes.length : 0;
+          emit(n ? `editing ${n} file(s)` : "editing files");
+        }
+      } else if (item.type === "agent_message") {
+        // Narration, not the answer. Kept only to salvage something when the
+        // authoritative --output-last-message file never gets written.
+        const text = String(item.text || "").trim();
+        if (text) state.lastAgentMessage = text;
+      } else if (item.type === "web_search") {
+        emit("web search");
+      }
+    }
+  };
+
+  return { state, handleLine };
+}
+
+/**
+ * A rolling tail, not the first 64 KB: the diagnosis is the last thing a dying
+ * process writes, and stderrTail then takes the tail of whatever this kept. Keep
+ * the head and a megabyte of noise buries the one line that says why.
+ */
+function createStderrTail(maxBytes) {
+  const chunks = [];
+  let bytes = 0;
+  return {
+    push(chunk) {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      if (!buffer.length) return;
+      chunks.push(buffer);
+      bytes += buffer.length;
+      while (bytes > maxBytes) {
+        const excess = bytes - maxBytes;
+        const oldest = chunks[0];
+        if (oldest.length <= excess) {
+          chunks.shift();
+          bytes -= oldest.length;
+        } else {
+          chunks[0] = oldest.subarray(excess);
+          bytes -= excess;
+        }
+      }
+    },
+    get bytes() {
+      return bytes;
+    },
+    text() {
+      return Buffer.concat(chunks, bytes).toString("utf8");
+    },
+  };
+}
+
+/**
+ * One outcome, one reason. `reason` replaces the timedOut/cancelled booleans:
+ * it says which of the several ways to not finish actually happened.
+ */
+function classifyOutcome({ interrupted, timedOut, timeoutReason, turnStatus, exitCode }) {
+  if (interrupted) {
+    return { status: "interrupted", reason: timedOut ? timeoutReason : "cancelled" };
+  }
+  if (turnStatus === "failed") return { status: "failed", reason: "agent-error" };
+  // Process died mid-turn: do not treat a partial --output-last-message as final.
+  if (exitCode === 0 && turnStatus === "in_progress") {
+    return { status: "failed", reason: "died-mid-turn" };
+  }
+  // Some review paths exit cleanly without turn events; still require exit 0.
+  if (exitCode === 0 && (turnStatus === "completed" || turnStatus === "running")) {
+    return { status: "completed", reason: undefined };
+  }
+  return { status: "failed", reason: "exit-nonzero" };
+}
+
+/** Every warning the run itself can raise, in the order the caller reads them. */
+function buildRunWarnings({
+  agentError,
+  resultWarnings,
+  timedOut,
+  timeoutReason,
+  startupMs,
+  hardCapMs,
+  unusableThreadIdChars,
+  droppedPaths,
+  nonSuccessfulItems,
+  killEscaped,
+  killDeadlineMs,
+  drainEscaped,
+  drainMs,
+  status,
+  stderrTail,
+}) {
   const warnings = [];
   if (agentError) warnings.push(`Codex error: ${agentError}`);
-  warnings.push(...final.warnings, ...fallbackWarnings);
+  warnings.push(...resultWarnings);
   if (timedOut && timeoutReason === "startup-timeout") {
     warnings.push(
       `Codex produced no output within ${startupMs}ms of spawning. Run doctor to check the CLI resolves and is logged in; raise CODEX_DELEGATE_STARTUP_MS on a slow machine.`
@@ -461,26 +558,10 @@ export async function runCodexProcess({
       `Codex exited but something it started still holds its output open after ${drainMs}ms — a server or watcher is probably still running in the workspace.`
     );
   }
-  const stderrTail = meaningfulStderr(stderr).slice(-STDERR_TAIL_CHARS);
   if (status !== "completed" && stderrTail.trim()) {
     warnings.push(`stderr: ${stderrTail.trim()}`);
   }
-
-  return {
-    status,
-    reason,
-    exitCode,
-    threadId,
-    agentError,
-    usage,
-    result,
-    resultSource,
-    finalMessageAvailable: final.finalMessageAvailable,
-    warnings,
-    stderrBytes,
-    stderrTail: status !== "completed" ? stderrTail : "",
-    filesReportedByEditTools: [...reportedPaths],
-  };
+  return warnings;
 }
 
 /**
