@@ -566,9 +566,9 @@ function buildRunWarnings({
 
 /**
  * Trim to a UTF-8 byte budget, backing off to a codepoint boundary so the cut
- * cannot emit a replacement character. Discarding an oversized result — what the
- * cap used to do — throws the answer away to punish its length; the front of it
- * plus a warning tells the caller both what was said and that it was cut.
+ * cannot emit a replacement character. Discarding an oversized result would throw
+ * the answer away to punish its length; the front of it plus a warning tells the
+ * caller both what was said and that it was cut.
  */
 export function capResultBytes(text, maxResultBytes) {
   const value = String(text ?? "");

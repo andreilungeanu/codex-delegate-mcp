@@ -575,7 +575,6 @@ test("an oversized final result file is truncated rather than discarded", async 
     maxResultBytes: 100,
   });
 
-  // Previously: result "", finalMessageAvailable false — the answer thrown away.
   assert.equal(out.finalMessageAvailable, true);
   assert.equal(out.result, "y".repeat(100));
   assert.match(out.warnings[0], /5000 bytes, truncated to the 100 byte cap/);

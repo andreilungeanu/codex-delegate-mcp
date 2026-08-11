@@ -64,9 +64,8 @@ export class OperationRegistry {
 
   /**
    * `id` names either a delegation id or a Codex thread id; a thread id cancels
-   * every delegation running on it. Omitting it cancels everything active — with a
-   * single run that is exactly the old behaviour, and with several there is no
-   * defensible way to pick one.
+   * every delegation running on it. Omitting it cancels everything active: with
+   * several running there is no defensible way to pick one.
    *
    * @param {{ id?: string | null, threadId?: string | null, cause?: string }} [options]
    */

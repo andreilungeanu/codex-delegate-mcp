@@ -181,7 +181,7 @@ test("an unknown delegate input is rejected instead of silently dropped", () => 
 });
 
 test("an unknowable exit code does not cost the caller the whole result", async () => {
-  // No outputSchema is declared any more, so nothing rejects a payload at runtime.
+  // No outputSchema is declared, so nothing rejects a payload at runtime.
   // This is the compensating check: strict, so a field delegate.js starts returning
   // and delegateOutputShape never learned about fails here rather than shipping
   // undocumented. An exitCode the shape rejects would throw away the thread id, the
