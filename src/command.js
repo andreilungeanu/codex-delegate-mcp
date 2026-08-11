@@ -146,7 +146,7 @@ function buildInitialArgs(request, { resultFile, outputSchemaFile }) {
     "--",
     STDIN_PROMPT,
   ];
-  return { kind: "initial", args, sandbox: SANDBOX, stdin: request.spec };
+  return { kind: "initial", args, stdin: request.spec };
 }
 
 function buildResumeArgs(request, { resultFile, outputSchemaFile }) {
@@ -161,7 +161,7 @@ function buildResumeArgs(request, { resultFile, outputSchemaFile }) {
     "--",
     STDIN_PROMPT,
   ];
-  return { kind: "resume", args, sandbox: SANDBOX, stdin: request.spec };
+  return { kind: "resume", args, stdin: request.spec };
 }
 
 function buildReviewArgs(request, { resultFile }) {
@@ -180,7 +180,7 @@ function buildReviewArgs(request, { resultFile }) {
   // No stdin: `exec review` rejects a positional prompt alongside a target, so the
   // brief has to keep travelling in argv here — command line and cap included.
   assertReviewArgvLength(args);
-  return { kind: "review", args, sandbox: SANDBOX, stdin: null };
+  return { kind: "review", args, stdin: null };
 }
 
 function commonFlags(request, resultFile, outputSchemaFile) {

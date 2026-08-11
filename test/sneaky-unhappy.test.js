@@ -64,7 +64,7 @@ test("a spec that looks like CLI flags never reaches argv at all", () => {
       workspace: "/tmp/r",
       web_search: false,
     },
-    { resultFile: "/tmp/o.txt", platform: "linux" }
+    { resultFile: "/tmp/o.txt" }
   );
   // It travels on stdin now, which is a stronger guarantee than a `--` separator:
   // there is no token for Codex to reinterpret, and nothing for another process on
@@ -85,7 +85,7 @@ test("resume does not pass --cd (cwd is the workspace contract)", () => {
       resumeThreadId: "019f64c2-4592-7213-ab3c-253dd1a1c42c",
       web_search: false,
     },
-    { resultFile: "D:\\tmp\\o.txt", platform: "win32" }
+    { resultFile: "D:\\tmp\\o.txt" }
   );
   assert.equal(kind, "resume");
   assert.ok(!args.includes("--cd"));
@@ -98,7 +98,7 @@ test("ask must not receive --output-schema even if a schema path is passed", () 
     () =>
       buildCodexArgs(
         { spec: "q", mode: "ask", workspace: "/r", web_search: false },
-        { resultFile: "/tmp/o.txt", outputSchemaFile: "/tmp/schema.json", platform: "linux" }
+        { resultFile: "/tmp/o.txt", outputSchemaFile: "/tmp/schema.json" }
       ),
     /output schema is not supported in ask mode/i
   );

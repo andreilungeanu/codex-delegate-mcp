@@ -10,6 +10,16 @@ import {
   MODES,
 } from "../src/command.js";
 
+function assertDangerFullAccess(built) {
+  if (built.kind === "initial") {
+    const flag = built.args.indexOf("--sandbox");
+    assert.notEqual(flag, -1);
+    assert.equal(built.args[flag + 1], "danger-full-access");
+    return;
+  }
+  assert.ok(built.args.includes('sandbox_mode="danger-full-access"'));
+}
+
 test("validateDelegateInput defaults and resolves workspace", () => {
   const cwd = process.cwd();
   const req = validateDelegateInput(
@@ -62,7 +72,7 @@ test("fast defaults off; only sets Codex service_tier when true", () => {
   assert.equal(off.fast, false);
   const offArgs = buildCodexArgs(
     { ...off, workspace: "/repo", web_search: false },
-    { resultFile: "/tmp/out.txt", platform: "linux" }
+    { resultFile: "/tmp/out.txt" }
   ).args;
   assert.ok(!offArgs.some((a) => String(a).includes("service_tier")));
   assert.ok(!offArgs.some((a) => String(a).includes("fast_mode")));
@@ -71,7 +81,7 @@ test("fast defaults off; only sets Codex service_tier when true", () => {
   assert.equal(on.fast, true);
   const onArgs = buildCodexArgs(
     { ...on, workspace: "/repo", web_search: false },
-    { resultFile: "/tmp/out.txt", platform: "linux" }
+    { resultFile: "/tmp/out.txt" }
   ).args;
   assert.ok(onArgs.includes('service_tier="fast"'));
   assert.ok(onArgs.includes("features.fast_mode=true"));
@@ -105,7 +115,10 @@ test("validateDelegateInput rejects empty spec", () => {
 test("web_search defaults true in every mode and can be disabled", () => {
   for (const mode of ["agent", "plan", "ask"]) {
     assert.equal(validateDelegateInput({ spec: "x", mode }).web_search, true);
-    assert.equal(validateDelegateInput({ spec: "x", mode, web_search: false }).web_search, false);
+    assert.equal(
+      validateDelegateInput({ spec: "x", mode, web_search: false }).web_search,
+      false
+    );
   }
   const review = { spec: "x", mode: "review", reviewTarget: { kind: "uncommitted" } };
   assert.equal(validateDelegateInput(review).web_search, true);
@@ -115,7 +128,6 @@ test("web_search defaults true in every mode and can be disabled", () => {
 test("read-only modes still get web_search when connected", () => {
   const args = buildCodexArgs(validateDelegateInput({ spec: "q", mode: "ask" }), {
     resultFile: "/tmp/o.txt",
-    platform: "linux",
   }).args;
   assert.ok(args.includes('web_search="live"'));
 });
@@ -222,7 +234,7 @@ test("mode matrix: sandbox, schema, review subcommand, resume", () => {
     { resultFile: "/tmp/out.txt" }
   );
   assert.equal(agent.kind, "initial");
-  assert.equal(agent.sandbox, "danger-full-access");
+  assertDangerFullAccess(agent);
   assert.ok(!agent.args.includes("--output-schema"));
   assert.ok(!agent.args.includes("review"));
   assert.ok(!agent.args.includes("resume"));
@@ -232,7 +244,7 @@ test("mode matrix: sandbox, schema, review subcommand, resume", () => {
     { resultFile: "/tmp/out.txt", outputSchemaFile: "/tmp/schema.json" }
   );
   assert.equal(plan.kind, "initial");
-  assert.equal(plan.sandbox, "danger-full-access");
+  assertDangerFullAccess(plan);
   assert.ok(plan.args.includes("--output-schema"));
   assert.ok(plan.args.includes("/tmp/schema.json"));
   assert.ok(!plan.args.includes("review"));
@@ -243,7 +255,7 @@ test("mode matrix: sandbox, schema, review subcommand, resume", () => {
   );
   assert.equal(ask.kind, "initial");
   // ask is not a read-only sandbox any more, and nothing here pretends otherwise.
-  assert.equal(ask.sandbox, "danger-full-access");
+  assertDangerFullAccess(ask);
   assert.ok(!ask.args.includes("--output-schema"));
   assert.ok(!ask.args.includes("review"));
 
@@ -258,8 +270,7 @@ test("mode matrix: sandbox, schema, review subcommand, resume", () => {
     { resultFile: "/tmp/out.txt" }
   );
   assert.equal(review.kind, "review");
-  assert.equal(review.sandbox, "danger-full-access");
-  assert.ok(review.args.some((a) => String(a).includes('sandbox_mode="danger-full-access"')));
+  assertDangerFullAccess(review);
   assert.ok(review.args.includes("review"));
   assert.ok(review.args.includes("--uncommitted"));
   assert.ok(!review.args.includes("--output-schema"));
@@ -276,13 +287,13 @@ test("mode matrix: sandbox, schema, review subcommand, resume", () => {
     { resultFile: "/tmp/out.txt" }
   );
   assert.equal(resume.kind, "resume");
+  assertDangerFullAccess(resume);
   assert.ok(resume.args.includes("resume"));
   assert.ok(resume.args.includes("tid-resume"));
-  assert.ok(resume.args.some((a) => String(a).includes('sandbox_mode="danger-full-access"')));
 });
 
 test("build initial agent args", () => {
-  const { args, kind, sandbox } = buildCodexArgs(
+  const { args, kind } = buildCodexArgs(
     {
       spec: "fix it",
       mode: "agent",
@@ -292,7 +303,6 @@ test("build initial agent args", () => {
     { resultFile: "D:\\tmp\\out.txt" }
   );
   assert.equal(kind, "initial");
-  assert.equal(sandbox, "danger-full-access");
   assert.ok(args.includes("exec"));
   assert.ok(args.includes("--json"));
   assert.ok(args.includes("--output-last-message"));
@@ -331,7 +341,7 @@ test("plan requires schema file; review rejects schema", () => {
     () =>
       buildCodexArgs(
         { spec: "plan it", mode: "plan", workspace: "/tmp/repo", web_search: false },
-        { resultFile: "/tmp/out.txt", platform: "linux" }
+        { resultFile: "/tmp/out.txt" }
       ),
     /plan mode requires outputSchemaFile/
   );
@@ -349,7 +359,6 @@ test("plan requires schema file; review rejects schema", () => {
         {
           resultFile: "/tmp/out.txt",
           outputSchemaFile: "/tmp/schema.json",
-          platform: "linux",
         }
       ),
     /not supported in review mode/
@@ -379,7 +388,7 @@ test("build review args use developer_instructions and target flags", () => {
       web_search: false,
       reviewTarget: { kind: "base", branch: "main" },
     },
-    { resultFile: "/tmp/out.txt", platform: "linux" }
+    { resultFile: "/tmp/out.txt" }
   );
   assert.equal(kind, "review");
   assert.ok(args.includes("review"));
@@ -395,7 +404,7 @@ test("build review args use developer_instructions and target flags", () => {
       web_search: false,
       reviewTarget: { kind: "commit", sha: "deadbeef" },
     },
-    { resultFile: "/tmp/out.txt", platform: "linux" }
+    { resultFile: "/tmp/out.txt" }
   );
   assert.ok(commit.args.includes("--commit"));
   assert.ok(commit.args.includes("deadbeef"));
@@ -410,7 +419,7 @@ test("build resume args", () => {
       resumeThreadId: "019f64c2-4592-7213-ab3c-253dd1a1c42c",
       web_search: false,
     },
-    { resultFile: "/tmp/out.txt", platform: "linux" }
+    { resultFile: "/tmp/out.txt" }
   );
   assert.equal(kind, "resume");
   assert.ok(args.includes("resume"));
@@ -422,7 +431,7 @@ test("an oversized spec rides stdin instead of being refused", () => {
   const huge = "x".repeat(30_000);
   const built = buildCodexArgs(
     { spec: huge, mode: "ask", workspace: "/tmp/repo", web_search: false },
-    { resultFile: "/tmp/out.txt", platform: "linux" }
+    { resultFile: "/tmp/out.txt" }
   );
   assert.equal(built.stdin, huge);
   assert.equal(built.args.at(-1), "-");
@@ -440,13 +449,13 @@ test("review still refuses an oversized spec, because its brief is still argv", 
           web_search: false,
           reviewTarget: { kind: "uncommitted" },
         },
-        { resultFile: "/tmp/out.txt", platform: "linux" }
+        { resultFile: "/tmp/out.txt" }
       ),
     (err) => err.code === "argv_too_long"
   );
 });
 
-test("argv carries no sandbox configuration at all, on any platform", () => {
+test("argv carries no legacy or platform-specific sandbox configuration", () => {
   const req = validateDelegateInput({ spec: "x", workspace: process.cwd() });
   for (const mode of MODES) {
     const request =

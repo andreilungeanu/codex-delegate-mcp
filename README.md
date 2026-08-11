@@ -42,7 +42,7 @@ Delegated work runs on the **OpenAI Codex CLI** and its own usage — separate f
 
 - 🤝 **Native plugins** — install into Claude Code, Cursor, or GitHub Copilot CLI and just say *"delegate this to Codex"*. The shared skill teaches your agent how to delegate well.
 - 📦 **Clean, typed results** — one compact JSON block: the final answer, `status`, the files Codex edited, and per-turn token counts. Fields that carry no signal are omitted, so anything present is worth reading.
-- 📋 **Four modes** — `agent` edits, `plan` returns a schema-validated plan you approve before anything is written, `ask` answers questions, and `review` runs Codex's own reviewer over uncommitted work, a base branch, or a single commit. Mode is an instruction to Codex, not a sandbox: Codex runs unsandboxed, so review the diff after every run.
+- 📋 **Four modes** — `agent` edits, `plan` requests a schema-validated plan for you to review and approve, `ask` answers questions, and `review` runs Codex's own reviewer over uncommitted work, a base branch, or a single commit.
 - 🧵 **Resume** — continue the same Codex thread with `resumeThreadId`, and get told if the context didn't actually carry over.
 - 🧑‍🤝‍🧑 **Parallel, and cancellable for real** — fan a question across models or put independent workers on independent directories; `cancel` returns once the process has *ended*, not once the kill was requested.
 - 🩺 **Self-diagnosing** — a `doctor` tool that tells you exactly what's missing if setup isn't right.
