@@ -1,7 +1,7 @@
 # Configuration
 
 Everything here is optional. The defaults are what the project runs on, and a malformed or
-negative value falls back to its default rather than arming a guard that fails every call.
+negative value falls back to its default rather than breaking every call.
 
 ## Defaults
 
@@ -9,7 +9,7 @@ negative value falls back to its default rather than arming a guard that fails e
 |---|---|---|
 | `model` | `gpt-5.6-terra` | Per call. Override only when asked for. |
 | `reasoningEffort` | `high` | `gpt-5.6-*` reject `minimal`; older models reject `none`. |
-| `web_search` | `true` | Web search. Does not affect the worker's shell network. See below. |
+| `webSearch` | `true` | Web search. Does not affect the worker's shell network. See below. |
 | `fast` | `false` | Codex Fast mode (`service_tier=fast`); higher credit use. |
 | `timeoutMs` | `3600000` | Hard cap for the whole run. |
 
@@ -32,8 +32,8 @@ Delegations run concurrently, as many as you start.
 Concurrency is only safe across **disjoint workspaces**. Two agents writing one tree overwrite
 each other, and the git diff cannot say which one did what. Starting a delegation while another
 is running in the same directory, or in one that contains it, adds a warning to the result; it
-is not refused, because plenty of concurrent runs over one tree only read it. Note that no mode
-guarantees that any more — see [Sandbox](#sandbox).
+is not refused, because a run that only reads a tree is fine alongside another. Nothing
+guarantees a run only reads, though — see [Sandbox](#sandbox).
 
 Every run announces a `delegationId` in its progress stream before it spawns, and returns it
 with the result. That is the handle `cancel` takes, and it is the only one that exists while a
@@ -44,13 +44,11 @@ neither, it cancels everything active.
 
 ## Web search
 
-Codex runs connected. `web_search: true` is the default, which sets `web_search="live"` in every
+Codex runs connected. `webSearch: true` is the default, which sets `web_search="live"` in every
 mode.
 
-`web_search: false` turns off web search and nothing else. It does **not** seal a run. The flag that
-used to close the worker's shell egress, `sandbox_workspace_write.network_access`, only bound the
-`workspace-write` sandbox, and the bridge no longer sets a sandbox — so the shell reaches the
-network either way. Verified: a `web_search: false` run fetched a public URL successfully.
+`webSearch: false` turns that off and nothing else. It does **not** seal a run, and nothing does —
+the worker's shell reaches the network either way.
 
 ## Timeouts
 
@@ -67,21 +65,21 @@ If a task legitimately runs longer, raise `timeoutMs` on the call rather than di
 Resolution order is the `CODEX_DELEGATE_COMMAND` override, then the newest standalone install
 under `~/.codex/packages/standalone/releases/`, then `codex` on `PATH`.
 
-On Windows the standalone binary is preferred deliberately: the `PATH` entry is often a `.cmd`
-shim, which cannot be spawned directly without a shell. If resolution looks wrong, run the
-`doctor` tool — it re-resolves from scratch and reports what it found.
+On Windows the standalone binary wins whenever both are present, because a `PATH` entry that
+turns out to be a `.cmd` shim cannot be spawned without a shell. If resolution looks wrong, run
+the `doctor` tool — it re-resolves from scratch and reports what it found.
 
 ## Sandbox
 
 There is none. The bridge passes `--sandbox danger-full-access` in every mode, including `ask`,
 `plan` and `review`, and there is no setting to change it.
 
-Codex's own sandbox blocked a command it ran from spawning a process of its own — `EPERM` under
-both `workspace-write` and `read-only`. That stopped the worker running `npm test`, `node --test`
-or any build tool, since all of those spawn. Disk access was never the constraint: writes to the
-workspace and to the OS temp directory both succeeded under `workspace-write`.
+On Windows, Codex's `unelevated` sandbox runs commands under a restricted token, and a process
+under that token cannot start one of its own — `EPERM`, under `workspace-write` and `read-only`
+alike. That breaks `npm test`, `node --test` and every build tool, because they all spawn. Disk
+access was never the constraint: writes to the workspace and to the temp directory both worked.
 
-What that costs, measured on an `ask`-mode run:
+What that costs, measured on Windows:
 
 | | with `workspace-write` | now |
 |---|---|---|
@@ -89,7 +87,6 @@ What that costs, measured on an `ask`-mode run:
 | spawn a child process | `EPERM` | works |
 | `node --test` | fails | passes |
 | write to your home directory | `EPERM` | **works** |
-| shell reaches the network with `web_search: false` | blocked | **works** |
 
 Nothing confines the worker to the workspace, to the repository, or to anything else your user
 account can reach. Every mode is write-capable, `approval_policy` is `never`, so nothing prompts

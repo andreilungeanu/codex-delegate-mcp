@@ -7,7 +7,7 @@ approval policy `never` and **no sandbox** (`--sandbox danger-full-access`) in e
 
 There is no containment. A `delegate` call in any mode — `agent`, `plan`, `ask` or `review` —
 can modify, create or delete any file your user account can reach, inside the `workspace`
-directory or anywhere else on the machine. `web_search: false` turns off web search only; the
+directory or anywhere else on the machine. `webSearch: false` turns off web search only; the
 worker's shell reaches the network regardless. Nothing prompts before any of it. See
 [CONFIGURATION.md](CONFIGURATION.md#sandbox) for the measurements behind this and why it is
 set up that way.
@@ -28,10 +28,11 @@ separate them is when you write the briefs.
 
 ## The brief
 
-The brief is written to Codex's stdin, not passed as a command-line argument, so it is not
-readable by other processes on the machine (`/proc/*/cmdline` on Linux, WMI or Process Explorer on
-Windows). This matters because the delegate skill tells the orchestrator to quote the user's exact
-values verbatim.
+The brief goes down Codex's stdin rather than its command line, so it does not show up in
+`/proc/*/cmdline` on Linux or Process Explorer on Windows. That is not the same as private:
+Codex writes the whole thread to `~/.codex/sessions`, which anything running as you can read.
+The delegate skill tells the orchestrator to quote the user's exact values, so keep credentials
+out of a brief.
 
 `review` is the exception: its target flags rule out a positional prompt, so its brief still
 travels in the command line. Keep secrets out of a review brief.
@@ -45,7 +46,7 @@ travels in the command line. Keep secrets out of a review brief.
 - Review `filesReportedByEditTools` and the git diff before committing.
 - Do not rely on `mode: "plan"` or `mode: "ask"` to prevent writes. They do not. No mode does.
 - Give concurrent delegations disjoint workspaces.
-- Codex runs **connected**, and `web_search: false` does not change that — it turns off web search
+- Codex runs **connected**, and `webSearch: false` does not change that — it turns off web search
   only. There is no way to cut the worker's shell off from the network. An agent that can both
   read your repo and reach the network is what turns a prompt injection into an exfiltration, so
   do not point a delegation at content you did not write.
