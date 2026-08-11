@@ -79,6 +79,13 @@ under that token cannot start one of its own — `EPERM`, under `workspace-write
 alike. That breaks `npm test`, `node --test` and every build tool, because they all spawn. Disk
 access was never the constraint: writes to the workspace and to the temp directory both worked.
 
+Codex's other Windows backend, `elevated`, does not have that defect — it spawns freely and still
+returns `EPERM` on a write outside the workspace. It needs a one-time UAC-consented setup per
+`CODEX_HOME`, which a background MCP server has no way to obtain, so it is not used here.
+
+The flag is unconditional. The defect is specific to the Windows restricted-token backend; macOS
+and Linux use different sandbox implementations and run unsandboxed anyway.
+
 What that costs, measured on Windows:
 
 | | with `workspace-write` | now |
