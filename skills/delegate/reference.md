@@ -35,7 +35,7 @@ anything present is worth reading.
 | `reason` | not `completed` | `cancelled`, `startup-timeout`, `hard-cap`, `agent-error`, `died-mid-turn`, `exit-nonzero`. |
 | `resultSource` | salvage only | `stream-fallback` — the run never finished and `result` is the last thing Codex said, not an answer. Resume the thread. |
 | `warnings` | non-empty only | Real diagnostics; read them first. Absence is **not** a clean bill of health: the bridge sees failures Codex reports as failed or declined tool calls, not ones it narrates in prose. Such a warning reports what Codex reported, not a verdict: Codex marks a command `failed` on any non-zero exit, which is normal for tests and type-checks, but it can also mean execution was blocked. Verify any claim that depends on those calls. |
-| `filesReportedByEditTools` | non-empty only | Only what Codex's edit tool reported. Files written by a shell command it ran are **not** listed. The git diff is authoritative. |
+| `filesReportedByEditTools` | non-empty only | Only what Codex's edit tool reported. Files written by a shell command it ran are **not** listed, and neither is anything written outside the workspace. Read the git diff; it is the better record, not a complete one. |
 | `resumed` | resume requested | `false` means Codex minted a fresh thread and prior context did not carry over. |
 | `usage` | when reported | Per-turn token counts. Absent in `review`, which reports all zeros. |
 | `exitCode` | not `completed` | Process exit code. |
@@ -84,8 +84,9 @@ other and the diff cannot say which did what. The result warns when workspaces o
 the warning arrives after the runs are already racing. Split by directory, or serialize.
 
 To cancel: `delegationId` cancels one run, `threadId` cancels every delegation on that thread,
-and passing neither cancels all of them. `cancel` returns once the processes have actually
-ended, with a status of `cancelled`, `nothing-active`, `not-running` or `not-found`.
+and passing neither cancels all of them. `cancel` waits for the processes to end rather than
+returning on the kill request, with a status of `cancelled`, `nothing-active`, `not-running` or
+`not-found`. A tree that outlives the kill deadline returns anyway and says so in `warnings`.
 
 ## Timeouts
 

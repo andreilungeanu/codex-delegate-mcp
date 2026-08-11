@@ -29,11 +29,11 @@ when `delegate` is called, the call is refused — a delegated agent must not sp
 
 Delegations run concurrently, as many as you start.
 
-Concurrency is only safe across **disjoint workspaces**. Two agents writing one tree overwrite
-each other, and the git diff cannot say which one did what. Starting a delegation while another
-is running in the same directory, or in one that contains it, adds a warning to the result; it
-is not refused, because a run that only reads a tree is fine alongside another. Nothing
-guarantees a run only reads, though — see [Sandbox](#sandbox).
+Give them **disjoint workspaces** — necessary, though not sufficient: `workspace` is the worker's
+working directory, not a wall it cannot cross (see [Sandbox](#sandbox)). Two agents writing one
+tree overwrite each other, and the git diff cannot say which did what. Starting a delegation
+while another is running in the same directory, or in one that contains it, adds a warning to
+the result. It is not refused, because some runs really do only read.
 
 Every run announces a `delegationId` in its progress stream before it spawns, and returns it
 with the result. That is the handle `cancel` takes, and it is the only one that exists while a
@@ -90,4 +90,4 @@ What that costs, measured on Windows:
 
 Nothing confines the worker to the workspace, to the repository, or to anything else your user
 account can reach. Every mode is write-capable, `approval_policy` is `never`, so nothing prompts
-first. Review the git diff after every run, not only after `agent` runs.
+first. Review the git diff after every run.

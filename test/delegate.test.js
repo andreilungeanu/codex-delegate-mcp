@@ -203,7 +203,7 @@ test("resolver setup notes stay out of the per-run warnings", async () => {
     command: "/bin/codex",
     version: "0.145.0",
     source: "standalone",
-    warnings: ["PATH Codex on Windows can degrade workspace-write."],
+    warnings: ["Preferring the standalone Codex binary on Windows."],
   });
   const result = await executeDelegate({ spec: "hi", workspace: process.cwd() }, options);
   assert.equal(result.warnings, undefined);

@@ -66,7 +66,7 @@ test("a spec that looks like CLI flags never reaches argv at all", () => {
     },
     { resultFile: "/tmp/o.txt" }
   );
-  // It travels on stdin now, which is a stronger guarantee than a `--` separator:
+  // It travels on stdin now, which is safer than a `--` separator:
   // there is no token for Codex to reinterpret, and nothing for another process on
   // the machine to read out of the command line.
   assert.equal(stdin, spec);

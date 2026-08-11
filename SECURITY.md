@@ -20,8 +20,9 @@ anything written outside the workspace, so the diff is not a complete record eit
 
 ## Running several at once
 
-Delegations run concurrently, and that is only safe across **disjoint workspaces**. Two agents
-writing one tree overwrite each other, and the git diff cannot say which one did what. Starting a
+Delegations run concurrently. Give them **disjoint workspaces** — necessary, though not
+sufficient, since `workspace` is the worker's working directory and not a wall it cannot cross.
+Two agents writing one tree overwrite each other, and the git diff cannot say which did what. Starting a
 delegation while another is running in the same directory, or in one that contains it, adds a
 warning to the result — but the warning arrives once both are already running, so the time to
 separate them is when you write the briefs.

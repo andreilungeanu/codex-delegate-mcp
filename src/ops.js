@@ -167,7 +167,7 @@ export class OperationRegistry {
   /**
    * Two agents writing one tree clobber each other, and neither the bridge nor the
    * git diff can say which one did what. Worth saying out loud; not worth refusing,
-   * because a run that only reads a tree is fine alongside another.
+   * because some runs really do only read.
    *
    * @param {string | null} workspace
    */

@@ -236,7 +236,7 @@ export function buildServer({
     "cancel",
     {
       description:
-        "Cancel in-flight Codex delegations owned by this server. Returns once the processes have actually ended, not when the kill was requested. Name one with delegationId (announced in progress before the run starts, and the only handle for a run that wedges during startup) or threadId (cancels every delegation on that thread). With neither, every active delegation is cancelled. Returns a status of cancelled, nothing-active, not-running, or not-found.",
+        "Cancel in-flight Codex delegations owned by this server. Waits for the processes to end rather than returning when the kill was requested; a tree that outlives the kill deadline returns anyway, with a warning naming it. Name one with delegationId (announced in progress before the run starts, and the only handle for a run that wedges during startup) or threadId (cancels every delegation on that thread). With neither, every active delegation is cancelled. Returns a status of cancelled, nothing-active, not-running, or not-found.",
       inputSchema: z
         .object({
           delegationId: z

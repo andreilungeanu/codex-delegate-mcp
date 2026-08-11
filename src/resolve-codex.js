@@ -79,7 +79,7 @@ export function resolveCodexUncached({
     // a wrapper cannot be spawned directly, and we know the standalone is an .exe.
     if (platform === "win32" && standalone) {
       warnings.push(
-        "Preferring the standalone Codex binary on Windows: the PATH entry is often a wrapper rather than a directly spawnable executable."
+        "Preferring the standalone Codex binary on Windows: a PATH entry can be a wrapper rather than a directly spawnable executable."
       );
     } else {
       candidates.push({ command: which, source: "path" });

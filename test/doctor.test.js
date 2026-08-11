@@ -85,14 +85,14 @@ test("doctor reports a failed login probe without failing the call", async () =>
 test("doctor files resolver notes away from warnings, and reports the recursion guard", async () => {
   const out = await runDoctor(
     options({
-      resolve: () => ({ ...resolved, warnings: ["PATH Codex can degrade workspace-write."] }),
+      resolve: () => ({ ...resolved, warnings: ["Preferring the standalone Codex binary on Windows."] }),
       env: { CODEX_DELEGATE_DEPTH: "1" },
     })
   );
 
-  // The note describes the resolver doing its job and fires on every correctly
-  // configured Windows machine; `warnings` has to stay empty when nothing is wrong.
-  assert.deepEqual(out.codex.notes, ["PATH Codex can degrade workspace-write."]);
+  // The note describes the resolver doing its job, and fires on an ordinary
+  // Windows setup; `warnings` has to stay empty when nothing is wrong.
+  assert.deepEqual(out.codex.notes, ["Preferring the standalone Codex binary on Windows."]);
   assert.deepEqual(out.warnings, []);
   assert.equal(out.recursionGuard.active, true);
   assert.equal(out.recursionGuard.depth, "1");

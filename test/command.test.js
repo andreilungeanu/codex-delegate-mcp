@@ -125,7 +125,7 @@ test("webSearch defaults true in every mode and can be disabled", () => {
   assert.equal(validateDelegateInput({ ...review, webSearch: false }).webSearch, false);
 });
 
-test("ask still gets web_search when connected", () => {
+test("ask gets web_search when connected", () => {
   const args = buildCodexArgs(validateDelegateInput({ spec: "q", mode: "ask" }), {
     resultFile: "/tmp/o.txt",
   }).args;
