@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.19.1] - 2026-08-11
+
+### Fixed
+
+- Delegated runs can delete files again. `approval_policy="never"` denied anything Codex routed
+  to approval rather than prompting, so a run could write but not delete.
+  `--dangerously-bypass-approvals-and-sandbox` replaces it and opens both gates.
+
+### Removed
+
+- `--sandbox danger-full-access` and `sandbox_mode`, redundant under the new flag.
+
 ## [1.19.0] - 2026-08-11
 
 ### Changed
