@@ -1,6 +1,6 @@
 # Technical reference
 
-This package is an MCP stdio server that delegates coding work to `codex exec`. The MCP host supplies a validated tool request; the server constructs and runs one Codex CLI invocation, reduces its JSONL stream to progress and result metadata, and returns the completed result to the host. Configuration-specific behavior, including environment variables, networking, timeouts, Codex resolution, and the Windows sandbox, is documented in [CONFIGURATION.md](CONFIGURATION.md).
+This package is an MCP stdio server that delegates coding work to `codex exec`. The MCP host supplies a validated tool request; the server constructs and runs one Codex CLI invocation, reduces its JSONL stream to progress and result metadata, and returns the completed result to the host. Codex is invoked with no sandbox in every mode, so any mode can write anywhere the user account can reach. Configuration-specific behavior, including environment variables, networking, timeouts, Codex resolution, and the absence of a sandbox, is documented in [CONFIGURATION.md](CONFIGURATION.md).
 
 ## Architecture
 
@@ -105,7 +105,6 @@ Its result fields are:
 | `login` | `status` is `ok`, `failed`, or `skipped`; it also reports applicable `exitCode`, `detail`, or `reason`. |
 | `recursionGuard` | `{ depth, active }`. |
 | `workspace` | `{ path, exists, isDirectory }` and, when determinable for a directory, `isGitRepo`. |
-| `sandbox` | Sandbox diagnostic information for the current platform. |
 | `runtime` | `{ node, platform, arch, cwd, transport }`; `transport` is `"stdio"`. |
 | `warnings` | Diagnostic warnings. |
 | `deep` | Present only when requested. It reports whether checks ran and, when they do, the `exec`, `exec review`, and `exec resume` surfaces with `ok`, `exitCode`, `hasJson`, and `hasOutputLastMessage`. |

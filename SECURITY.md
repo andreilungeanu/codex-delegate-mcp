@@ -3,14 +3,20 @@
 ## What this plugin does
 
 `codex-delegate-mcp` spawns the **OpenAI Codex CLI** (`codex exec`) in your workspace with
-approval policy `never`. Agent-mode tasks can modify, create, or delete files under the
-chosen `workspace` directory (Codex sandbox: `workspace-write`).
+approval policy `never` and **no sandbox** (`--sandbox danger-full-access`) in every mode.
 
-Treat every `delegate` call like handing an engineer write access to that tree. Your MCP
-host (Claude Code, etc.) is the orchestrator: it should scope the brief, then review
+There is no containment. A `delegate` call in any mode — `agent`, `plan`, `ask` or `review` —
+can modify, create or delete any file your user account can reach, inside the `workspace`
+directory or anywhere else on the machine. `network: false` turns off web search only; the
+worker's shell reaches the network regardless. Nothing prompts before any of it. See
+[CONFIGURATION.md](CONFIGURATION.md#sandbox) for the measurements behind this and why it is
+set up that way.
+
+Treat every `delegate` call like handing an engineer an unrestricted shell on your machine.
+Your MCP host (Claude Code, etc.) is the orchestrator: it should scope the brief, then review
 `filesReportedByEditTools` and the git diff. That field lists only what Codex's edit tool
-reported touching — files written by a shell command it ran are not in it, so the diff is
-what actually changed.
+reported touching — files written by a shell command it ran are not in it, and neither is
+anything written outside the workspace, so the diff is not a complete record either.
 
 ## Running several at once
 
@@ -37,12 +43,12 @@ travels in the command line. Keep secrets out of a review brief.
   is the floor; inventing a narrower one does not scope the run, it just moves it somewhere Codex
   cannot do the work.
 - Review `filesReportedByEditTools` and the git diff before committing.
-- Use `mode: "plan"` or `mode: "ask"` when you do not want writes.
+- Do not rely on `mode: "plan"` or `mode: "ask"` to prevent writes. They do not. No mode does.
 - Give concurrent delegations disjoint workspaces.
-- Codex runs **connected by default**. Pass `network: false` to seal a run — no web search, no
-  shell egress. Worth doing whenever the workspace holds content you did not write, since an agent
-  that can both read your repo and reach the network is what turns a prompt injection into an
-  exfiltration.
+- Codex runs **connected**, and `network: false` does not change that — it turns off web search
+  only. There is no way to cut the worker's shell off from the network. An agent that can both
+  read your repo and reach the network is what turns a prompt injection into an exfiltration, so
+  do not point a delegation at content you did not write.
 - Run verification (tests, lint) after delegation — the delegate skill asks the host to do this.
 
 ## Reporting vulnerabilities

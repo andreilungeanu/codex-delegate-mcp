@@ -42,7 +42,6 @@ missing. A clean `doctor` means `delegate` is ready.
 | `CODEX_DELEGATE_STARTUP_MS` | Spawn-to-first-output deadline; `0` disables. |
 | `CODEX_DELEGATE_HARD_CAP_MS` | Absolute cap on a single delegation (default 1 h). |
 | `CODEX_DELEGATE_HEARTBEAT_MS` | Progress heartbeat while the run is quiet; `0` disables. |
-| `CODEX_DELEGATE_WINDOWS_SANDBOX` | Windows sandbox mode, passed to Codex as given. |
 
 Defaults are documented in [CONFIGURATION.md](CONFIGURATION.md); leave them unset unless the
 user asks.

@@ -9,7 +9,7 @@ negative value falls back to its default rather than arming a guard that fails e
 |---|---|---|
 | `model` | `gpt-5.6-terra` | Per call. Override only when asked for. |
 | `reasoningEffort` | `high` | `gpt-5.6-*` reject `minimal`; older models reject `none`. |
-| `network` | `true` | Web search in every mode, plus shell network in agent mode. See below. |
+| `network` | `true` | Web search. Does not affect the worker's shell network. See below. |
 | `fast` | `false` | Codex Fast mode (`service_tier=fast`); higher credit use. |
 | `timeoutMs` | `3600000` | Hard cap for the whole run. |
 
@@ -21,7 +21,6 @@ negative value falls back to its default rather than arming a guard that fails e
 | `CODEX_DELEGATE_STARTUP_MS` | `60000` | Spawn to first JSONL event. `0` disables. |
 | `CODEX_DELEGATE_HARD_CAP_MS` | `3600000` | Whole run; a per-call `timeoutMs` overrides it. |
 | `CODEX_DELEGATE_HEARTBEAT_MS` | `30000` | Progress heartbeat while quiet. `0` disables. |
-| `CODEX_DELEGATE_WINDOWS_SANDBOX` | `unelevated` | Windows sandbox mode. Passed to Codex as given. |
 
 `CODEX_DELEGATE_DEPTH` is set on the child process as a recursion marker. If it is already set
 when `delegate` is called, the call is refused — a delegated agent must not spawn another one.
@@ -33,7 +32,8 @@ Delegations run concurrently, as many as you start.
 Concurrency is only safe across **disjoint workspaces**. Two agents writing one tree overwrite
 each other, and the git diff cannot say which one did what. Starting a delegation while another
 is running in the same directory, or in one that contains it, adds a warning to the result; it
-is not refused, because several read-only runs over one tree are perfectly reasonable.
+is not refused, because plenty of concurrent runs over one tree only read it. Note that no mode
+guarantees that any more — see [Sandbox](#sandbox).
 
 Every run announces a `delegationId` in its progress stream before it spawns, and returns it
 with the result. That is the handle `cancel` takes, and it is the only one that exists while a
@@ -45,12 +45,12 @@ neither, it cancels everything active.
 ## Network
 
 Codex runs connected. `network: true` is the default, which sets `web_search="live"` in every
-mode and `sandbox_workspace_write.network_access=true` — so in agent mode its shell can install
-dependencies and fetch things, and in the read-only modes it can still look things up.
+mode.
 
-Pass `network: false` to seal a run: no web search, no shell egress. Worth doing when the
-workspace contains untrusted content, since an agent that can both read your repo and reach
-the network is the combination that turns a prompt injection into an exfiltration.
+`network: false` turns off web search and nothing else. It does **not** seal a run. The flag that
+used to close the worker's shell egress, `sandbox_workspace_write.network_access`, only bound the
+`workspace-write` sandbox, and the bridge no longer sets a sandbox — so the shell reaches the
+network either way. Verified: a `network: false` run fetched a public URL successfully.
 
 ## Timeouts
 
@@ -71,23 +71,26 @@ On Windows the standalone binary is preferred deliberately: the `PATH` entry is 
 shim, which cannot be spawned directly without a shell. If resolution looks wrong, run the
 `doctor` tool — it re-resolves from scratch and reports what it found.
 
-## Windows sandbox
+## Sandbox
 
-`--ignore-user-config` strips any `[windows]` sandbox setting from your own Codex config, and
-without one `workspace-write` degrades to read-only — agent mode could not write at all. So the
-bridge always passes a setting of its own on Windows. This is not optional; the only question is
-which value.
+There is none. The bridge passes `--sandbox danger-full-access` in every mode, including `ask`,
+`plan` and `review`, and there is no setting to change it.
 
-| Mode | Shell commands | Writes | Notes |
-|---|---|---|---|
-| `unelevated` (default) | work | work | What a normal session should use. |
-| `elevated` | **all fail** on a non-elevated session | work | Needs an elevated session: otherwise Codex cannot spawn the sandbox helper (`CreateProcessAsUserW failed: 5`). Applies to `ask`, `plan` and `review` too, not just `agent`. |
+Codex's own sandbox blocked a command it ran from spawning a process of its own — `EPERM` under
+both `workspace-write` and `read-only`. That stopped the worker running `npm test`, `node --test`
+or any build tool, since all of those spawn. Disk access was never the constraint: writes to the
+workspace and to the OS temp directory both succeeded under `workspace-write`.
 
-A failing helper still reports `status: "completed"`, because Codex treats it as something to
-mention in prose rather than a failed turn — so if you set `elevated`, make sure the session
-really is elevated. `doctor` warns when you have.
+What that costs, measured on an `ask`-mode run:
 
-Any other value is **passed to Codex as given**, with a warning. The point of the variable is to
-survive a Codex change this bridge has not shipped support for yet; a list of modes we already
-knew about could not rescue anyone from a new one. If Codex does not recognize the value either,
-the run fails at config load and says so.
+| | with `workspace-write` | now |
+|---|---|---|
+| write inside the workspace | works | works |
+| spawn a child process | `EPERM` | works |
+| `node --test` | fails | passes |
+| write to your home directory | `EPERM` | **works** |
+| shell reaches the network with `network: false` | blocked | **works** |
+
+Nothing confines the worker to the workspace, to the repository, or to anything else your user
+account can reach. Every mode is write-capable, `approval_policy` is `never`, so nothing prompts
+first. Review the git diff after every run, not only after `agent` runs.

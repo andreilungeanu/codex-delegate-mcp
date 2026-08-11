@@ -10,17 +10,17 @@ concurrency and timeout guarantees. [SKILL.md](SKILL.md) carries the workflow it
 | Field | Default | Description |
 | --- | --- | --- |
 | `spec` | — | The task brief: goal, scope, decisions already made (quote the user's exact values verbatim), acceptance criteria. Point at files to read or mimic rather than pasting code. |
-| `mode` | `agent` | `agent` edits, `plan` returns a structured plan, `ask` is read-only, `review` runs Codex's native review. |
+| `mode` | `agent` | `agent` edits, `plan` returns a structured plan, `ask` answers questions, `review` runs Codex's native review. An instruction to Codex, not a sandbox — no mode prevents writes. |
 | `model` | `gpt-5.6-terra` | Codex model id. Other families (`gpt-5.6-sol`, `gpt-5.6-luna`) are available; pass one only when the user asks. |
 | `reasoningEffort` | `high` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. `gpt-5.6-*` reject `minimal`; older models reject `none`. A rejected value fails the turn, and the model's own message names what it takes. |
 | `fast` | `false` | Codex Fast mode (`service_tier=fast`). Higher credit use — only when the user asks. |
-| `network` | `true` | Web search in every mode, plus shell network in `agent`. `false` seals the run. |
+| `network` | `true` | Web search. `false` disables it and nothing else — the worker's shell reaches the network either way. |
 | `workspace` | server cwd | Working directory for Codex. The default is the **MCP server process's** cwd, which for `npx` and plugin launches is not necessarily your project root — pass it explicitly. Smallest directory holding the task's files; with no such directory the project root is the floor. Must already exist; never create one for the call. |
 | `resumeThreadId` | — | Resume an existing Codex thread. Pass the same `workspace`: `codex exec resume` has no `--cd`, so an omitted one runs the thread in the server's directory rather than the one it started in. |
 | `timeoutMs` | `3600000` | Hard cap for the whole run. |
 | `reviewTarget` | — | Required in `review` mode, rejected elsewhere. Exactly one of the three forms below. |
 
-Environment variables, Codex binary resolution and the Windows sandbox are documented in
+Environment variables, Codex binary resolution and the absence of a sandbox are documented in
 [CONFIGURATION.md](../../CONFIGURATION.md).
 
 ## Return value
@@ -68,8 +68,9 @@ A review whose repo or target does not resolve is refused before anything spawns
 
 ### ask
 
-Read-only Q&A. `mode` is an instruction to Codex, not a sandbox the bridge enforces — review
-the git diff after every run, not only write-capable ones.
+Q&A. Not read-only: `mode` is an instruction to Codex, not a sandbox the bridge enforces. Codex
+runs unsandboxed in every mode and can write outside the workspace, so review the git diff after
+every run, not only write-capable ones.
 
 ## Running several at once
 
