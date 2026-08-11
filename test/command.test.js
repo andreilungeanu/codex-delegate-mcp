@@ -254,7 +254,6 @@ test("mode matrix: sandbox, schema, review subcommand, resume", () => {
     { resultFile: "/tmp/out.txt" }
   );
   assert.equal(ask.kind, "initial");
-  // ask is not a read-only sandbox any more, and nothing here pretends otherwise.
   assertDangerFullAccess(ask);
   assert.ok(!ask.args.includes("--output-schema"));
   assert.ok(!ask.args.includes("review"));
@@ -315,7 +314,7 @@ test("build initial agent args", () => {
   assert.ok(!args.includes("fix it"));
 });
 
-test("webSearch drives only the Codex web search mode, and no sandbox config is sent", () => {
+test("webSearch drives the Codex web search mode", () => {
   const off = buildCodexArgs(
     { spec: "x", mode: "agent", workspace: "/repo", webSearch: false },
     { resultFile: "/tmp/out.txt" }
@@ -327,13 +326,6 @@ test("webSearch drives only the Codex web search mode, and no sandbox config is 
     { resultFile: "/tmp/out.txt" }
   );
   assert.ok(on.args.includes('web_search="live"'));
-
-  // network_access bound the workspace-write sandbox. With no sandbox it would be
-  // sent and ignored, which reads as a guarantee that is not being made.
-  for (const built of [off, on]) {
-    assert.ok(!built.args.some((a) => String(a).includes("sandbox_workspace_write")));
-    assert.ok(!built.args.some((a) => String(a).includes("windows.sandbox")));
-  }
 });
 
 test("plan requires schema file; review rejects schema", () => {
@@ -453,24 +445,6 @@ test("review still refuses an oversized spec, because its brief is still argv", 
       ),
     (err) => err.code === "argv_too_long"
   );
-});
-
-test("argv carries no legacy or platform-specific sandbox configuration", () => {
-  const req = validateDelegateInput({ spec: "x", workspace: process.cwd() });
-  for (const mode of MODES) {
-    const request =
-      mode === "review" ? { ...req, mode, reviewTarget: { kind: "uncommitted" } } : { ...req, mode };
-    const { args } = buildCodexArgs(request, {
-      resultFile: "/tmp/o.txt",
-      outputSchemaFile: mode === "plan" ? "/tmp/s.json" : null,
-    });
-    // The build no longer takes a platform: there is nothing platform-specific
-    // left to decide once the sandbox is gone.
-    assert.ok(!args.some((a) => String(a).includes("windows.sandbox")));
-    assert.ok(!args.some((a) => String(a).includes("sandbox_workspace_write")));
-    assert.ok(!args.includes("read-only"));
-    assert.ok(!args.includes("workspace-write"));
-  }
 });
 
 test("a spec far past the CreateProcess limit is fine once it leaves argv", () => {

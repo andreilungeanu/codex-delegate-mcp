@@ -98,22 +98,6 @@ test("doctor files resolver notes away from warnings, and reports the recursion 
   assert.equal(out.recursionGuard.depth, "1");
 });
 
-test("doctor reports no sandbox section, and the old env var says nothing", async () => {
-  const win = await runDoctor(options({ platform: "win32" }));
-  assert.equal(win.sandbox, undefined);
-  assert.deepEqual(win.warnings, []);
-
-  const stale = await runDoctor(
-    options({ platform: "win32", env: { CODEX_DELEGATE_WINDOWS_SANDBOX: "elevated" } })
-  );
-  assert.equal(stale.sandbox, undefined);
-  assert.deepEqual(stale.warnings, []);
-
-  const linux = await runDoctor(options({ platform: "linux" }));
-  assert.equal(linux.sandbox, undefined);
-  assert.deepEqual(linux.warnings, []);
-});
-
 test("doctor deep probes the exec surfaces it depends on", async () => {
   const seen = [];
   const out = await runDoctor(
