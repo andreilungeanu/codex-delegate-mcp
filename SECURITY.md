@@ -2,17 +2,17 @@
 
 ## What this plugin does
 
-`codex-delegate-mcp` spawns the **OpenAI Codex CLI** (`codex exec`) in your workspace with
-approval policy `never` and **no sandbox** (`--sandbox danger-full-access`) in every mode.
+`codex-delegate-mcp` spawns the **OpenAI Codex CLI** (`codex exec`) in your workspace and
+**auto-approves every command it runs** (`--dangerously-bypass-approvals-and-sandbox`), in
+every mode — `agent`, `plan`, `ask` and `review`.
 
-There is no containment. A `delegate` call in any mode — `agent`, `plan`, `ask` or `review` —
-can modify, create or delete any file your user account can reach, inside the `workspace`
-directory or anywhere else on the machine. `webSearch: false` turns off web search only; the
-worker's shell reaches the network regardless. Nothing prompts before any of it. See
-[CONFIGURATION.md](CONFIGURATION.md#sandbox) for the measurements behind this and why it is
-set up that way.
+Delegated tasks can create, modify, or delete files anywhere your user account can reach, and
+reach the network. `webSearch: false` turns off Codex's web search tool only; the worker's
+shell has network access regardless. Codex's sandbox modes are not used: on Windows they run
+commands under a restricted token that cannot start child processes, so tests and build tools
+fail under them.
 
-Treat every `delegate` call like handing an engineer an unrestricted shell on your machine.
+Treat every `delegate` call like handing an engineer a shell on your machine.
 Your MCP host (Claude Code, etc.) is the orchestrator: it should scope the brief, then review
 `filesReportedByEditTools` and the git diff. That field lists only what Codex's edit tool
 reported touching — files written by a shell command it ran are not in it, and neither is

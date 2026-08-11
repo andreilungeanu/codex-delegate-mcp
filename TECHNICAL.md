@@ -1,6 +1,6 @@
 # Technical reference
 
-This package is an MCP stdio server that delegates coding work to `codex exec`. The MCP host supplies a validated tool request; the server constructs and runs one Codex CLI invocation, reduces its JSONL stream to progress and result metadata, and returns the completed result to the host. Codex is invoked with no sandbox in every mode, so any mode can write anywhere the user account can reach. Configuration-specific behavior, including environment variables, networking, timeouts, Codex resolution, and the absence of a sandbox, is documented in [CONFIGURATION.md](CONFIGURATION.md).
+This package is an MCP stdio server that delegates coding work to `codex exec`. The MCP host supplies a validated tool request; the server constructs and runs one Codex CLI invocation, reduces its JSONL stream to progress and result metadata, and returns the completed result to the host. Every command Codex runs is auto-approved, in every mode, so any mode can write anywhere the user account can reach. Configuration-specific behavior, including environment variables, networking, timeouts and Codex resolution, is documented in [CONFIGURATION.md](CONFIGURATION.md).
 
 ## Architecture
 

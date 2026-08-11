@@ -8,7 +8,7 @@ concurrency and timeouts behave. [SKILL.md](SKILL.md) carries the workflow itsel
 | Field | Default | Description |
 | --- | --- | --- |
 | `spec` | — | The task brief: goal, scope, decisions already made (quote the user's exact values verbatim), acceptance criteria. Point at files to read or mimic rather than pasting code. |
-| `mode` | `agent` | `agent` edits, `plan` returns a structured plan, `ask` answers questions, `review` runs Codex's native review. An instruction to Codex, not a sandbox — no mode prevents writes. |
+| `mode` | `agent` | `agent` edits, `plan` returns a structured plan, `ask` answers questions, `review` runs Codex's native review. An instruction to Codex, not a limit the bridge enforces — every mode can write. |
 | `model` | `gpt-5.6-terra` | Codex model id. Other families (`gpt-5.6-sol`, `gpt-5.6-luna`) are available; pass one only when the user asks. |
 | `reasoningEffort` | `high` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. `gpt-5.6-*` reject `minimal`; older models reject `none`. A rejected value fails the turn, and the model's own message names what it takes. |
 | `fast` | `false` | Codex Fast mode (`service_tier=fast`). Higher credit use — only when the user asks. |
@@ -18,7 +18,7 @@ concurrency and timeouts behave. [SKILL.md](SKILL.md) carries the workflow itsel
 | `timeoutMs` | `3600000` | Hard cap for the whole run. |
 | `reviewTarget` | — | Required in `review` mode, rejected elsewhere. Exactly one of the three forms below. |
 
-Environment variables, Codex binary resolution and the absence of a sandbox are documented in
+Environment variables and Codex binary resolution are documented in
 [CONFIGURATION.md](../../CONFIGURATION.md).
 
 ## Return value
@@ -60,9 +60,9 @@ A review whose repo or target does not resolve is refused before anything spawns
 
 ### ask
 
-Q&A. Not read-only: `mode` is an instruction to Codex, not a sandbox the bridge enforces. Codex
-runs unsandboxed in every mode and can write outside the workspace, so review the git diff after
-an `ask` run too.
+Q&A, not read-only: `mode` is an instruction to Codex, not a limit the bridge enforces. Every
+command is auto-approved, and a run can write outside the workspace, so review the git diff
+after an `ask` run too.
 
 ## Running several at once
 

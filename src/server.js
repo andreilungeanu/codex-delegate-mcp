@@ -22,7 +22,7 @@ if (nodeMajor < 20) {
   process.exit(1);
 }
 
-export const SERVER_INSTRUCTIONS = `Hand coding work to Codex via the delegate tool; never shell out to codex. Unsandboxed in every mode: agent/plan/ask/review can write anywhere the user account can reach and reach the network. mode is not a boundary. Review the git diff after every run.`;
+export const SERVER_INSTRUCTIONS = `Hand coding work to Codex via the delegate tool; never shell out to codex. Auto-approved in every mode: agent/plan/ask/review reach any file the user account can, and the network. mode instructs, it does not limit. Review the git diff after every run.`;
 
 const reviewTargetSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("uncommitted") }).strict(),

@@ -30,7 +30,7 @@ when `delegate` is called, the call is refused — a delegated agent must not sp
 Delegations run concurrently, as many as you start.
 
 Give them **disjoint workspaces** — necessary, though not sufficient: `workspace` is the worker's
-working directory, not a wall it cannot cross (see [Sandbox](#sandbox)). Two agents writing one
+working directory, and a run can reach outside it (see [SECURITY.md](SECURITY.md)). Two agents writing one
 tree overwrite each other, and the git diff cannot say which did what. Starting a delegation
 while another is running in the same directory, or in one that contains it, adds a warning to
 the result. It is not refused, because some runs really do only read.
@@ -68,33 +68,3 @@ under `~/.codex/packages/standalone/releases/`, then `codex` on `PATH`.
 On Windows the standalone binary wins whenever both are present, because a `PATH` entry that
 turns out to be a `.cmd` shim cannot be spawned without a shell. If resolution looks wrong, run
 the `doctor` tool — it re-resolves from scratch and reports what it found.
-
-## Sandbox
-
-There is none. The bridge passes `--sandbox danger-full-access` in every mode, including `ask`,
-`plan` and `review`, and there is no setting to change it.
-
-On Windows, Codex's `unelevated` sandbox runs commands under a restricted token, and a process
-under that token cannot start one of its own — `EPERM`, under `workspace-write` and `read-only`
-alike. That breaks `npm test`, `node --test` and every build tool, because they all spawn. Disk
-access was never the constraint: writes to the workspace and to the temp directory both worked.
-
-Codex's other Windows backend, `elevated`, does not have that defect — it spawns freely and still
-returns `EPERM` on a write outside the workspace. It needs a one-time UAC-consented setup per
-`CODEX_HOME`, which a background MCP server has no way to obtain, so it is not used here.
-
-The flag is unconditional. The defect is specific to the Windows restricted-token backend; macOS
-and Linux use different sandbox implementations and run unsandboxed anyway.
-
-What that costs, measured on Windows:
-
-| | with `workspace-write` | now |
-|---|---|---|
-| write inside the workspace | works | works |
-| spawn a child process | `EPERM` | works |
-| `node --test` | fails | passes |
-| write to your home directory | `EPERM` | **works** |
-
-Nothing confines the worker to the workspace, to the repository, or to anything else your user
-account can reach. Every mode is write-capable, `approval_policy` is `never`, so nothing prompts
-first. Review the git diff after every run.
