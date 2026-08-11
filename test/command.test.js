@@ -17,7 +17,7 @@ test("validateDelegateInput defaults and resolves workspace", () => {
     { cwd }
   );
   assert.equal(req.mode, "agent");
-  assert.equal(req.network, true);
+  assert.equal(req.web_search, true);
   assert.equal(req.fast, false);
   assert.equal(req.workspace, cwd);
   assert.equal(req.model, "gpt-5.6-terra");
@@ -61,7 +61,7 @@ test("fast defaults off; only sets Codex service_tier when true", () => {
   const off = validateDelegateInput({ spec: "x" });
   assert.equal(off.fast, false);
   const offArgs = buildCodexArgs(
-    { ...off, workspace: "/repo", network: false },
+    { ...off, workspace: "/repo", web_search: false },
     { resultFile: "/tmp/out.txt", platform: "linux" }
   ).args;
   assert.ok(!offArgs.some((a) => String(a).includes("service_tier")));
@@ -70,7 +70,7 @@ test("fast defaults off; only sets Codex service_tier when true", () => {
   const on = validateDelegateInput({ spec: "x", fast: true });
   assert.equal(on.fast, true);
   const onArgs = buildCodexArgs(
-    { ...on, workspace: "/repo", network: false },
+    { ...on, workspace: "/repo", web_search: false },
     { resultFile: "/tmp/out.txt", platform: "linux" }
   ).args;
   assert.ok(onArgs.includes('service_tier="fast"'));
@@ -102,14 +102,14 @@ test("validateDelegateInput rejects empty spec", () => {
   );
 });
 
-test("every mode is connected by default and network:false seals it", () => {
+test("web_search defaults true in every mode and can be disabled", () => {
   for (const mode of ["agent", "plan", "ask"]) {
-    assert.equal(validateDelegateInput({ spec: "x", mode }).network, true);
-    assert.equal(validateDelegateInput({ spec: "x", mode, network: false }).network, false);
+    assert.equal(validateDelegateInput({ spec: "x", mode }).web_search, true);
+    assert.equal(validateDelegateInput({ spec: "x", mode, web_search: false }).web_search, false);
   }
   const review = { spec: "x", mode: "review", reviewTarget: { kind: "uncommitted" } };
-  assert.equal(validateDelegateInput(review).network, true);
-  assert.equal(validateDelegateInput({ ...review, network: false }).network, false);
+  assert.equal(validateDelegateInput(review).web_search, true);
+  assert.equal(validateDelegateInput({ ...review, web_search: false }).web_search, false);
 });
 
 test("read-only modes still get web_search when connected", () => {
@@ -218,7 +218,7 @@ test("mode matrix: sandbox, schema, review subcommand, resume", () => {
   assert.deepEqual([...MODES], ["agent", "plan", "ask", "review"]);
 
   const agent = buildCodexArgs(
-    { spec: "a", mode: "agent", workspace: "/repo", network: false },
+    { spec: "a", mode: "agent", workspace: "/repo", web_search: false },
     { resultFile: "/tmp/out.txt" }
   );
   assert.equal(agent.kind, "initial");
@@ -228,7 +228,7 @@ test("mode matrix: sandbox, schema, review subcommand, resume", () => {
   assert.ok(!agent.args.includes("resume"));
 
   const plan = buildCodexArgs(
-    { spec: "p", mode: "plan", workspace: "/repo", network: false },
+    { spec: "p", mode: "plan", workspace: "/repo", web_search: false },
     { resultFile: "/tmp/out.txt", outputSchemaFile: "/tmp/schema.json" }
   );
   assert.equal(plan.kind, "initial");
@@ -238,7 +238,7 @@ test("mode matrix: sandbox, schema, review subcommand, resume", () => {
   assert.ok(!plan.args.includes("review"));
 
   const ask = buildCodexArgs(
-    { spec: "q", mode: "ask", workspace: "/repo", network: false },
+    { spec: "q", mode: "ask", workspace: "/repo", web_search: false },
     { resultFile: "/tmp/out.txt" }
   );
   assert.equal(ask.kind, "initial");
@@ -252,7 +252,7 @@ test("mode matrix: sandbox, schema, review subcommand, resume", () => {
       spec: "r",
       mode: "review",
       workspace: "/repo",
-      network: false,
+      web_search: false,
       reviewTarget: { kind: "uncommitted" },
     },
     { resultFile: "/tmp/out.txt" }
@@ -271,7 +271,7 @@ test("mode matrix: sandbox, schema, review subcommand, resume", () => {
       mode: "agent",
       workspace: "/repo",
       resumeThreadId: "tid-resume",
-      network: false,
+      web_search: false,
     },
     { resultFile: "/tmp/out.txt" }
   );
@@ -287,7 +287,7 @@ test("build initial agent args", () => {
       spec: "fix it",
       mode: "agent",
       workspace: "D:\\repo",
-      network: false,
+      web_search: false,
     },
     { resultFile: "D:\\tmp\\out.txt" }
   );
@@ -305,15 +305,15 @@ test("build initial agent args", () => {
   assert.ok(!args.includes("fix it"));
 });
 
-test("network drives web_search only, and no sandbox config is sent", () => {
+test("web_search drives only the Codex web search mode, and no sandbox config is sent", () => {
   const off = buildCodexArgs(
-    { spec: "x", mode: "agent", workspace: "/repo", network: false },
+    { spec: "x", mode: "agent", workspace: "/repo", web_search: false },
     { resultFile: "/tmp/out.txt" }
   );
   assert.ok(off.args.includes('web_search="disabled"'));
 
   const on = buildCodexArgs(
-    { spec: "x", mode: "agent", workspace: "/repo", network: true },
+    { spec: "x", mode: "agent", workspace: "/repo", web_search: true },
     { resultFile: "/tmp/out.txt" }
   );
   assert.ok(on.args.includes('web_search="live"'));
@@ -330,7 +330,7 @@ test("plan requires schema file; review rejects schema", () => {
   assert.throws(
     () =>
       buildCodexArgs(
-        { spec: "plan it", mode: "plan", workspace: "/tmp/repo", network: false },
+        { spec: "plan it", mode: "plan", workspace: "/tmp/repo", web_search: false },
         { resultFile: "/tmp/out.txt", platform: "linux" }
       ),
     /plan mode requires outputSchemaFile/
@@ -343,7 +343,7 @@ test("plan requires schema file; review rejects schema", () => {
           spec: "r",
           mode: "review",
           workspace: "/tmp/repo",
-          network: false,
+          web_search: false,
           reviewTarget: { kind: "uncommitted" },
         },
         {
@@ -358,7 +358,7 @@ test("plan requires schema file; review rejects schema", () => {
 
 test("build plan args include output schema", () => {
   const { args } = buildCodexArgs(
-    { spec: "plan it", mode: "plan", workspace: "/tmp/repo", network: false },
+    { spec: "plan it", mode: "plan", workspace: "/tmp/repo", web_search: false },
     {
       resultFile: "/tmp/out.txt",
       outputSchemaFile: "/tmp/schema.json",
@@ -376,7 +376,7 @@ test("build review args use developer_instructions and target flags", () => {
       spec: "focus on auth",
       mode: "review",
       workspace: "/tmp/repo",
-      network: false,
+      web_search: false,
       reviewTarget: { kind: "base", branch: "main" },
     },
     { resultFile: "/tmp/out.txt", platform: "linux" }
@@ -392,7 +392,7 @@ test("build review args use developer_instructions and target flags", () => {
       spec: "focus",
       mode: "review",
       workspace: "/tmp/repo",
-      network: false,
+      web_search: false,
       reviewTarget: { kind: "commit", sha: "deadbeef" },
     },
     { resultFile: "/tmp/out.txt", platform: "linux" }
@@ -408,7 +408,7 @@ test("build resume args", () => {
       mode: "agent",
       workspace: "/tmp/repo",
       resumeThreadId: "019f64c2-4592-7213-ab3c-253dd1a1c42c",
-      network: false,
+      web_search: false,
     },
     { resultFile: "/tmp/out.txt", platform: "linux" }
   );
@@ -421,7 +421,7 @@ test("build resume args", () => {
 test("an oversized spec rides stdin instead of being refused", () => {
   const huge = "x".repeat(30_000);
   const built = buildCodexArgs(
-    { spec: huge, mode: "ask", workspace: "/tmp/repo", network: false },
+    { spec: huge, mode: "ask", workspace: "/tmp/repo", web_search: false },
     { resultFile: "/tmp/out.txt", platform: "linux" }
   );
   assert.equal(built.stdin, huge);
@@ -437,7 +437,7 @@ test("review still refuses an oversized spec, because its brief is still argv", 
           spec: huge,
           mode: "review",
           workspace: "/tmp/repo",
-          network: false,
+          web_search: false,
           reviewTarget: { kind: "uncommitted" },
         },
         { resultFile: "/tmp/out.txt", platform: "linux" }

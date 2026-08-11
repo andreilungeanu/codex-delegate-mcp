@@ -9,7 +9,7 @@ negative value falls back to its default rather than arming a guard that fails e
 |---|---|---|
 | `model` | `gpt-5.6-terra` | Per call. Override only when asked for. |
 | `reasoningEffort` | `high` | `gpt-5.6-*` reject `minimal`; older models reject `none`. |
-| `network` | `true` | Web search. Does not affect the worker's shell network. See below. |
+| `web_search` | `true` | Web search. Does not affect the worker's shell network. See below. |
 | `fast` | `false` | Codex Fast mode (`service_tier=fast`); higher credit use. |
 | `timeoutMs` | `3600000` | Hard cap for the whole run. |
 
@@ -42,15 +42,15 @@ that wedges during launch has nothing else to name it. `cancel` also accepts a `
 cancels every delegation on that thread (a resume and the turn it resumes share one). With
 neither, it cancels everything active.
 
-## Network
+## Web search
 
-Codex runs connected. `network: true` is the default, which sets `web_search="live"` in every
+Codex runs connected. `web_search: true` is the default, which sets `web_search="live"` in every
 mode.
 
-`network: false` turns off web search and nothing else. It does **not** seal a run. The flag that
+`web_search: false` turns off web search and nothing else. It does **not** seal a run. The flag that
 used to close the worker's shell egress, `sandbox_workspace_write.network_access`, only bound the
 `workspace-write` sandbox, and the bridge no longer sets a sandbox — so the shell reaches the
-network either way. Verified: a `network: false` run fetched a public URL successfully.
+network either way. Verified: a `web_search: false` run fetched a public URL successfully.
 
 ## Timeouts
 
@@ -89,7 +89,7 @@ What that costs, measured on an `ask`-mode run:
 | spawn a child process | `EPERM` | works |
 | `node --test` | fails | passes |
 | write to your home directory | `EPERM` | **works** |
-| shell reaches the network with `network: false` | blocked | **works** |
+| shell reaches the network with `web_search: false` | blocked | **works** |
 
 Nothing confines the worker to the workspace, to the repository, or to anything else your user
 account can reach. Every mode is write-capable, `approval_policy` is `never`, so nothing prompts

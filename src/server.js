@@ -201,7 +201,7 @@ export function buildServer({
           .boolean()
           .default(false)
           .describe("Codex Fast mode (service_tier=fast) — higher credit use"),
-        network: z
+        web_search: z
           .boolean()
           .default(true)
           .describe(

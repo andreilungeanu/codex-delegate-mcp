@@ -35,7 +35,7 @@ const STDIN_PROMPT = "-";
  *
  * The cost is total: nothing now confines the worker to the workspace, or to the
  * repository, or to anything else the user account can reach. Every mode is
- * write-capable, including `ask` and `plan`, and `network:false` no longer stops
+ * write-capable, including `ask` and `plan`, and `web_search:false` does not stop
  * the shell reaching the network — it only turns off web search.
  */
 const SANDBOX = "danger-full-access";
@@ -189,7 +189,7 @@ function commonFlags(request, resultFile, outputSchemaFile) {
   // and with no sandbox there is nothing for it to bind, so it is gone rather
   // than sent and ignored. Nothing here stops the worker's shell reaching the
   // network.
-  const network = request.network !== false;
+  const webSearch = request.web_search !== false;
   const args = [
     "--json",
     "--output-last-message",
@@ -203,7 +203,7 @@ function commonFlags(request, resultFile, outputSchemaFile) {
     "-c",
     'approval_policy="never"',
     "-c",
-    `web_search=${tomlString(network ? "live" : "disabled")}`,
+    `web_search=${tomlString(webSearch ? "live" : "disabled")}`,
   ];
 
   // Codex Fast mode (/fast): leave unset by default; enable only when request.fast === true.
@@ -257,10 +257,9 @@ export function validateDelegateInput(raw, { cwd = process.cwd() } = {}) {
     throw bad("invalid_workspace", `workspace is not a directory: ${workspace}`);
   }
 
-  // Codex runs connected by default: it can search the web, and in agent mode its
-  // shell reaches the network so installs and fetches work. Pass network:false to
-  // cut both off for a run that should stay sealed.
-  const network = raw.network !== false;
+  // Live web search is on unless the caller opts out. The worker's unsandboxed
+  // shell reaches the network either way.
+  const web_search = raw.web_search !== false;
 
   let resumeThreadId;
   if (raw.resumeThreadId != null && String(raw.resumeThreadId).trim()) {
@@ -319,7 +318,7 @@ export function validateDelegateInput(raw, { cwd = process.cwd() } = {}) {
     model,
     reasoningEffort,
     fast,
-    network,
+    web_search,
     timeoutMs,
     reviewTarget,
   };

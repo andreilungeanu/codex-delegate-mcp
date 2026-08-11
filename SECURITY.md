@@ -7,7 +7,7 @@ approval policy `never` and **no sandbox** (`--sandbox danger-full-access`) in e
 
 There is no containment. A `delegate` call in any mode — `agent`, `plan`, `ask` or `review` —
 can modify, create or delete any file your user account can reach, inside the `workspace`
-directory or anywhere else on the machine. `network: false` turns off web search only; the
+directory or anywhere else on the machine. `web_search: false` turns off web search only; the
 worker's shell reaches the network regardless. Nothing prompts before any of it. See
 [CONFIGURATION.md](CONFIGURATION.md#sandbox) for the measurements behind this and why it is
 set up that way.
@@ -45,7 +45,7 @@ travels in the command line. Keep secrets out of a review brief.
 - Review `filesReportedByEditTools` and the git diff before committing.
 - Do not rely on `mode: "plan"` or `mode: "ask"` to prevent writes. They do not. No mode does.
 - Give concurrent delegations disjoint workspaces.
-- Codex runs **connected**, and `network: false` does not change that — it turns off web search
+- Codex runs **connected**, and `web_search: false` does not change that — it turns off web search
   only. There is no way to cut the worker's shell off from the network. An agent that can both
   read your repo and reach the network is what turns a prompt injection into an exfiltration, so
   do not point a delegation at content you did not write.

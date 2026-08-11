@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- **Breaking:** The delegate input `network` is renamed to `web_search`. It defaults to `true` and
+  controls Codex's built-in web search only; the unsandboxed worker shell remains connected either
+  way.
+
 ## [1.18.2] - 2026-08-11
 
 ### Removed

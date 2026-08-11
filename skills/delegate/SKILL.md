@@ -57,7 +57,7 @@ To cancel one of several, pass its `delegationId`. See [reference.md](reference.
 | `model` | `gpt-5.6-terra` | Override **only** when the user asks for another model |
 | `reasoningEffort` | `high` | Override **only** when the user asks (none\|minimal\|low\|medium\|high\|xhigh\|max). gpt-5.6-* reject `minimal`; older models reject `none`. A rejected value fails the turn and the model's own message says which values it takes |
 | `fast` | `false` | Codex Fast mode (`service_tier` / `/fast`). Leave false; set true **only** when the user asks |
-| `network` | `true` | Web search. `false` disables it only — the shell reaches the network regardless |
+| `web_search` | `true` | Web search. `false` disables it only — the shell reaches the network regardless |
 | `workspace` | server cwd | Pass it — the default is the MCP **server's** cwd, not always your project root. Smallest directory holding the task's files; none → project root. Never one created for the call. **Required when resuming** — `codex exec resume` has no `--cd`, so an omitted workspace would run the thread in the server's directory, not the one it started in |
 
 Other models (e.g. `gpt-5.6-sol`, `gpt-5.6-luna`) are available — pass `model` when the user requests one.
