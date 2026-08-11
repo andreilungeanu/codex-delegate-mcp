@@ -4,13 +4,20 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.19.0] - 2026-08-11
 
 ### Changed
 
-- **Breaking:** The delegate input `network` is renamed to `web_search`. It defaults to `true` and
-  controls Codex's built-in web search only; the unsandboxed worker shell remains connected either
-  way.
+- **Breaking:** Codex runs with no sandbox (`--sandbox danger-full-access`) in every mode.
+  `plan`, `ask` and `review` were read-only and are now write-capable. Any mode can write
+  anywhere your account can reach, and nothing prompts. Review the git diff after every run.
+- **Breaking:** The delegate input `network` is renamed to `webSearch`, and controls Codex's web
+  search only. `network` is now rejected, not ignored.
+
+### Removed
+
+- **Breaking:** `CODEX_DELEGATE_WINDOWS_SANDBOX`.
+- **Breaking:** `doctor` no longer returns a `sandbox` field.
 
 ## [1.18.2] - 2026-08-11
 
