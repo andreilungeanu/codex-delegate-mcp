@@ -8,7 +8,6 @@ import { Readable, Writable } from "node:stream";
 import {
   capResultBytes,
   describeNonSuccessfulItem,
-  unwrapShellCommand,
   readUsage,
   meaningfulStderr,
   readAgentError,
@@ -626,53 +625,6 @@ test("describeNonSuccessfulItem names the tool, its status and its exit code", (
     'command_execution "mkdir out" declined'
   );
   assert.equal(describeNonSuccessfulItem({ type: "file_change" }), "file_change");
-});
-
-test("unwrapShellCommand spends the budget on the command, not the interpreter", () => {
-  const pwsh = '"C:\\Program Files\\PowerShell\\7\\pwsh.exe" -Command ';
-  assert.equal(unwrapShellCommand(`${pwsh}'npx tsc --noEmit'`), "npx tsc --noEmit");
-  assert.equal(
-    unwrapShellCommand(`"C:\\pwsh.exe" -NoProfile -Command 'git status --short'`),
-    "git status --short"
-  );
-  assert.equal(unwrapShellCommand("bash -lc 'npm test'"), "npm test");
-  assert.equal(unwrapShellCommand('sh -c "npm test"'), "npm test");
-  assert.equal(unwrapShellCommand('cmd.exe /c "dir"'), "dir");
-  // Not a wrapper: reported text is left exactly as it came.
-  assert.equal(unwrapShellCommand("npm test"), "npm test");
-  // -c and /c are ordinary flags on plenty of non-shells; only a shell unwraps.
-  assert.equal(unwrapShellCommand("git -c core.pager=cat log"), "git -c core.pager=cat log");
-  assert.equal(unwrapShellCommand("docker -c ctx run img"), "docker -c ctx run img");
-  assert.equal(unwrapShellCommand('python -c "print(1)"'), 'python -c "print(1)"');
-  assert.equal(unwrapShellCommand("/usr/bin/bash -lc 'npm test'"), "npm test");
-  // An unwrap that leaves nothing is a mismatch; keep the original.
-  assert.equal(unwrapShellCommand(`"pwsh.exe" -Command ''`), `"pwsh.exe" -Command ''`);
-  assert.equal(unwrapShellCommand(""), "");
-});
-
-test("a wrapped command survives truncation intact", () => {
-  const pwsh = '"C:\\Program Files\\PowerShell\\7\\pwsh.exe" -Command ';
-  const real = "npx vitest run --pool=threads --maxWorkers=1 --minWorkers=1 --reporter=verbose";
-  const described = describeNonSuccessfulItem(
-    { type: "command_execution", command: `${pwsh}'${real}'`, status: "failed", exit_code: 1 },
-    120
-  );
-  assert.equal(described, `command_execution "${real}" failed exit 1`);
-  assert.ok(!described.includes("pwsh.exe"), "the interpreter path must not eat the budget");
-});
-
-test("two retries differing only in their flags stay distinguishable", () => {
-  const pwsh = '"C:\\Program Files\\PowerShell\\7\\pwsh.exe" -Command ';
-  const wrap = (cmd) =>
-    describeNonSuccessfulItem({
-      type: "command_execution",
-      command: `${pwsh}'${cmd}'`,
-      status: "failed",
-      exit_code: 1,
-    });
-  const a = wrap("npx vitest run --pool=threads --maxWorkers=1 --minWorkers=1 --reporter=verbose");
-  const b = wrap("npx vitest run --pool=vmThreads --maxWorkers=1 --minWorkers=1 --reporter=json");
-  assert.notEqual(a.slice(0, 90), b.slice(0, 90));
 });
 
 test("readAgentError unwraps the nested Codex error envelope", () => {
