@@ -4,6 +4,28 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.18.2] - 2026-08-11
+
+### Removed
+
+- The shell-wrapper unwrap added in 1.18.1 is gone. Stripping `pwsh -Command`, `bash -lc`, `sh -c`
+  and `cmd /c` off a reported command meant pattern-matching someone else's argv with three
+  regexes, guessing where an interpreter ends and a command begins — a guess that is wrong for any
+  shell not on the list, and silently rewrites the one string a reader relies on to identify what
+  Codex actually ran. The problem it addressed is real: the interpreter path can eat most of the
+  120 character budget, so long commands truncate where they differ. It wants a fix that does not
+  involve inferring structure from a string the producer never promised, and 1.18.1 was not it.
+  Warnings again name the command exactly as Codex reported it.
+
+### Changed
+
+- `runCodexProcess` is assembled from named units rather than one 430-line closure. The JSONL
+  event reduction, the rolling stderr tail, the outcome classification and the warning assembly
+  each moved into their own function in the same file; what remains is the child's lifecycle —
+  spawn, stdin, timers, kill deadline, drain — which stays whole because those parts genuinely
+  interlock. Every explanatory comment moved with the code it explains. No behaviour changes: the
+  exports, the result shape and the progress messages are identical.
+
 ## [1.18.1] - 2026-08-10
 
 ### Fixed
