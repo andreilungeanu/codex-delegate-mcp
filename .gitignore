@@ -1,14 +1,26 @@
+# Dependencies (installed on first SessionStart for the bundled Claude Code plugin)
 node_modules/
-npm-debug.log*
-.DS_Store
-*.tgz
-.coverage/
-.firecrawl/
-.codex/
-/docs/
-tmp/
-temp/
-*.log
+
+# Local / runtime config
+acp.config.json
 .env
 .env.*
-!.env.example
+.claude/
+/docs/
+spike/
+.firecrawl/
+
+# Bench artifacts
+bench/
+
+# Logs and debug output
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
