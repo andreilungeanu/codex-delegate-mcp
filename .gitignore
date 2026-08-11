@@ -5,13 +5,23 @@ node_modules/
 acp.config.json
 .env
 .env.*
+!.env.example
 .claude/
+.codex/
 /docs/
 spike/
 .firecrawl/
 
 # Bench artifacts
 bench/
+
+# Build and coverage output
+*.tgz
+.coverage/
+
+# Temp
+tmp/
+temp/
 
 # Logs and debug output
 *.log
