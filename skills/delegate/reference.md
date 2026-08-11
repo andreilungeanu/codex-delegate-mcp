@@ -2,8 +2,8 @@
 
 Architecture: MCP host → MCP `delegate` → codex-delegate-mcp → **`codex exec`**.
 
-Read this when you need the full meaning of a result field, the rules for a mode, or the
-concurrency and timeout guarantees. [SKILL.md](SKILL.md) carries the workflow itself.
+Read this when you need the full meaning of a result field, the rules for a mode, or how
+concurrency and timeouts behave. [SKILL.md](SKILL.md) carries the workflow itself.
 
 ## Input
 
@@ -70,7 +70,7 @@ A review whose repo or target does not resolve is refused before anything spawns
 
 Q&A. Not read-only: `mode` is an instruction to Codex, not a sandbox the bridge enforces. Codex
 runs unsandboxed in every mode and can write outside the workspace, so review the git diff after
-every run, not only write-capable ones.
+an `ask` run too.
 
 ## Running several at once
 
@@ -80,7 +80,7 @@ Delegations run concurrently, each cancellable by its own `delegationId`. Worth 
 - **independent work in independent directories** — one worker per `workspace`.
 
 Not worth doing when the tasks touch the same files. Two agents writing one tree overwrite each
-other and the diff cannot attribute the damage. The result warns when workspaces overlap, but
+other and the diff cannot say which did what. The result warns when workspaces overlap, but
 the warning arrives after the runs are already racing. Split by directory, or serialize.
 
 To cancel: `delegationId` cancels one run, `threadId` cancels every delegation on that thread,

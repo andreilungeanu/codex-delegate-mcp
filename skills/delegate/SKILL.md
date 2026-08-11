@@ -12,8 +12,8 @@ description: >
 You orchestrate; Codex implements. Use the **codex-delegate-mcp** MCP server — never run
 `codex` from the shell for these tasks.
 
-For the full input and result field semantics, the mode rules, and the concurrency and timeout
-guarantees, read [reference.md](reference.md) in this skill directory.
+For the full input and result field semantics, the mode rules, and how concurrency and timeouts
+behave, read [reference.md](reference.md) in this skill directory.
 
 ## When to delegate
 
@@ -44,7 +44,7 @@ guarantees, read [reference.md](reference.md) in this skill directory.
 Delegations run concurrently. Worth doing for **the same question to different models** (one
 call per `model`, then compare) and for **independent work in independent directories** (one
 worker per `workspace`). Not worth doing when the tasks touch the same files — two agents
-writing one tree overwrite each other and the diff cannot attribute the damage. Split by
+writing one tree overwrite each other and the diff cannot say which did what. Split by
 directory, or serialize.
 
 To cancel one of several, pass its `delegationId`. See [reference.md](reference.md).

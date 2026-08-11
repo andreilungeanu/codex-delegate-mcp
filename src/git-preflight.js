@@ -48,8 +48,8 @@ export async function preflightReviewTarget({
  * `origin/main` in a checkout that has no local `main`, which is every CI clone
  * and any repo whose base branch was deleted after a merge. Checking only local
  * refs would refuse reviews Codex performs perfectly well, and a guard stricter
- * than the thing it guards is worse than no guard: S2 was a useless answer, this
- * would be no answer at all, with nothing telling the caller to retry.
+ * than the thing it guards is worse than no guard: a vague review is a poor
+ * answer, but a refused one is no answer, with nothing telling the caller to retry.
  *
  * This is a model of someone else's resolution rules, so it is biased permissive
  * on purpose: reject only a ref that nothing here could resolve.
