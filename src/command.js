@@ -26,9 +26,6 @@ export const MAX_REVIEW_ARGV_CHARS = 28_000;
  */
 const STDIN_PROMPT = "-";
 
-/** No sandbox, in every mode. Deliberate, not a default; see SECURITY.md. */
-const SANDBOX = "danger-full-access";
-
 /**
  * Which values a model accepts is not discoverable up front and differs by model:
  * gpt-5.6-* take none|low|medium|high|xhigh|max and reject minimal, which older
@@ -127,8 +124,6 @@ function buildInitialArgs(request, { resultFile, outputSchemaFile }) {
   const args = [
     "exec",
     ...commonFlags(request, resultFile, outputSchemaFile),
-    "--sandbox",
-    SANDBOX,
     "--cd",
     request.workspace,
     "--skip-git-repo-check",
@@ -143,8 +138,6 @@ function buildResumeArgs(request, { resultFile, outputSchemaFile }) {
     "exec",
     "resume",
     ...commonFlags(request, resultFile, outputSchemaFile),
-    "-c",
-    `sandbox_mode=${tomlString(SANDBOX)}`,
     "--skip-git-repo-check",
     request.resumeThreadId,
     "--",
@@ -159,8 +152,6 @@ function buildReviewArgs(request, { resultFile }) {
     "exec",
     "review",
     ...commonFlags(request, resultFile, null),
-    "-c",
-    `sandbox_mode=${tomlString(SANDBOX)}`,
     "-c",
     `developer_instructions=${tomlString(request.spec)}`,
     "--skip-git-repo-check",
@@ -185,8 +176,7 @@ function commonFlags(request, resultFile, outputSchemaFile) {
     "--ignore-user-config",
     "--disable",
     "hooks",
-    "-c",
-    'approval_policy="never"',
+    "--dangerously-bypass-approvals-and-sandbox",
     "-c",
     `web_search=${tomlString(webSearch ? "live" : "disabled")}`,
   ];

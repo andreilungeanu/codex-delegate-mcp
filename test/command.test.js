@@ -10,14 +10,8 @@ import {
   MODES,
 } from "../src/command.js";
 
-function assertDangerFullAccess(built) {
-  if (built.kind === "initial") {
-    const flag = built.args.indexOf("--sandbox");
-    assert.notEqual(flag, -1);
-    assert.equal(built.args[flag + 1], "danger-full-access");
-    return;
-  }
-  assert.ok(built.args.includes('sandbox_mode="danger-full-access"'));
+function assertApprovalsBypassed(built) {
+  assert.ok(built.args.includes("--dangerously-bypass-approvals-and-sandbox"));
 }
 
 test("validateDelegateInput defaults and resolves workspace", () => {
@@ -226,7 +220,7 @@ test("validateDelegateInput rejects bad reviewTarget kinds", () => {
   assert.deepEqual(commit.reviewTarget, { kind: "commit", sha: "abc123" });
 });
 
-test("mode matrix: sandbox, schema, review subcommand, resume", () => {
+test("mode matrix: approvals, schema, review subcommand, resume", () => {
   assert.deepEqual([...MODES], ["agent", "plan", "ask", "review"]);
 
   const agent = buildCodexArgs(
@@ -234,7 +228,7 @@ test("mode matrix: sandbox, schema, review subcommand, resume", () => {
     { resultFile: "/tmp/out.txt" }
   );
   assert.equal(agent.kind, "initial");
-  assertDangerFullAccess(agent);
+  assertApprovalsBypassed(agent);
   assert.ok(!agent.args.includes("--output-schema"));
   assert.ok(!agent.args.includes("review"));
   assert.ok(!agent.args.includes("resume"));
@@ -244,7 +238,7 @@ test("mode matrix: sandbox, schema, review subcommand, resume", () => {
     { resultFile: "/tmp/out.txt", outputSchemaFile: "/tmp/schema.json" }
   );
   assert.equal(plan.kind, "initial");
-  assertDangerFullAccess(plan);
+  assertApprovalsBypassed(plan);
   assert.ok(plan.args.includes("--output-schema"));
   assert.ok(plan.args.includes("/tmp/schema.json"));
   assert.ok(!plan.args.includes("review"));
@@ -254,7 +248,7 @@ test("mode matrix: sandbox, schema, review subcommand, resume", () => {
     { resultFile: "/tmp/out.txt" }
   );
   assert.equal(ask.kind, "initial");
-  assertDangerFullAccess(ask);
+  assertApprovalsBypassed(ask);
   assert.ok(!ask.args.includes("--output-schema"));
   assert.ok(!ask.args.includes("review"));
 
@@ -269,7 +263,7 @@ test("mode matrix: sandbox, schema, review subcommand, resume", () => {
     { resultFile: "/tmp/out.txt" }
   );
   assert.equal(review.kind, "review");
-  assertDangerFullAccess(review);
+  assertApprovalsBypassed(review);
   assert.ok(review.args.includes("review"));
   assert.ok(review.args.includes("--uncommitted"));
   assert.ok(!review.args.includes("--output-schema"));
@@ -286,7 +280,7 @@ test("mode matrix: sandbox, schema, review subcommand, resume", () => {
     { resultFile: "/tmp/out.txt" }
   );
   assert.equal(resume.kind, "resume");
-  assertDangerFullAccess(resume);
+  assertApprovalsBypassed(resume);
   assert.ok(resume.args.includes("resume"));
   assert.ok(resume.args.includes("tid-resume"));
 });
@@ -305,8 +299,7 @@ test("build initial agent args", () => {
   assert.ok(args.includes("exec"));
   assert.ok(args.includes("--json"));
   assert.ok(args.includes("--output-last-message"));
-  assert.ok(args.includes("--sandbox"));
-  assert.ok(args.includes("danger-full-access"));
+  assert.ok(args.includes("--dangerously-bypass-approvals-and-sandbox"));
   assert.ok(args.includes("--ignore-user-config"));
   assert.ok(args.includes("--skip-git-repo-check"));
   // The brief goes down stdin, so argv carries only the marker that says so.
@@ -367,7 +360,7 @@ test("build plan args include output schema", () => {
   );
   assert.ok(args.includes("--output-schema"));
   assert.ok(args.includes("/tmp/schema.json"));
-  assert.ok(args.includes("danger-full-access"));
+  assert.ok(args.includes("--dangerously-bypass-approvals-and-sandbox"));
   assert.ok(PLAN_SCHEMA.required.includes("overview"));
 });
 

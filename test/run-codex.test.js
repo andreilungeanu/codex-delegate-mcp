@@ -971,7 +971,7 @@ test("runCodexProcess appends stderr tail on failure", async () => {
     ]);
     child.stderr = new Readable({
       read() {
-        this.push("sandbox boom: permission denied\n");
+        this.push("open /etc/shadow: permission denied\n");
         this.push(null);
       },
     });
