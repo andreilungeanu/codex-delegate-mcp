@@ -2,12 +2,7 @@ import process from "node:process";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import {
-  buildCodexArgs,
-  validateDelegateInput,
-  resolveWindowsSandbox,
-  PLAN_SCHEMA,
-} from "./command.js";
+import { buildCodexArgs, validateDelegateInput, PLAN_SCHEMA } from "./command.js";
 import { resolveCodex } from "./resolve-codex.js";
 import {
   runCodexProcess,
@@ -31,7 +26,6 @@ export async function executeDelegate(rawArgs, options = {}) {
     onProgress,
     signal: outerSignal,
     preflight = preflightReviewTarget,
-    platform = process.platform,
   } = options;
 
   if (env.CODEX_DELEGATE_DEPTH && String(env.CODEX_DELEGATE_DEPTH).trim() !== "") {
@@ -66,15 +60,7 @@ export async function executeDelegate(rawArgs, options = {}) {
       await writeFile(outputSchemaFile, JSON.stringify(PLAN_SCHEMA), "utf8");
     }
 
-    const windows = resolveWindowsSandbox(env.CODEX_DELEGATE_WINDOWS_SANDBOX, { platform });
-    warnings.push(...windows.warnings);
-
-    const built = buildCodexArgs(request, {
-      resultFile,
-      outputSchemaFile,
-      platform,
-      windowsSandbox: windows.sandbox,
-    });
+    const built = buildCodexArgs(request, { resultFile, outputSchemaFile });
 
     const controller = new AbortController();
     const forward = () => controller.abort(outerSignal?.reason);

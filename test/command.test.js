@@ -6,7 +6,6 @@ import {
   buildCodexArgs,
   estimateArgvChars,
   validateDelegateInput,
-  resolveWindowsSandbox,
   PLAN_SCHEMA,
   MODES,
 } from "../src/command.js";
@@ -220,30 +219,31 @@ test("mode matrix: sandbox, schema, review subcommand, resume", () => {
 
   const agent = buildCodexArgs(
     { spec: "a", mode: "agent", workspace: "/repo", network: false },
-    { resultFile: "/tmp/out.txt", platform: "linux" }
+    { resultFile: "/tmp/out.txt" }
   );
   assert.equal(agent.kind, "initial");
-  assert.equal(agent.sandbox, "workspace-write");
+  assert.equal(agent.sandbox, "danger-full-access");
   assert.ok(!agent.args.includes("--output-schema"));
   assert.ok(!agent.args.includes("review"));
   assert.ok(!agent.args.includes("resume"));
 
   const plan = buildCodexArgs(
     { spec: "p", mode: "plan", workspace: "/repo", network: false },
-    { resultFile: "/tmp/out.txt", outputSchemaFile: "/tmp/schema.json", platform: "linux" }
+    { resultFile: "/tmp/out.txt", outputSchemaFile: "/tmp/schema.json" }
   );
   assert.equal(plan.kind, "initial");
-  assert.equal(plan.sandbox, "read-only");
+  assert.equal(plan.sandbox, "danger-full-access");
   assert.ok(plan.args.includes("--output-schema"));
   assert.ok(plan.args.includes("/tmp/schema.json"));
   assert.ok(!plan.args.includes("review"));
 
   const ask = buildCodexArgs(
     { spec: "q", mode: "ask", workspace: "/repo", network: false },
-    { resultFile: "/tmp/out.txt", platform: "linux" }
+    { resultFile: "/tmp/out.txt" }
   );
   assert.equal(ask.kind, "initial");
-  assert.equal(ask.sandbox, "read-only");
+  // ask is not a read-only sandbox any more, and nothing here pretends otherwise.
+  assert.equal(ask.sandbox, "danger-full-access");
   assert.ok(!ask.args.includes("--output-schema"));
   assert.ok(!ask.args.includes("review"));
 
@@ -255,10 +255,11 @@ test("mode matrix: sandbox, schema, review subcommand, resume", () => {
       network: false,
       reviewTarget: { kind: "uncommitted" },
     },
-    { resultFile: "/tmp/out.txt", platform: "linux" }
+    { resultFile: "/tmp/out.txt" }
   );
   assert.equal(review.kind, "review");
-  assert.equal(review.sandbox, "read-only");
+  assert.equal(review.sandbox, "danger-full-access");
+  assert.ok(review.args.some((a) => String(a).includes('sandbox_mode="danger-full-access"')));
   assert.ok(review.args.includes("review"));
   assert.ok(review.args.includes("--uncommitted"));
   assert.ok(!review.args.includes("--output-schema"));
@@ -272,12 +273,12 @@ test("mode matrix: sandbox, schema, review subcommand, resume", () => {
       resumeThreadId: "tid-resume",
       network: false,
     },
-    { resultFile: "/tmp/out.txt", platform: "linux" }
+    { resultFile: "/tmp/out.txt" }
   );
   assert.equal(resume.kind, "resume");
   assert.ok(resume.args.includes("resume"));
   assert.ok(resume.args.includes("tid-resume"));
-  assert.ok(resume.args.some((a) => String(a).includes('sandbox_mode="workspace-write"')));
+  assert.ok(resume.args.some((a) => String(a).includes('sandbox_mode="danger-full-access"')));
 });
 
 test("build initial agent args", () => {
@@ -288,15 +289,15 @@ test("build initial agent args", () => {
       workspace: "D:\\repo",
       network: false,
     },
-    { resultFile: "D:\\tmp\\out.txt", platform: "win32" }
+    { resultFile: "D:\\tmp\\out.txt" }
   );
   assert.equal(kind, "initial");
-  assert.equal(sandbox, "workspace-write");
+  assert.equal(sandbox, "danger-full-access");
   assert.ok(args.includes("exec"));
   assert.ok(args.includes("--json"));
   assert.ok(args.includes("--output-last-message"));
   assert.ok(args.includes("--sandbox"));
-  assert.ok(args.includes("workspace-write"));
+  assert.ok(args.includes("danger-full-access"));
   assert.ok(args.includes("--ignore-user-config"));
   assert.ok(args.includes("--skip-git-repo-check"));
   // The brief goes down stdin, so argv carries only the marker that says so.
@@ -304,20 +305,25 @@ test("build initial agent args", () => {
   assert.ok(!args.includes("fix it"));
 });
 
-test("agent network true/false flags appear in argv", () => {
+test("network drives web_search only, and no sandbox config is sent", () => {
   const off = buildCodexArgs(
     { spec: "x", mode: "agent", workspace: "/repo", network: false },
-    { resultFile: "/tmp/out.txt", platform: "linux" }
+    { resultFile: "/tmp/out.txt" }
   );
-  assert.ok(off.args.includes("sandbox_workspace_write.network_access=false"));
   assert.ok(off.args.includes('web_search="disabled"'));
 
   const on = buildCodexArgs(
     { spec: "x", mode: "agent", workspace: "/repo", network: true },
-    { resultFile: "/tmp/out.txt", platform: "linux" }
+    { resultFile: "/tmp/out.txt" }
   );
-  assert.ok(on.args.includes("sandbox_workspace_write.network_access=true"));
   assert.ok(on.args.includes('web_search="live"'));
+
+  // network_access bound the workspace-write sandbox. With no sandbox it would be
+  // sent and ignored, which reads as a guarantee that is not being made.
+  for (const built of [off, on]) {
+    assert.ok(!built.args.some((a) => String(a).includes("sandbox_workspace_write")));
+    assert.ok(!built.args.some((a) => String(a).includes("windows.sandbox")));
+  }
 });
 
 test("plan requires schema file; review rejects schema", () => {
@@ -356,27 +362,12 @@ test("build plan args include output schema", () => {
     {
       resultFile: "/tmp/out.txt",
       outputSchemaFile: "/tmp/schema.json",
-      platform: "linux",
     }
   );
   assert.ok(args.includes("--output-schema"));
   assert.ok(args.includes("/tmp/schema.json"));
-  assert.ok(args.includes("read-only"));
+  assert.ok(args.includes("danger-full-access"));
   assert.ok(PLAN_SCHEMA.required.includes("overview"));
-});
-
-test("windows platform adds the unelevated sandbox flag", () => {
-  const { args } = buildCodexArgs(
-    { spec: "x", mode: "agent", workspace: "D:\\repo", network: false },
-    { resultFile: "D:\\tmp\\out.txt", platform: "win32" }
-  );
-  assert.ok(args.includes('windows.sandbox="unelevated"'));
-
-  const linux = buildCodexArgs(
-    { spec: "x", mode: "agent", workspace: "/repo", network: false },
-    { resultFile: "/tmp/out.txt", platform: "linux" }
-  );
-  assert.ok(!linux.args.some((a) => String(a).startsWith("windows.sandbox")));
 });
 
 test("build review args use developer_instructions and target flags", () => {
@@ -455,58 +446,27 @@ test("review still refuses an oversized spec, because its brief is still argv", 
   );
 });
 
-test("the Windows sandbox flag always goes, whatever the mode", () => {
+test("argv carries no sandbox configuration at all, on any platform", () => {
   const req = validateDelegateInput({ spec: "x", workspace: process.cwd() });
-  const on = buildCodexArgs(req, { resultFile: "/tmp/o.txt", platform: "win32" }).args;
-  assert.ok(on.includes('windows.sandbox="unelevated"'));
-
-  const custom = buildCodexArgs(req, {
-    resultFile: "/tmp/o.txt",
-    platform: "win32",
-    windowsSandbox: "elevated",
-  }).args;
-  assert.ok(custom.includes('windows.sandbox="elevated"'));
-
-  // Omitting it is not an option: without a [windows] setting Codex degrades
-  // workspace-write to read-only, so agent mode could not write at all.
-  const future = buildCodexArgs(req, {
-    resultFile: "/tmp/o.txt",
-    platform: "win32",
-    windowsSandbox: "some-future-mode",
-  }).args;
-  assert.ok(future.includes('windows.sandbox="some-future-mode"'));
-
-  // Windows only.
-  const linux = buildCodexArgs(req, { resultFile: "/tmp/o.txt", platform: "linux" }).args;
-  assert.ok(!linux.some((a) => String(a).startsWith("windows.sandbox")));
-});
-
-test("resolveWindowsSandbox defaults, and passes an unknown mode through with a warning", () => {
-  assert.deepEqual(resolveWindowsSandbox(undefined, { platform: "win32" }), {
-    sandbox: "unelevated",
-    warnings: [],
-  });
-  assert.equal(resolveWindowsSandbox("  ", { platform: "win32" }).sandbox, "unelevated");
-  assert.deepEqual(resolveWindowsSandbox("elevated", { platform: "win32" }), {
-    sandbox: "elevated",
-    warnings: [],
-  });
-
-  // The knob exists to survive a Codex change we did not see coming, so a mode we
-  // do not recognize travels rather than being replaced by one we do.
-  const future = resolveWindowsSandbox("some-future-mode", { platform: "win32" });
-  assert.equal(future.sandbox, "some-future-mode");
-  assert.equal(future.warnings.length, 1);
-  assert.match(future.warnings[0], /some-future-mode/);
-  assert.match(future.warnings[0], /passed to Codex as given/);
-
-  // Nothing to say off Windows, where the flag is never sent.
-  assert.deepEqual(resolveWindowsSandbox("some-future-mode", { platform: "linux" }).warnings, []);
+  for (const mode of MODES) {
+    const request =
+      mode === "review" ? { ...req, mode, reviewTarget: { kind: "uncommitted" } } : { ...req, mode };
+    const { args } = buildCodexArgs(request, {
+      resultFile: "/tmp/o.txt",
+      outputSchemaFile: mode === "plan" ? "/tmp/s.json" : null,
+    });
+    // The build no longer takes a platform: there is nothing platform-specific
+    // left to decide once the sandbox is gone.
+    assert.ok(!args.some((a) => String(a).includes("windows.sandbox")));
+    assert.ok(!args.some((a) => String(a).includes("sandbox_workspace_write")));
+    assert.ok(!args.includes("read-only"));
+    assert.ok(!args.includes("workspace-write"));
+  }
 });
 
 test("a spec far past the CreateProcess limit is fine once it leaves argv", () => {
   const req = validateDelegateInput({ spec: "x".repeat(200_000), workspace: process.cwd() });
-  const built = buildCodexArgs(req, { resultFile: "/tmp/o.txt", platform: "win32" });
+  const built = buildCodexArgs(req, { resultFile: "/tmp/o.txt" });
   assert.equal(built.stdin.length, 200_000);
   assert.ok(estimateArgvChars(built.args) < 2_000);
 });

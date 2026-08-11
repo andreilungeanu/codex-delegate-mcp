@@ -98,24 +98,19 @@ test("doctor files resolver notes away from warnings, and reports the recursion 
   assert.equal(out.recursionGuard.depth, "1");
 });
 
-test("doctor stays quiet about the sandbox unless the mode breaks something", async () => {
-  const clean = await runDoctor(options({ platform: "win32" }));
-  assert.equal(clean.sandbox.windowsSandbox, "unelevated");
-  assert.deepEqual(clean.warnings, []);
+test("doctor reports no sandbox section, and the old env var says nothing", async () => {
+  const win = await runDoctor(options({ platform: "win32" }));
+  assert.equal(win.sandbox, undefined);
+  assert.deepEqual(win.warnings, []);
 
-  const unknown = await runDoctor(
-    options({ platform: "win32", env: { CODEX_DELEGATE_WINDOWS_SANDBOX: "some-future-mode" } })
-  );
-  assert.equal(unknown.sandbox.windowsSandbox, "some-future-mode");
-  assert.match(unknown.warnings.join("\n"), /passed to Codex as given/);
-
-  const elevated = await runDoctor(
+  const stale = await runDoctor(
     options({ platform: "win32", env: { CODEX_DELEGATE_WINDOWS_SANDBOX: "elevated" } })
   );
-  assert.match(elevated.warnings.join("\n"), /elevated session/);
+  assert.equal(stale.sandbox, undefined);
+  assert.deepEqual(stale.warnings, []);
 
   const linux = await runDoctor(options({ platform: "linux" }));
-  assert.equal(linux.sandbox.windowsSandbox, undefined);
+  assert.equal(linux.sandbox, undefined);
   assert.deepEqual(linux.warnings, []);
 });
 

@@ -22,7 +22,7 @@ if (nodeMajor < 20) {
   process.exit(1);
 }
 
-export const SERVER_INSTRUCTIONS = `Delegate coding work to the OpenAI Codex CLI through the delegate tool. You orchestrate (brief + review); Codex implements. Scope workspace tightly and review the git diff after write-capable runs. doctor reports setup problems.`;
+export const SERVER_INSTRUCTIONS = `Delegate coding work to the OpenAI Codex CLI through the delegate tool. You orchestrate (brief + review); Codex implements. Codex runs unsandboxed in every mode, so it can write anywhere the user account can reach — no mode is read-only. Scope workspace tightly and review the git diff after every run. doctor reports setup problems.`;
 
 const reviewTargetSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("uncommitted") }).strict(),
@@ -169,7 +169,7 @@ export function buildServer({
     "delegate",
     {
       description:
-        "Delegate a coding task to the OpenAI Codex CLI. Never shell out to codex — use this tool. mode: agent edits, plan returns a structured plan, ask is read-only, review runs Codex's native review. Change model/reasoningEffort/fast only when the user asks. See the delegate skill for orchestration.",
+        "Delegate a coding task to the OpenAI Codex CLI. Never shell out to codex — use this tool. mode: agent edits, plan returns a structured plan, ask answers questions, review runs Codex's native review. mode is an instruction to Codex, not a sandbox: Codex runs unsandboxed and can write outside the workspace in any mode, so review the git diff after every run. Change model/reasoningEffort/fast only when the user asks. See the delegate skill for orchestration.",
       // Strict: an unknown key is almost always a typo, and a silently dropped
       // `resumeThredId` loses the thread with nothing to show for it.
       inputSchema: z.object({
@@ -204,7 +204,9 @@ export function buildServer({
         network: z
           .boolean()
           .default(true)
-          .describe("Web search, and network from Codex's shell in agent mode. false seals the run"),
+          .describe(
+            "Web search. false disables it. Does not seal the run: Codex is unsandboxed, so its shell reaches the network either way"
+          ),
         timeoutMs: z
           .number()
           .int()

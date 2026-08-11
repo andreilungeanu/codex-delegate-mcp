@@ -27,16 +27,18 @@ export const MAX_REVIEW_ARGV_CHARS = 28_000;
 const STDIN_PROMPT = "-";
 
 /**
- * Windows only, and not optional: --ignore-user-config strips the user's own
- * [windows] setting, and Codex without one degrades workspace-write to read-only,
- * so agent mode cannot write at all. The default was `elevated`, which needs an
- * elevated session — on a normal one Codex cannot spawn the sandbox helper
- * (CreateProcessAsUserW failed: 5), so every shell command in every mode fails
- * while the turn still reports as completed.
+ * No sandbox, in every mode. Codex's own sandbox blocks a child process from
+ * spawning one of its own — measured as EPERM under both workspace-write and
+ * read-only — which stops the worker running `npm test`, `node --test` or any
+ * build tool, since those all spawn. Disk access was never the problem: writes
+ * to the workspace and to the OS temp dir both succeeded under workspace-write.
+ *
+ * The cost is total: nothing now confines the worker to the workspace, or to the
+ * repository, or to anything else the user account can reach. Every mode is
+ * write-capable, including `ask` and `plan`, and `network:false` no longer stops
+ * the shell reaching the network — it only turns off web search.
  */
-export const DEFAULT_WINDOWS_SANDBOX = "unelevated";
-/** What Codex accepts today. Not a whitelist — an unknown value is passed through. */
-export const WINDOWS_SANDBOX_MODES = Object.freeze(["unelevated", "elevated"]);
+const SANDBOX = "danger-full-access";
 
 /**
  * Which values a model accepts is not discoverable up front and differs by model:
@@ -84,19 +86,9 @@ export const PLAN_SCHEMA = Object.freeze({
  * @param {{
  *   resultFile?: string,
  *   outputSchemaFile?: string | null,
- *   platform?: string,
- *   windowsSandbox?: string,
  * }} [options]
  */
-export function buildCodexArgs(
-  request,
-  {
-    resultFile,
-    outputSchemaFile,
-    platform = process.platform,
-    windowsSandbox = DEFAULT_WINDOWS_SANDBOX,
-  } = {}
-) {
+export function buildCodexArgs(request, { resultFile, outputSchemaFile } = {}) {
   if (!request || typeof request !== "object") throw new TypeError("request required");
   if (!resultFile || typeof resultFile !== "string") throw new TypeError("resultFile required");
   if (!MODES.includes(request.mode)) throw new Error(`unsupported mode: ${request.mode}`);
@@ -104,15 +96,15 @@ export function buildCodexArgs(
   let built;
   if (request.mode === "review") {
     if (outputSchemaFile) throw new Error("output schema is not supported in review mode");
-    built = buildReviewArgs(request, { resultFile, platform, windowsSandbox });
+    built = buildReviewArgs(request, { resultFile });
   } else if (request.mode === "ask" && outputSchemaFile) {
     throw new Error("output schema is not supported in ask mode");
   } else if (request.mode === "plan" && !outputSchemaFile) {
     throw new Error("plan mode requires outputSchemaFile");
   } else if (request.resumeThreadId) {
-    built = buildResumeArgs(request, { resultFile, outputSchemaFile, platform, windowsSandbox });
+    built = buildResumeArgs(request, { resultFile, outputSchemaFile });
   } else {
-    built = buildInitialArgs(request, { resultFile, outputSchemaFile, platform, windowsSandbox });
+    built = buildInitialArgs(request, { resultFile, outputSchemaFile });
   }
   return built;
 }
@@ -142,46 +134,44 @@ function assertReviewArgvLength(args) {
   throw err;
 }
 
-function buildInitialArgs(request, { resultFile, outputSchemaFile, platform, windowsSandbox }) {
-  const sandbox = sandboxForMode(request.mode);
+function buildInitialArgs(request, { resultFile, outputSchemaFile }) {
   const args = [
     "exec",
-    ...commonFlags(request, resultFile, outputSchemaFile, platform, windowsSandbox),
+    ...commonFlags(request, resultFile, outputSchemaFile),
     "--sandbox",
-    sandbox,
+    SANDBOX,
     "--cd",
     request.workspace,
     "--skip-git-repo-check",
     "--",
     STDIN_PROMPT,
   ];
-  return { kind: "initial", args, sandbox, stdin: request.spec };
+  return { kind: "initial", args, sandbox: SANDBOX, stdin: request.spec };
 }
 
-function buildResumeArgs(request, { resultFile, outputSchemaFile, platform, windowsSandbox }) {
-  const sandbox = sandboxForMode(request.mode);
+function buildResumeArgs(request, { resultFile, outputSchemaFile }) {
   const args = [
     "exec",
     "resume",
-    ...commonFlags(request, resultFile, outputSchemaFile, platform, windowsSandbox),
+    ...commonFlags(request, resultFile, outputSchemaFile),
     "-c",
-    `sandbox_mode=${tomlString(sandbox)}`,
+    `sandbox_mode=${tomlString(SANDBOX)}`,
     "--skip-git-repo-check",
     request.resumeThreadId,
     "--",
     STDIN_PROMPT,
   ];
-  return { kind: "resume", args, sandbox, stdin: request.spec };
+  return { kind: "resume", args, sandbox: SANDBOX, stdin: request.spec };
 }
 
-function buildReviewArgs(request, { resultFile, platform, windowsSandbox }) {
+function buildReviewArgs(request, { resultFile }) {
   if (!request.reviewTarget) throw new Error("reviewTarget required in review mode");
   const args = [
     "exec",
     "review",
-    ...commonFlags(request, resultFile, null, platform, windowsSandbox),
+    ...commonFlags(request, resultFile, null),
     "-c",
-    'sandbox_mode="read-only"',
+    `sandbox_mode=${tomlString(SANDBOX)}`,
     "-c",
     `developer_instructions=${tomlString(request.spec)}`,
     "--skip-git-repo-check",
@@ -190,24 +180,28 @@ function buildReviewArgs(request, { resultFile, platform, windowsSandbox }) {
   // No stdin: `exec review` rejects a positional prompt alongside a target, so the
   // brief has to keep travelling in argv here — command line and cap included.
   assertReviewArgvLength(args);
-  return { kind: "review", args, sandbox: "read-only", stdin: null };
+  return { kind: "review", args, sandbox: SANDBOX, stdin: null };
 }
 
-function commonFlags(request, resultFile, outputSchemaFile, platform, windowsSandbox) {
-  // On unless the caller opts out. `network_access` only binds the workspace-write
-  // sandbox, so in the read-only modes this is effectively the web_search switch.
+function commonFlags(request, resultFile, outputSchemaFile) {
+  // On unless the caller opts out. This is now only the web_search switch:
+  // `sandbox_workspace_write.network_access` bound the workspace-write sandbox,
+  // and with no sandbox there is nothing for it to bind, so it is gone rather
+  // than sent and ignored. Nothing here stops the worker's shell reaching the
+  // network.
   const network = request.network !== false;
   const args = [
     "--json",
     "--output-last-message",
     resultFile,
+    // Every flag here then means what it says. Without it the user's own
+    // ~/.codex config is merged in and can change model, effort or anything else
+    // under a run the caller believes it fully specified.
     "--ignore-user-config",
     "--disable",
     "hooks",
     "-c",
     'approval_policy="never"',
-    "-c",
-    `sandbox_workspace_write.network_access=${network ? "true" : "false"}`,
     "-c",
     `web_search=${tomlString(network ? "live" : "disabled")}`,
   ];
@@ -218,11 +212,6 @@ function commonFlags(request, resultFile, outputSchemaFile, platform, windowsSan
   }
 
   if (outputSchemaFile) args.push("--output-schema", outputSchemaFile);
-  // --ignore-user-config strips the user's [windows] sandbox setting, and without
-  // one workspace-write degrades to read-only, so this always goes.
-  if (platform === "win32") {
-    args.push("-c", `windows.sandbox=${tomlString(windowsSandbox)}`);
-  }
   if (request.model) args.push("--model", request.model);
   if (request.reasoningEffort) {
     args.push("-c", `model_reasoning_effort=${tomlString(request.reasoningEffort)}`);
@@ -243,39 +232,8 @@ function reviewTargetArgs(target) {
   }
 }
 
-function sandboxForMode(mode) {
-  if (mode === "agent") return "workspace-write";
-  return "read-only";
-}
-
 function tomlString(value) {
   return JSON.stringify(String(value));
-}
-
-/**
- * The point of this knob is to work around a Codex change we did not see coming,
- * so an unrecognized value travels rather than being replaced by one we like: a
- * list of modes we already knew about cannot rescue anyone from a new one. What
- * we do owe is a warning, since the same passthrough carries typos, and Codex
- * rejects an invalid mode at config load rather than at the write it affects.
- *
- * @param {unknown} raw
- * @param {{ platform?: string }} [options]
- */
-export function resolveWindowsSandbox(raw, { platform = process.platform } = {}) {
-  const warnings = [];
-  const requested = raw == null ? "" : String(raw).trim();
-  const sandbox = requested || DEFAULT_WINDOWS_SANDBOX;
-
-  if (platform === "win32" && !WINDOWS_SANDBOX_MODES.includes(sandbox)) {
-    warnings.push(
-      `CODEX_DELEGATE_WINDOWS_SANDBOX="${sandbox}" is not one of ${WINDOWS_SANDBOX_MODES.join(
-        ", "
-      )}. It is passed to Codex as given; if Codex does not know it either, the run fails at config load.`
-    );
-  }
-
-  return { sandbox, warnings };
 }
 
 export function validateDelegateInput(raw, { cwd = process.cwd() } = {}) {

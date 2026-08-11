@@ -40,15 +40,15 @@ test("executeDelegate refuses nested recursion", async () => {
   );
 });
 
-test("executeDelegate warns about an unusable Windows sandbox mode instead of passing it on", async () => {
+test("CODEX_DELEGATE_WINDOWS_SANDBOX is gone: setting it changes nothing and warns nothing", async () => {
   const options = delegateOptions("thread-1");
   const result = await executeDelegate(
     { spec: "x", mode: "ask", workspace: process.cwd() },
-    { ...options, env: { CODEX_DELEGATE_WINDOWS_SANDBOX: "bogusvalue" }, platform: "win32" }
+    { ...options, env: { CODEX_DELEGATE_WINDOWS_SANDBOX: "bogusvalue" } }
   );
 
   assert.equal(result.status, "completed");
-  assert.match(result.warnings?.[0] ?? "", /bogusvalue/);
+  assert.equal(result.warnings, undefined);
 });
 
 test("executeDelegate wires resolve + process + edit-tool files", async () => {

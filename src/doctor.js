@@ -3,7 +3,6 @@ import { execFile } from "node:child_process";
 import { statSync } from "node:fs";
 import { promisify } from "node:util";
 import { refreshCodex, clearCodexCache } from "./resolve-codex.js";
-import { resolveWindowsSandbox, WINDOWS_SANDBOX_MODES } from "./command.js";
 import { isGitRepo } from "./git-preflight.js";
 import { VERSION } from "./version.js";
 
@@ -70,8 +69,6 @@ export async function runDoctor({
     active: Boolean(env.CODEX_DELEGATE_DEPTH && String(env.CODEX_DELEGATE_DEPTH).trim()),
   };
 
-  const sandbox = describeSandbox(env, warnings, platform);
-
   const out = {
     plugin: { version: VERSION, name: "codex-delegate-mcp" },
     client,
@@ -79,7 +76,6 @@ export async function runDoctor({
     login,
     recursionGuard: recursion,
     workspace: await describeWorkspace(workspace, warnings, execFileImpl),
-    sandbox,
     runtime: {
       node: process.versions.node,
       platform,
@@ -123,24 +119,6 @@ async function describeWorkspace(workspace, warnings, execFileImpl) {
     if (repo !== null) out.isGitRepo = repo;
   }
   return out;
-}
-
-/**
- * `elevated` is the one mode we know breaks: it cannot spawn its helper on a
- * normal session and fails every shell command in every mode, while the run still
- * reports as completed, so nothing downstream will say it for us.
- */
-function describeSandbox(env, warnings, platform) {
-  if (platform !== "win32") return { platform };
-  const raw = env.CODEX_DELEGATE_WINDOWS_SANDBOX;
-  const { sandbox, warnings: modeWarnings } = resolveWindowsSandbox(raw, { platform: "win32" });
-  warnings.push(...modeWarnings);
-  if (sandbox === "elevated") {
-    warnings.push(
-      'CODEX_DELEGATE_WINDOWS_SANDBOX="elevated" only works from an elevated session. On a normal one Codex cannot spawn the sandbox helper (CreateProcessAsUserW failed: 5) and every shell command fails while the turn still completes.'
-    );
-  }
-  return { platform: "win32", windowsSandbox: sandbox, known: [...WINDOWS_SANDBOX_MODES] };
 }
 
 async function probeLogin(command, execFileImpl = execFileAsync) {

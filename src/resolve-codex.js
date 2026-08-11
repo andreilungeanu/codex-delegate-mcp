@@ -75,9 +75,13 @@ export function resolveCodexUncached({
     );
   }
   if (which) {
+    // The original reason for this preference was that PATH Codex on Windows
+    // degraded workspace-write under --ignore-user-config. No sandbox is set any
+    // more, so that reason is gone; the preference stays on the narrower one the
+    // shim check above is also about — a directly spawnable .exe over a wrapper.
     if (platform === "win32" && standalone) {
       warnings.push(
-        "PATH Codex on Windows can degrade workspace-write under --ignore-user-config; preferring standalone binary."
+        "Preferring the standalone Codex binary on Windows: the PATH entry is often a wrapper rather than a directly spawnable executable."
       );
     } else {
       candidates.push({ command: which, source: "path" });
