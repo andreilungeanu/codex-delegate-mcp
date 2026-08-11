@@ -22,7 +22,7 @@ if (nodeMajor < 20) {
   process.exit(1);
 }
 
-export const SERVER_INSTRUCTIONS = `Delegate coding work to the OpenAI Codex CLI through the delegate tool. You orchestrate (brief + review); Codex implements. Codex runs unsandboxed in every mode, so it can write anywhere the user account can reach — no mode is read-only. Scope workspace tightly and review the git diff after every run. doctor reports setup problems.`;
+export const SERVER_INSTRUCTIONS = `Hand coding work to Codex via the delegate tool; never shell out to codex. Unsandboxed in every mode: agent/plan/ask/review can write anywhere the user account can reach and reach the network. mode is not a boundary. Review the git diff after every run.`;
 
 const reviewTargetSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("uncommitted") }).strict(),
@@ -169,44 +169,38 @@ export function buildServer({
     "delegate",
     {
       description:
-        "Delegate a coding task to the OpenAI Codex CLI. Never shell out to codex — use this tool. mode: agent edits, plan returns a structured plan, ask answers questions, review runs Codex's native review. mode is an instruction to Codex, not a sandbox: Codex runs unsandboxed and can write outside the workspace in any mode, so review the git diff after every run. Change model/reasoningEffort/fast only when the user asks. See the delegate skill for orchestration.",
+        "Delegate a coding task to OpenAI Codex. Never run codex from the shell — use this tool. Check status before trusting result — a run that spawns then fails returns normally. Keep model, reasoningEffort and fast at their defaults unless the user asks. See the delegate skill.",
       // Strict: an unknown key is almost always a typo, and a silently dropped
       // `resumeThredId` loses the thread with nothing to show for it.
       inputSchema: z.object({
         spec: z
           .string()
           .describe(
-            "Task brief: goal, scope, decisions already made (quote the user's exact values), acceptance criteria. Point at files to read rather than pasting code."
+            "Brief with goal, scope, fixed decisions quoted exactly, and acceptance criteria; reference files instead of pasting code."
           ),
-        mode: z.enum([...MODES]).default("agent"),
+        mode: z
+          .enum([...MODES])
+          .default("agent")
+          .describe(
+            "agent implements; plan returns a structured plan; ask answers; review runs native review."
+          ),
         workspace: z
           .string()
           .optional()
           .describe(
-            "Working directory for Codex. Optional; defaults to the server process cwd, which for npx and plugin launches is not necessarily your project root — pass it explicitly. Smallest directory holding the task's files; none → project root. Must already exist — never create one for the call. Required when resuming: codex exec resume has no --cd."
+            "Codex's working directory; not confinement. Must already exist — never create one for the call. Defaults to the server cwd, often not the project root under npx/plugin. Required on resume: resume has no --cd."
           ),
         resumeThreadId: z
           .string()
           .optional()
-          .describe("Resume an existing Codex thread instead of starting a new one"),
-        model: z
-          .string()
-          .default(DEFAULT_MODEL)
-          .describe("Codex model id"),
+          .describe("Thread to continue. Reuse its workspace. Forbidden with review."),
+        model: z.string().default(DEFAULT_MODEL),
         reasoningEffort: z
           .enum([...REASONING_EFFORTS])
           .default(DEFAULT_REASONING_EFFORT)
-          .describe("Reasoning effort. gpt-5.6-* reject minimal; older models reject none"),
-        fast: z
-          .boolean()
-          .default(false)
-          .describe("Codex Fast mode (service_tier=fast) — higher credit use"),
-        webSearch: z
-          .boolean()
-          .default(true)
-          .describe(
-            "Web search. false disables it. Does not seal the run: Codex is unsandboxed, so its shell reaches the network either way"
-          ),
+          .describe("gpt-5.6-* reject minimal; older models reject none."),
+        fast: z.boolean().default(false).describe("Codex Fast mode; higher credit use."),
+        webSearch: z.boolean().default(true).describe("Codex's built-in web search."),
         timeoutMs: z
           .number()
           .int()
@@ -214,11 +208,11 @@ export function buildServer({
           .max(86_400_000)
           .optional()
           .describe(
-            "Hard-cap timeout in milliseconds (default 1h). A long silent command is not a timeout; only the 60s spawn-to-first-output deadline is."
+            "Whole-run cap in ms (default 1h). Mid-turn silence is allowed; startup has a separate 60s first-output deadline."
           ),
         reviewTarget: reviewTargetSchema
           .optional()
-          .describe("Required in review mode: uncommitted, base branch, or commit sha"),
+          .describe("Required in review; forbidden otherwise: uncommitted, base branch, or commit."),
       }).strict(),
       annotations: {
         title: "Delegate coding task to Codex",
@@ -236,17 +230,11 @@ export function buildServer({
     "cancel",
     {
       description:
-        "Cancel in-flight Codex delegations owned by this server. Waits for the processes to end rather than returning when the kill was requested; a tree that outlives the kill deadline returns anyway, with a warning naming it. Name one with delegationId (announced in progress before the run starts, and the only handle for a run that wedges during startup) or threadId (cancels every delegation on that thread). With neither, every active delegation is cancelled. Returns a status of cancelled, nothing-active, not-running, or not-found.",
+        "Cancel active runs. delegationId selects one (announced in progress before spawn — the only handle if a run wedges at startup), threadId all on its thread, neither all. Waits for settlement; if a process tree survives the kill deadline, it still returns and the delegate result warns. Status: cancelled, nothing-active, not-running, or not-found.",
       inputSchema: z
         .object({
-          delegationId: z
-            .string()
-            .optional()
-            .describe("Cancel this one delegation, by the id announced in its progress stream"),
-          threadId: z
-            .string()
-            .optional()
-            .describe("Cancel every delegation running on this Codex thread"),
+          delegationId: z.string().optional(),
+          threadId: z.string().optional(),
         })
         .strict(),
       annotations: {
@@ -264,13 +252,10 @@ export function buildServer({
     "doctor",
     {
       description:
-        "Report setup diagnostics: plugin version, Codex CLI resolution, login status, recursion guard. deep=true runs help-only surface checks (no model quota).",
+        "Diagnose plugin/CLI/login, recursion, and workspace (default: server cwd). deep adds no-quota exec/review/resume help checks.",
       inputSchema: z
         .object({
-          deep: z
-            .boolean()
-            .default(false)
-            .describe("When true, probe codex exec/review/resume --help surfaces"),
+          deep: z.boolean().default(false),
           workspace: z.string().optional(),
         })
         .strict(),
