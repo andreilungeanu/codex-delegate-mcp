@@ -1,6 +1,6 @@
 # Terms of Use
 
-Codex Delegate MCP is provided under the MIT License on an "as is" basis, without warranties or guarantees.
+Codex Delegate is provided under the MIT License on an "as is" basis, without warranties or guarantees.
 
 The plugin runs locally and starts the OpenAI Codex CLI with access to the workspace selected for a delegation. Delegated agent-mode tasks may create, modify, or delete files. You are responsible for choosing an appropriate workspace, reviewing changes, protecting credentials, and complying with the terms that apply to Codex/OpenAI, your MCP host, and any model you select.
 

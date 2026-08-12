@@ -1,4 +1,4 @@
-# Codex Delegate MCP
+# Codex Delegate
 
 **Stop burning your frontier agent's limits on boilerplate.**
 
@@ -12,7 +12,7 @@ Delegate implementation to the **OpenAI Codex CLI** — your agent writes the br
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![tests](https://github.com/andreilungeanu/codex-delegate-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/andreilungeanu/codex-delegate-mcp/actions/workflows/test.yml)
 
-<img src="assets/logo-light.png" alt="Codex Delegate MCP logo" width="150" align="left" hspace="15">
+<img src="assets/logo-light.png" alt="Codex Delegate logo" width="150" align="left" hspace="15">
 
 Use your best coding agent where its judgment matters most: understanding the task, shaping the plan, and reviewing the result.
 
@@ -74,7 +74,7 @@ Add an MCP server in **Cursor Settings → MCP** (or project `.cursor/mcp.json`)
 ```json
 {
   "mcpServers": {
-    "codex-delegate-mcp": {
+    "codex-delegate": {
       "command": "npx",
       "args": ["-y", "codex-delegate-mcp"]
     }
@@ -95,13 +95,13 @@ copilot plugin install andreilungeanu/codex-delegate-mcp
 <details>
 <summary><strong>VS Code</strong> — one-click install, or <code>.vscode/mcp.json</code></summary>
 
-[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_server-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://vscode.dev/redirect/mcp/install?name=codex-delegate-mcp&config=%7B%22type%22%3A%22stdio%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22codex-delegate-mcp%22%5D%7D)
-[![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_server-24bfa5?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=codex-delegate-mcp&config=%7B%22type%22%3A%22stdio%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22codex-delegate-mcp%22%5D%7D&quality=insiders)
+[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_server-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://vscode.dev/redirect/mcp/install?name=codex-delegate&config=%7B%22type%22%3A%22stdio%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22codex-delegate-mcp%22%5D%7D)
+[![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_server-24bfa5?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=codex-delegate&config=%7B%22type%22%3A%22stdio%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22codex-delegate-mcp%22%5D%7D&quality=insiders)
 
 ```json
 {
   "servers": {
-    "codex-delegate-mcp": {
+    "codex-delegate": {
       "type": "stdio",
       "command": "npx",
       "args": ["-y", "codex-delegate-mcp"]
@@ -127,7 +127,7 @@ Under **Settings → Tools → AI Assistant → Model Context Protocol (MCP)**, 
 ```json
 {
   "mcpServers": {
-    "codex-delegate-mcp": {
+    "codex-delegate": {
       "command": "npx",
       "args": ["-y", "codex-delegate-mcp"]
     }
@@ -145,7 +145,7 @@ Heads-up: Cascade caps you at 100 tools across all servers.
 ```json
 {
   "servers": {
-    "codex-delegate-mcp": {
+    "codex-delegate": {
       "type": "stdio",
       "command": "npx",
       "args": ["-y", "codex-delegate-mcp"]
@@ -165,7 +165,7 @@ Add the following server to the client's MCP config:
 ```json
 {
   "mcpServers": {
-    "codex-delegate-mcp": {
+    "codex-delegate": {
       "command": "npx",
       "args": ["-y", "codex-delegate-mcp"]
     }

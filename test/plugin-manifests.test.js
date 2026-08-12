@@ -23,7 +23,7 @@ test("marketplaces and Copilot plugin point at the intended package", () => {
   assert.ok(existsSync(resolve(ROOT, copilot.skills)));
   assert.ok(existsSync(resolve(ROOT, copilot.mcpServers)));
   const copilotMcp = read(".mcp.copilot.json");
-  assert.deepEqual(copilotMcp["codex-delegate-mcp"].args, ["-y", pin]);
+  assert.deepEqual(copilotMcp["codex-delegate"].args, ["-y", pin]);
 
   const copilotMarketplace = read(".github/plugin/marketplace.json");
   assert.equal(copilotMarketplace.plugins[0].source, "./");
@@ -36,7 +36,7 @@ test("Claude plugin launches bundled code and bootstraps its runtime dependencie
   assert.equal(manifest.hooks, "./.claude-plugin/hooks.json");
 
   const claudeMcp = read(".claude-plugin/mcp.json");
-  const server = claudeMcp.mcpServers["codex-delegate-mcp"];
+  const server = claudeMcp.mcpServers["codex-delegate"];
   assert.equal(server.command, "node");
   assert.deepEqual(server.args, ["${CLAUDE_PLUGIN_ROOT}/src/server.js"]);
 
@@ -48,7 +48,7 @@ test("Claude plugin launches bundled code and bootstraps its runtime dependencie
 
 test("Codex plugin manifest pins the package and points at assets that exist", () => {
   const manifest = read(".codex-plugin/plugin.json");
-  assert.deepEqual(manifest.mcpServers["codex-delegate-mcp"].args, ["-y", pin]);
+  assert.deepEqual(manifest.mcpServers["codex-delegate"].args, ["-y", pin]);
   assert.ok(existsSync(resolve(ROOT, manifest.skills)));
 
   // Codex rejects a listing whose short description, support URL or brand colour is

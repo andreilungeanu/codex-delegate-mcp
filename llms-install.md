@@ -18,7 +18,7 @@ Add to the MCP settings file (`cline_mcp_settings.json` for Cline):
 ```json
 {
   "mcpServers": {
-    "codex-delegate-mcp": {
+    "codex-delegate": {
       "command": "npx",
       "args": ["-y", "codex-delegate-mcp"]
     }

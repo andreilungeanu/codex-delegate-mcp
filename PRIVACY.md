@@ -1,6 +1,6 @@
 # Privacy
 
-Codex Delegate MCP runs as a local stdio MCP server. The project author does not operate a backend for the plugin and does not receive your code, prompts, workspace contents, session identifiers, diagnostics, or usage telemetry.
+Codex Delegate runs as a local stdio MCP server. The project author does not operate a backend for the plugin and does not receive your code, prompts, workspace contents, session identifiers, diagnostics, or usage telemetry.
 
 When you delegate, the local server starts the OpenAI Codex CLI. Task prompts, selected workspace content, model requests, and account usage are handled under OpenAI / Codex terms. Your MCP host may separately process the prompt and tool results under its own terms.
 
