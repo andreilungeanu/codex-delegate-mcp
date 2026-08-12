@@ -546,7 +546,7 @@ function buildRunWarnings({
     const more =
       nonSuccessfulItems.length > 3 ? ` (+${nonSuccessfulItems.length - 3} more)` : "";
     warnings.push(
-      `${nonSuccessfulItems.length} Codex tool call(s) reported failed or declined during this turn: ${shown}${more}. A non-zero exit is normal for tests and type-checks, but can also mean execution was blocked. Verify any claim that depends on these calls.`
+      `${nonSuccessfulItems.length} Codex tool call(s) reported failed or declined during this turn: ${shown}${more}. declined: the command never ran, so its effect is absent. failed: it ran and exited non-zero — normal for a red suite, and the status does not identify a cause.`
     );
   }
   if (killEscaped) {
