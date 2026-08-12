@@ -8,11 +8,14 @@
   "description": "Marketplace hosting the Codex Delegate plugin.",
   "plugins": [
     {
-      "name": "codex-delegate-mcp",
+      "name": "codex-delegate",
       "source": "./",
       "description": "MCP server bridging AI coding hosts to the OpenAI Codex CLI.",
       "license": "MIT",
       "keywords": ["mcp", "codex", "openai", "claude-code", "delegation"]
     }
-  ]
+  ],
+  "renames": {
+    "codex-delegate-mcp": "codex-delegate"
+  }
 }

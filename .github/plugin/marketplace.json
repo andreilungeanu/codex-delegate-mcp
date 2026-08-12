@@ -10,7 +10,7 @@
   },
   "plugins": [
     {
-      "name": "codex-delegate-mcp",
+      "name": "codex-delegate",
       "description": "Delegate local coding work to the OpenAI Codex CLI through MCP.",
       "version": "1.20.0",
       "source": "./"

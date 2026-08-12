@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
-  "name": "codex-delegate-mcp",
+  "name": "codex-delegate",
   "displayName": "Codex Delegate",
   "version": "1.20.0",
   "description": "Delegate coding tasks to the OpenAI Codex CLI with structured results, plan/ask/review modes, and cancel support.",

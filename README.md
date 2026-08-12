@@ -58,7 +58,7 @@ You need [Node.js 20+](https://nodejs.org/) and the [OpenAI Codex CLI](https://g
 
 ```shell
 /plugin marketplace add andreilungeanu/codex-delegate-mcp
-/plugin install codex-delegate-mcp@codex-delegate-mcp
+/plugin install codex-delegate@codex-delegate-mcp
 ```
 
 Then just ask:

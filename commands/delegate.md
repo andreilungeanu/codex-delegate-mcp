@@ -3,7 +3,7 @@ description: Delegate to OpenAI Codex via codex-delegate-mcp (see delegate skill
 argument-hint: <task description>
 ---
 
-Follow the **delegate** skill (`/codex-delegate-mcp:delegate` or auto-invoked) for the full
+Follow the **delegate** skill (`/codex-delegate:delegate` or auto-invoked) for the full
 workflow. Task: **$ARGUMENTS**
 
 1. Pass a self-contained inline brief in `spec` (goal, scope, acceptance criteria) — do not create a spec file unless the user asks to persist it.
