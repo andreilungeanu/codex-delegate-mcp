@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.21.0] - 2026-08-12
+
+### Changed
+
+- **Breaking**: the plugin-bundled MCP server key is renamed `codex-delegate-mcp` →
+  `codex-delegate`, removing the duplicated `codex-delegate-mcp:codex-delegate-mcp` label.
+  Update permission rules from `mcp__plugin_codex-delegate-mcp_codex-delegate-mcp__*` to
+  `mcp__plugin_codex-delegate_codex-delegate__*` and restart your host.
+- The plugin is renamed `codex-delegate-mcp` → `codex-delegate`, so the selector reads
+  `codex-delegate@codex-delegate-mcp` instead of repeating itself, and the skill namespace
+  is `/codex-delegate:delegate`. Claude Code v2.1.193+ migrates existing installs through
+  the marketplace's new `renames` map; elsewhere, reinstall once.
+
+Marketplace and npm package names are unchanged. Standalone installs (`claude mcp add`, project
+`.mcp.json`) choose their own server key; the documented examples now use `codex-delegate`.
+
 ## [1.20.0] - 2026-08-12
 
 ### Changed
