@@ -332,7 +332,7 @@ test("a first event cancels the startup deadline", async () => {
   assert.equal(result.status, "completed");
 });
 
-test("a turn whose tool calls all failed does not read as clean success", async () => {
+test("a completed turn keeps its intermediate tool failures out of warnings", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-denied-"));
   const resultFile = path.join(dir, "last.txt");
 
@@ -360,20 +360,16 @@ test("a turn whose tool calls all failed does not read as clean success", async 
   });
 
   assert.equal(result.status, "completed");
+  // A command the agent worked around is not the run's outcome. Reporting each one
+  // fired on most healthy runs, so it taught the caller to skim the array that also
+  // carries capacity errors and truncated results.
   assert.ok(
-    result.warnings.some(
-      (w) => /1 Codex tool call\(s\) reported failed or declined/.test(w) && /npm test/.test(w)
-    ),
-    `expected a non-successful-tool-call warning, got ${JSON.stringify(result.warnings)}`
-  );
-  // The warning states what the producer reported; it must not assert fabrication.
-  assert.ok(
-    !result.warnings.some((w) => /work that did not happen/.test(w)),
-    `warning must not accuse the reply of fabrication, got ${JSON.stringify(result.warnings)}`
+    !result.warnings.some((w) => /reported failed or declined/.test(w)),
+    `a completed turn must not warn about its intermediate calls, got ${JSON.stringify(result.warnings)}`
   );
 });
 
-test("a declined tool call is reported rather than dropped", async () => {
+test("a decline the agent recovered from stays out of a completed turn", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-declined-"));
   const resultFile = path.join(dir, "last.txt");
 
@@ -401,13 +397,50 @@ test("a declined tool call is reported rather than dropped", async () => {
   });
 
   assert.equal(result.status, "completed");
+  // The agent reports the calls it cannot route around; a decline it recovered from
+  // is its own business, and the caller establishes success from the workspace.
   assert.ok(
-    result.warnings.some((w) => /declined/.test(w) && /mkdir out/.test(w)),
-    `expected the declined call to surface, got ${JSON.stringify(result.warnings)}`
+    !result.warnings.some((w) => /declined/.test(w) && /mkdir out/.test(w)),
+    `a completed turn must not warn about a decline it handled, got ${JSON.stringify(result.warnings)}`
   );
 });
 
-test("a command that merely exits non-zero is not called a failure", async () => {
+test("a run that broke still reports the calls that failed on the way down", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-brokenrun-"));
+  const resultFile = path.join(dir, "last.txt");
+
+  const result = await runCodexProcess({
+    command: "codex",
+    args: ["exec"],
+    cwd: dir,
+    resultFile,
+    spawnImpl: () =>
+      fakeChild({
+        lines: [
+          JSON.stringify({ type: "thread.started", thread_id: "tid-broke" }),
+          JSON.stringify({ type: "turn.started" }),
+          JSON.stringify({
+            type: "item.completed",
+            item: { type: "command_execution", command: "npm test", exit_code: -1, status: "failed" },
+          }),
+          JSON.stringify({ type: "turn.failed", error: { message: "capacity" } }),
+        ],
+      }),
+    platform: "linux",
+    heartbeatMs: 0,
+    timeoutMs: 5000,
+  });
+
+  assert.notEqual(result.status, "completed");
+  assert.ok(
+    result.warnings.some(
+      (w) => /reported failed or declined/.test(w) && /npm test/.test(w)
+    ),
+    `a broken run must name the calls that failed, got ${JSON.stringify(result.warnings)}`
+  );
+});
+
+test("a red suite on a completed turn is not raised as a warning", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-redsuite-"));
   const resultFile = path.join(dir, "last.txt");
 
@@ -444,13 +477,10 @@ test("a command that merely exits non-zero is not called a failure", async () =>
   });
 
   assert.equal(result.status, "completed");
+  // A red type-check is the normal outcome of work in progress, not the run's verdict.
   assert.ok(
-    result.warnings.some((w) => /exit 2/.test(w) && /npx tsc --noEmit/.test(w)),
-    `expected the non-zero exit to be reported factually, got ${JSON.stringify(result.warnings)}`
-  );
-  assert.ok(
-    !result.warnings.some((w) => /work that did not happen/.test(w)),
-    `a red type-check must not read as fabrication, got ${JSON.stringify(result.warnings)}`
+    !result.warnings.some((w) => /exit 2/.test(w) && /npx tsc --noEmit/.test(w)),
+    `a red type-check must not warn on a completed turn, got ${JSON.stringify(result.warnings)}`
   );
 });
 
@@ -624,6 +654,32 @@ test("describeNonSuccessfulItem names the tool, its status and its exit code", (
     'command_execution "mkdir out" declined'
   );
   assert.equal(describeNonSuccessfulItem({ type: "file_change" }), "file_change");
+});
+
+test("describeNonSuccessfulItem collapses a multi-line command onto one line", () => {
+  assert.equal(
+    describeNonSuccessfulItem({
+      type: "command_execution",
+      command: "pwsh -Command 'Remove-Item cache\n  exit $code'",
+      status: "declined",
+      exit_code: -1,
+    }),
+    'command_execution "pwsh -Command \'Remove-Item cache exit $code\'" declined exit -1'
+  );
+});
+
+test("describeNonSuccessfulItem marks a command it had to cut", () => {
+  const long = `pwsh -Command '${"x".repeat(300)}'`;
+  const out = describeNonSuccessfulItem({
+    type: "command_execution",
+    command: long,
+    status: "declined",
+    exit_code: -1,
+  });
+  assert.ok(out.endsWith('" (truncated) declined exit -1'));
+  // The marker is the only claim of truncation: a command inside the cap keeps
+  // its exact text, so the reader can trust an unmarked command to be complete.
+  assert.ok(!describeNonSuccessfulItem({ type: "command_execution", command: "ls" }).includes("truncated"));
 });
 
 test("readAgentError unwraps the nested Codex error envelope", () => {

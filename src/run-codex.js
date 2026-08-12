@@ -541,7 +541,11 @@ function buildRunWarnings({
       `Codex reported more than ${MAX_REPORTED_PATHS} edited files; ${droppedPaths} are missing from the list. Read the git diff for the full set.`
     );
   }
-  if (nonSuccessfulItems.length) {
+  // Only on a run that broke. Routing around a failed command is the agent doing its
+  // job, and it reports the ones it cannot route around; surfacing every discarded
+  // attempt fired on most healthy runs and taught the caller to skim this array —
+  // which also carries the capacity errors and truncated results.
+  if (nonSuccessfulItems.length && status !== "completed") {
     const shown = nonSuccessfulItems.slice(0, 3).join("; ");
     const more =
       nonSuccessfulItems.length > 3 ? ` (+${nonSuccessfulItems.length - 3} more)` : "";
@@ -619,12 +623,18 @@ export function readUsage(raw) {
   return Object.fromEntries(kept);
 }
 
-export function describeNonSuccessfulItem(item, maxChars = 120) {
+export function describeNonSuccessfulItem(item, maxChars = 200) {
   const kind = String(item?.type || "item");
-  const detail = String(item?.command || item?.command_line || "").trim();
+  // Codex reports a multi-line script verbatim, and a warning is read as one line.
+  const detail = String(item?.command || item?.command_line || "")
+    .replace(/\s+/g, " ")
+    .trim();
   const status = item?.status ? ` ${item.status}` : "";
   const exit = Number.isInteger(item?.exit_code) ? ` exit ${item.exit_code}` : "";
-  const label = detail ? `${kind} "${detail.slice(0, maxChars)}"` : kind;
+  // A cut lands mid-token and reads as a syntax error unless it says it was cut.
+  // The marker sits outside the quotes so it cannot be mistaken for the command.
+  const cut = detail.length > maxChars ? " (truncated)" : "";
+  const label = detail ? `${kind} "${detail.slice(0, maxChars)}"${cut}` : kind;
   return `${label}${status}${exit}`;
 }
 
