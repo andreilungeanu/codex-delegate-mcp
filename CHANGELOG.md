@@ -4,13 +4,33 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.20.0] - 2026-08-12
+
+### Changed
+
+- **Breaking:** A turn's failed or declined tool calls are reported only when the run itself
+  did not complete. Working around a failed command is the agent doing its job, and it reports
+  the ones it cannot work around; naming every discarded attempt fired on most healthy runs and
+  taught callers to skim the array that also carries capacity errors and truncated results.
+- A reported command keeps 200 characters rather than 120, is collapsed onto one line, and says
+  `(truncated)` when it was cut. An interpreter path can eat most of the budget, so the flag that
+  explains a rejection was landing past the cut; a cut mid-token read as a syntax error. Reported
+  commands are still exactly what Codex sent, with no structure inferred from them.
+
+### Fixed
+
+- The 1.19.1 note below misstated why deletes were blocked, and is corrected there.
+
 ## [1.19.1] - 2026-08-11
 
 ### Fixed
 
-- Delegated runs can delete files again. `approval_policy="never"` denied anything Codex routed
-  to approval rather than prompting, so a run could write but not delete.
-  `--dangerously-bypass-approvals-and-sandbox` replaces it and opens both gates.
+- Delegated runs no longer route approvals through a channel that denies them.
+  `--dangerously-bypass-approvals-and-sandbox` replaces `approval_policy="never"` and opens both
+  gates. *(Corrected 1.20.0: this was released as a delete fix. Codex's exec policy refuses
+  `rm -f` style commands, including any `Remove-Item -Force`, above both the sandbox and the
+  approval policy — so deletes carrying `-Force` are declined on every version, and the same
+  delete succeeds without the flag.)*
 
 ### Removed
 
