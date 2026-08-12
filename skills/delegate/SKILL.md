@@ -32,7 +32,7 @@ behave, read [reference.md](reference.md) in this skill directory.
    Point at files to read; don't paste large code blocks.
 2. **Call `delegate`** on codex-delegate-mcp.
 3. **Review** — check `status` before trusting `result`: a run that spawns and then fails returns normally rather than raising, so a caller that only catches errors reads a failure as an empty success. Then read `warnings`, then `filesReportedByEditTools`, then the git diff; run tests/lint. The field lists only what Codex's edit tool reported — shell-written files and anything outside the workspace are missing, so the diff is the better record, not a complete one.
-   - A `warnings` entry always means something real; empty `warnings` is not a clean bill of health — the bridge sees only failures Codex reports as failed or declined tool calls, not ones it narrates in `result`. Such a warning is Codex's status, not a verdict: any non-zero exit reads as `failed` — normal for a red suite, but also how a blocked command looks. Verify claims that depend on those calls.
+   - A `warnings` entry always means something real; empty `warnings` is not a clean bill of health — the bridge sees only failures Codex reports as failed or declined tool calls, not ones it narrates in `result`. Such a warning reports Codex's status, not a verdict; it carries its own reading of that status.
    - `resultSource: "stream-fallback"` means the run never finished and `result` is the last thing Codex said, not an answer. Resume the thread.
    - If criteria fail: resume the **same thread** with `resumeThreadId` and a specific fix brief (pass the same `workspace`).
    - If a resume returns `resumed: false` with a new `threadId`, Codex minted a fresh thread and prior context did not carry over.
