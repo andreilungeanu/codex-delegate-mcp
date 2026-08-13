@@ -138,6 +138,7 @@ export async function runCodexProcess({
 
   if (signal?.aborted) return interruptedBeforeSpawn();
   child = spawnImpl(command, args, spawnOpts);
+  const childPid = child.pid;
 
   // readline attaches no error listener of its own, so an EPIPE on either pipe
   // lands on a stream nobody is watching and takes the server down — the same way
@@ -187,7 +188,11 @@ export async function runCodexProcess({
   const abort = async ({ userCancel = false } = {}) => {
     if (userCancel) cancelled = true;
     armKillDeadline();
-    if (isChildAlive(child)) await treeKillImpl(child.pid);
+    // Runs for an exited child too. Codex dying does not reap the shell, watcher or
+    // test run it spawned; on POSIX those stay in its process group, and skipping
+    // the kill here is what leaves them behind. The pid is the one recorded at
+    // spawn, never a `child.pid` that may since have been recycled.
+    await treeKillImpl(childPid, { childAlive: isChildAlive(child) });
   };
 
   const onAbort = () => {

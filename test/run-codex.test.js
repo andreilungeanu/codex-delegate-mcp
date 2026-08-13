@@ -1359,3 +1359,25 @@ test("a cancel during the drain does not discard a result the child already wrot
   assert.equal(out.result, "DONE");
   assert.equal(out.finalMessageAvailable, true);
 });
+
+test("teardown still reaches the group once the direct child has exited", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-orphan-"));
+  const resultFile = path.join(dir, "last.txt");
+  const { child, exited } = exitThenClose({ resultFile });
+  const controller = new AbortController();
+  exited.then(() => controller.abort());
+
+  const kills = [];
+  await runCodexProcess({
+    command: "/bin/codex",
+    args: [],
+    resultFile,
+    signal: controller.signal,
+    spawnImpl: () => child,
+    treeKillImpl: async (pid, opts) => kills.push({ pid, ...opts }),
+  });
+
+  // Codex is gone, but the shell, watcher or test run it started is not, and on
+  // POSIX the group is the only handle left on them.
+  assert.deepEqual(kills, [{ pid: 4242, childAlive: false }]);
+});
