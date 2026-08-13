@@ -306,6 +306,14 @@ if (process.argv[1]) {
 }
 
 if (isMain) {
-  const server = buildServer();
-  await server.connect(new StdioServerTransport());
+  // Without this the transport starts and waits on stdin forever, so `--version`
+  // looks exactly like a wedged install — and doctor cannot answer "is this even
+  // the right binary?" until a host is already wired up. No other flag is parsed:
+  // treating an unknown one as --help would break `npx -y` with stray args.
+  if (process.argv.slice(2).includes("--version")) {
+    console.log(VERSION);
+  } else {
+    const server = buildServer();
+    await server.connect(new StdioServerTransport());
+  }
 }

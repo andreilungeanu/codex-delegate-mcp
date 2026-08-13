@@ -279,3 +279,19 @@ test("runDelegateTool survives a sendNotification that rejects asynchronously", 
   }
   assert.deepEqual(rejections, []);
 });
+
+test("the binary answers --version without starting the transport", async () => {
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const { fileURLToPath } = await import("node:url");
+  const { VERSION } = await import("../src/version.js");
+
+  // Spawned with a timeout on purpose: the failure this guards against is the
+  // stdio server starting and waiting on stdin forever, which reads as a wedged
+  // install rather than as a wrong answer.
+  const entry = fileURLToPath(new URL("../src/server.js", import.meta.url));
+  const { stdout } = await promisify(execFile)(process.execPath, [entry, "--version"], {
+    timeout: 10_000,
+  });
+  assert.equal(stdout.trim(), VERSION);
+});
