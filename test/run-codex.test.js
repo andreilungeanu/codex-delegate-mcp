@@ -1404,3 +1404,65 @@ test("a hard cap that fires during the drain does not contradict a finished run"
   assert.equal(out.result, "DONE");
   assert.deepEqual(out.warnings, []);
 });
+
+// The only test here that spawns a real process tree. Everything else injects
+// spawnImpl or treeKillImpl, which records the call and cannot notice that
+// `detached` was dropped from the spawn or that the kill never reached the group.
+test("cancelling a live run kills the tree Codex started, not just Codex", async () => {
+  const { spawn } = await import("node:child_process");
+  const { existsSync, readFileSync } = await import("node:fs");
+  const { fileURLToPath } = await import("node:url");
+
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-live-kill-"));
+  const resultFile = path.join(dir, "last.txt");
+  const pidFile = path.join(dir, "grandchild.pid");
+  const fixture = fileURLToPath(new URL("./fixtures/spawns-grandchild.mjs", import.meta.url));
+
+  const controller = new AbortController();
+  const run = runCodexProcess({
+    command: process.execPath,
+    args: [fixture, pidFile, "lingers"],
+    cwd: dir,
+    resultFile,
+    signal: controller.signal,
+    spawnImpl: spawn,
+    heartbeatMs: 0,
+    startupMs: 15_000,
+    timeoutMs: 30_000,
+  });
+
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    if (existsSync(pidFile) && readFileSync(pidFile, "utf8").includes("\n")) break;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  const grandchildPid = Number(readFileSync(pidFile, "utf8").trim());
+  const alive = () => {
+    try {
+      process.kill(grandchildPid, 0);
+    } catch (err) {
+      return err.code === "EPERM";
+    }
+    try {
+      const stat = readFileSync(`/proc/${grandchildPid}/stat`, "utf8");
+      return stat.slice(stat.lastIndexOf(")") + 2).split(" ")[0] !== "Z";
+    } catch {
+      return true;
+    }
+  };
+  assert.ok(alive(), "grandchild must be running before the cancel");
+
+  controller.abort();
+  const out = await run;
+  assert.equal(out.status, "interrupted");
+
+  const until = Date.now() + 15_000;
+  while (Date.now() < until && alive()) await new Promise((r) => setTimeout(r, 25));
+  try {
+    assert.equal(alive(), false, "the grandchild outlived the cancel");
+  } finally {
+    try {
+      process.kill(grandchildPid, "SIGKILL");
+    } catch {}
+  }
+});
