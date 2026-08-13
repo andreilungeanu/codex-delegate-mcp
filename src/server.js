@@ -117,11 +117,18 @@ export async function runDelegateTool({
   if (progressToken != null) {
     let progress = 0;
     onProgress = (message) => {
+      // sendNotification is async: a rejection settles outside this try, and an
+      // unhandled one exits the process — taking every concurrent delegation with
+      // it. A host that drops mid-run is the trigger, and the heartbeat drives this
+      // path all turn. The try stays for a sync throw, which lands while the call
+      // is still being made and so before Promise.resolve can wrap it.
       try {
-        extra.sendNotification({
-          method: "notifications/progress",
-          params: { progressToken, progress: ++progress, message },
-        });
+        Promise.resolve(
+          extra.sendNotification({
+            method: "notifications/progress",
+            params: { progressToken, progress: ++progress, message },
+          })
+        ).catch(() => {});
       } catch {}
     };
   }

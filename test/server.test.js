@@ -216,3 +216,66 @@ test("an unknowable exit code does not cost the caller the whole result", async 
   assert.deepEqual(payload.filesReportedByEditTools, ["important.ts"]);
   assert.equal(payload.warnings.length, 1);
 });
+
+const progressResult = {
+  result: "ok",
+  finalMessageAvailable: true,
+  status: "completed",
+  resumed: false,
+  mode: "agent",
+  workspace: "/tmp",
+  filesReportedByEditTools: [],
+  warnings: [],
+};
+
+test("runDelegateTool survives a sendNotification that throws synchronously", async () => {
+  const response = await runDelegateTool({
+    args: { spec: "hi" },
+    extra: {
+      _meta: { progressToken: 1 },
+      sendNotification: () => {
+        throw new Error("Not connected");
+      },
+    },
+    operationRegistry: createOperationRegistry(),
+    execute: async (_args, { onProgress }) => {
+      onProgress("still working");
+      return progressResult;
+    },
+  });
+  assert.equal(response.isError, undefined);
+});
+
+// The synchronous stub above never reaches the path that actually breaks: the SDK
+// declares sendNotification async, so its rejection settles after the handler has
+// already returned. The assertion is the absence of an unhandled rejection — the
+// tool result is ok either way, which is what makes a result-only test pass against
+// code that exits the process in production.
+test("runDelegateTool survives a sendNotification that rejects asynchronously", async () => {
+  const rejections = [];
+  const onUnhandled = (err) => rejections.push(err);
+  process.on("unhandledRejection", onUnhandled);
+  try {
+    const response = await runDelegateTool({
+      args: { spec: "hi" },
+      extra: {
+        _meta: { progressToken: 1 },
+        sendNotification: async () => {
+          throw new Error("Not connected");
+        },
+      },
+      operationRegistry: createOperationRegistry(),
+      execute: async (_args, { onProgress }) => {
+        onProgress("still working");
+        return progressResult;
+      },
+    });
+    // The rejection lands on a later microtask than the handler's own return.
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(response.isError, undefined);
+    assert.equal(JSON.parse(response.content[0].text).result, "ok");
+  } finally {
+    process.off("unhandledRejection", onUnhandled);
+  }
+  assert.deepEqual(rejections, []);
+});
