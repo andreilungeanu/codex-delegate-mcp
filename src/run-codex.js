@@ -190,8 +190,10 @@ export async function runCodexProcess({
     armKillDeadline();
     // Runs for an exited child too. Codex dying does not reap the shell, watcher or
     // test run it spawned; on POSIX those stay in its process group, and skipping
-    // the kill here is what leaves them behind. The pid is the one recorded at
-    // spawn, never a `child.pid` that may since have been recycled.
+    // the kill here is what leaves them behind. Recording the pid at spawn does not
+    // make it unrecyclable — it is the same integer either way. What bounds the risk
+    // is that this only ever runs inside a live run, so the group is at most one
+    // drain old; do not reuse it for a later sweep.
     await treeKillImpl(childPid, { childAlive: isChildAlive(child) });
   };
 
