@@ -91,3 +91,48 @@ test("no host auto-discovery leak configs at conventional paths", () => {
   assert.ok(!existsSync(resolve(ROOT, "hooks/hooks.json")), "hooks/hooks.json is auto-discovered by some hosts");
   assert.ok(!existsSync(resolve(ROOT, ".agents/plugins")), "Codex marketplace packaging is not used");
 });
+
+test("the SessionStart hook can spawn npm on this platform", async () => {
+  const { mkdtemp, mkdir, writeFile, cp } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const { join } = await import("node:path");
+
+  // npm.cmd is a batch file, and Node refuses to spawn one without a shell — the
+  // failure is `spawnSync npm.cmd EINVAL` on the first session after a plugin
+  // install, before doctor exists to report it. Only a real spawn catches that, so
+  // this runs the hook against an empty dependency set rather than asserting on the
+  // source.
+  const root = await mkdtemp(join(tmpdir(), "cdm-plugin-"));
+  await mkdir(join(root, ".claude-plugin"));
+  await cp(resolve(ROOT, ".claude-plugin/ensure-deps.mjs"), join(root, ".claude-plugin/ensure-deps.mjs"));
+  await writeFile(
+    join(root, "package.json"),
+    JSON.stringify({ name: "cdm-plugin-probe", version: "1.0.0", private: true, dependencies: {} }),
+    "utf8"
+  );
+
+  const { stdout } = await promisify(execFile)(
+    process.execPath,
+    [join(root, ".claude-plugin", "ensure-deps.mjs")],
+    { timeout: 120_000 }
+  );
+  assert.doesNotMatch(stdout, /dependency install failed/);
+});
+
+test("the dependency sentinel checks the SDK, not a bare node_modules", async () => {
+  const { mkdtemp, mkdir } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { readFileSync: read } = await import("node:fs");
+  const { join } = await import("node:path");
+
+  // A half-finished install leaves node_modules behind. Skipping on its bare
+  // existence would keep the plugin broken on every later session, with the server
+  // still failing to import the SDK.
+  const root = await mkdtemp(join(tmpdir(), "cdm-sentinel-"));
+  await mkdir(join(root, "node_modules"));
+  const source = read(resolve(ROOT, ".claude-plugin/ensure-deps.mjs"), "utf8");
+  assert.match(source, /node_modules", "@modelcontextprotocol", "sdk"/);
+  assert.ok(!existsSync(join(root, "node_modules", "@modelcontextprotocol", "sdk")));
+});
