@@ -297,6 +297,45 @@ export function buildServer({
   return server;
 }
 
+/**
+ * Kill what is still running, then exit, on a signal aimed at this process.
+ *
+ * On POSIX the worker is spawned into its own process group so the whole tree can be
+ * killed at once, and that same detachment means a Ctrl-C sent to this process no
+ * longer reaches Codex. Without this the host goes away and an auto-approved agent
+ * keeps writing the workspace with nothing left to stop it.
+ *
+ * Installed only from the CLI entrypoint. `buildServer()` is also a library call in
+ * tests, and process-wide handlers do not belong to it.
+ *
+ * @param {any} operationRegistry
+ * @param {{ exit?: (code: number) => void }} [options]
+ */
+export function installSignalCleanup(operationRegistry, { exit = (code) => process.exit(code) } = {}) {
+  let shuttingDown = false;
+  const signals = /** @type {[NodeJS.Signals, number][]} */ ([
+    ["SIGINT", 130],
+    ["SIGTERM", 143],
+  ]);
+  for (const [signal, code] of signals) {
+    process.on(signal, () => {
+      // Registering a handler replaces Node's default exit, so every path here has to
+      // reach `exit`: a server that swallows Ctrl-C is a worse bug than the tree it
+      // would have leaked. A second signal skips straight to it.
+      if (shuttingDown) return exit(code);
+      shuttingDown = true;
+      // Dispatch, do not await. `cancel` reaches the kill before its first await, so
+      // the signal has already been delivered by the time this returns; waiting for
+      // the tree to actually die would stall teardown for the kill deadline. The
+      // rejection still has to be observed — an unhandled one exits by itself.
+      try {
+        Promise.resolve(operationRegistry.cancel({ cause: "shutdown" })).catch(() => {});
+      } catch {}
+      exit(code);
+    });
+  }
+}
+
 const __filename = fileURLToPath(import.meta.url);
 let isMain = false;
 if (process.argv[1]) {
@@ -314,7 +353,9 @@ if (isMain) {
   if (argv.includes("--version") || argv.includes("-v")) {
     console.log(VERSION);
   } else {
-    const server = buildServer();
+    const operationRegistry = createOperationRegistry();
+    const server = buildServer({ operationRegistry });
+    installSignalCleanup(operationRegistry);
     await server.connect(new StdioServerTransport());
   }
 }

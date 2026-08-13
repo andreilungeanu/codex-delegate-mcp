@@ -7,6 +7,7 @@ import {
   runCancelTool,
   delegateOutputShape,
   SERVER_INSTRUCTIONS,
+  installSignalCleanup,
 } from "../src/server.js";
 import {
   DEFAULT_MODEL,
@@ -296,4 +297,83 @@ test("the binary answers --version without starting the transport", async () => 
     });
     assert.equal(stdout.trim(), VERSION, `${flag} must print the version`);
   }
+});
+
+/** Drive installSignalCleanup without signalling the test runner. */
+function fireSignal(registry) {
+  const exits = [];
+  const before = process.listeners("SIGINT").slice();
+  installSignalCleanup(registry, { exit: (code) => exits.push(code) });
+  const added = process.listeners("SIGINT").filter((l) => !before.includes(l));
+  for (const listener of added) listener();
+  for (const listener of added) listener();
+  process.removeAllListeners("SIGINT");
+  process.removeAllListeners("SIGTERM");
+  for (const listener of before) process.on("SIGINT", listener);
+  return exits;
+}
+
+test("a shutdown signal dispatches the kill before the process exits", async () => {
+  // The load-bearing assertion. The handler cannot await — that would stall Ctrl-C
+  // for the kill deadline — so the kill has to be under way by the time exit runs.
+  // A cancel started on a later microtask would never run at all.
+  const order = [];
+  const registry = {
+    cancel: async () => {
+      order.push("kill-dispatched");
+    },
+  };
+  const exits = [];
+  const before = process.listeners("SIGINT").slice();
+  installSignalCleanup(registry, {
+    exit: (code) => {
+      order.push("exit");
+      exits.push(code);
+    },
+  });
+  const added = process.listeners("SIGINT").filter((l) => !before.includes(l));
+  added[0]();
+  process.removeAllListeners("SIGINT");
+  process.removeAllListeners("SIGTERM");
+  for (const listener of before) process.on("SIGINT", listener);
+
+  assert.deepEqual(order, ["kill-dispatched", "exit"]);
+  assert.deepEqual(exits, [130]);
+});
+
+test("a shutdown signal always exits, including a second one", () => {
+  // Registering a handler replaces Node's default exit. A path that misses `exit`
+  // would swallow Ctrl-C, which is worse than the tree it was meant to clean up.
+  let calls = 0;
+  const exits = fireSignal({
+    cancel: async () => {
+      calls += 1;
+    },
+  });
+  assert.equal(calls, 1, "the second signal must not restart cancellation");
+  assert.deepEqual(exits, [130, 130]);
+});
+
+test("a cancel that fails on shutdown still exits and raises no unhandled rejection", async () => {
+  const rejections = [];
+  const onUnhandled = (err) => rejections.push(err);
+  process.on("unhandledRejection", onUnhandled);
+  try {
+    const async = fireSignal({
+      cancel: async () => {
+        throw new Error("tree would not die");
+      },
+    });
+    const sync = fireSignal({
+      cancel: () => {
+        throw new Error("cancel threw synchronously");
+      },
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(async, [130, 130]);
+    assert.deepEqual(sync, [130, 130]);
+  } finally {
+    process.off("unhandledRejection", onUnhandled);
+  }
+  assert.deepEqual(rejections, []);
 });
