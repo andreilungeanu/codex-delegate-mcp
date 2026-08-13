@@ -127,6 +127,9 @@ async function probeLogin(command, execFileImpl = execFileAsync) {
     const { stdout, stderr } = await execFileImpl(command, ["login", "status"], {
       encoding: "utf8",
       timeout: 8000,
+      // A timeout that sends the default SIGTERM bounds nothing against a child that
+      // catches it: the probe then hangs past its own deadline, and doctor with it.
+      killSignal: "SIGKILL",
       windowsHide: true,
       shell: false,
     });
@@ -162,6 +165,7 @@ async function runDeepSmoke({ codex, execFileImpl = execFileAsync }) {
       ({ stdout, stderr } = await execFileImpl(codex.command, args, {
         encoding: "utf8",
         timeout: 8000,
+        killSignal: "SIGKILL",
         windowsHide: true,
         shell: false,
       }));
