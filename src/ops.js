@@ -111,8 +111,18 @@ export class OperationRegistry {
   #cancelOne(record, cause) {
     if (!record.cancelPromise) {
       record.cancellation = { status: "cancelling", cause };
-      record.cancelPromise = Promise.resolve()
-        .then(() => record.cancel({ cause }))
+      // Started here, not on a later microtask. Shutdown dispatches cancellation and
+      // exits without awaiting anything, so a start deferred through
+      // `Promise.resolve().then(…)` would never run at all. The try is what that
+      // deferral used to buy: a cancel that throws synchronously still has to land
+      // in cancelPromise rather than escape this call.
+      let started;
+      try {
+        started = Promise.resolve(record.cancel({ cause }));
+      } catch (err) {
+        started = Promise.reject(err);
+      }
+      record.cancelPromise = started
         .then(() => {
           record.cancellation = { status: "cancelled", cause };
         })

@@ -261,3 +261,33 @@ test("the same workspace twice warns", () => {
   first.release();
   second.release();
 });
+
+test("cancel starts every kill synchronously, before it is awaited", () => {
+  // Shutdown dispatches cancellation and exits without awaiting, so a cancel that
+  // only starts on a later microtask would never run. Deliberately not awaited.
+  const registry = createOperationRegistry();
+  let started = false;
+  registry.acquire({
+    workspace: "/w",
+    cancel: async () => {
+      started = true;
+    },
+  });
+
+  const pending = registry.cancel({ cause: "shutdown" });
+  assert.equal(started, true, "the kill must be under way before cancel() yields");
+  return pending;
+});
+
+test("a cancel that throws synchronously is still reported, not rethrown at the caller", async () => {
+  // The microtask hop used to turn a sync throw into a rejection. Starting the call
+  // directly has to keep that, or the throw escapes cancel() itself.
+  const registry = createOperationRegistry();
+  registry.acquire({
+    workspace: "/w",
+    cancel: () => {
+      throw new Error("cancel exploded");
+    },
+  });
+  await assert.rejects(() => registry.cancel({ cause: "user" }), /cancel exploded/);
+});
