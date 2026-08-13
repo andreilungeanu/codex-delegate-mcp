@@ -255,6 +255,7 @@ export async function runCodexProcess({
   });
 
   let exitCode;
+  let interrupted = false;
   let drainEscaped = false;
   try {
     if (signal) signal.addEventListener("abort", onAbort, { once: true });
@@ -267,6 +268,11 @@ export async function runCodexProcess({
     // null here fails output validation and takes the whole result with it —
     // thread id, edited files, warnings — precisely when the run went wrong.
     exitCode = (await exited) ?? 1;
+    // Read once, here, rather than after the drain below: `interrupted` discards the
+    // final-message file, so a cancel landing in the drain window would throw away an
+    // answer the child had already finished writing. A cancel that caused this exit
+    // set its flag before the exit arrived, so it is still caught.
+    interrupted = cancelled || timedOut || Boolean(signal?.aborted);
     // The pipes can still hold queued lines; a dropped turn.failed would read as
     // success. Bounded, and only from the exit onwards: whatever inherited stdout
     // may hold it open for its own lifetime, and waiting on that would wedge the
@@ -282,7 +288,7 @@ export async function runCodexProcess({
   }
 
   const { status, reason } = classifyOutcome({
-    interrupted: cancelled || timedOut || signal?.aborted,
+    interrupted,
     timedOut,
     timeoutReason,
     turnStatus: events.turnStatus,

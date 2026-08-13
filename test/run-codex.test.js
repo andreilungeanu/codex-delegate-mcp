@@ -1312,3 +1312,50 @@ test("an error on stdout or stderr does not take the server down", async () => {
   });
   assert.equal(out.exitCode, 0);
 });
+
+/**
+ * 'exit' means the process is gone; 'close' waits for the pipes. Between them the run
+ * is finished but still draining, and a cancel landing in that window used to be read
+ * as if it had interrupted the run.
+ */
+function exitThenClose({ resultFile, gapMs = 30 }) {
+  const child = new EventEmitter();
+  child.pid = 4242;
+  child.exitCode = null;
+  child.signalCode = null;
+  child.stdout = Readable.from([`${JSON.stringify({ type: "turn.completed" })}\n`]);
+  child.stderr = Readable.from([]);
+  const exited = new Promise((resolve) => {
+    queueMicrotask(async () => {
+      await writeFile(resultFile, "DONE", "utf8");
+      child.exitCode = 0;
+      child.emit("exit", 0);
+      resolve();
+      setTimeout(() => child.emit("close", 0), gapMs);
+    });
+  });
+  return { child, exited };
+}
+
+test("a cancel during the drain does not discard a result the child already wrote", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-late-cancel-"));
+  const resultFile = path.join(dir, "last.txt");
+  const { child, exited } = exitThenClose({ resultFile });
+  const controller = new AbortController();
+  exited.then(() => controller.abort());
+
+  const out = await runCodexProcess({
+    command: "/bin/codex",
+    args: [],
+    resultFile,
+    signal: controller.signal,
+    spawnImpl: () => child,
+    treeKillImpl: async () => {},
+  });
+
+  // The work landed: interrupted would drop the final-message file with the run.
+  assert.equal(out.status, "completed");
+  assert.equal(out.reason, undefined);
+  assert.equal(out.result, "DONE");
+  assert.equal(out.finalMessageAvailable, true);
+});
