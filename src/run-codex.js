@@ -278,6 +278,11 @@ export async function runCodexProcess({
     // answer the child had already finished writing. A cancel that caused this exit
     // set its flag before the exit arrived, so it is still caught.
     interrupted = cancelled || timedOut || Boolean(signal?.aborted);
+    // Disarmed on the same boundary the classification is read from. A hard cap or
+    // kill deadline that fires during the drain below has nothing left to interrupt,
+    // and would only contradict the outcome already decided: a completed run warning
+    // that it timed out, or a killEscaped warning about a process that has exited.
+    clearTimers();
     // The pipes can still hold queued lines; a dropped turn.failed would read as
     // success. Bounded, and only from the exit onwards: whatever inherited stdout
     // may hold it open for its own lifetime, and waiting on that would wedge the

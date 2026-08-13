@@ -1381,3 +1381,26 @@ test("teardown still reaches the group once the direct child has exited", async 
   // POSIX the group is the only handle left on them.
   assert.deepEqual(kills, [{ pid: 4242, childAlive: false }]);
 });
+
+test("a hard cap that fires during the drain does not contradict a finished run", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-drain-timer-"));
+  const resultFile = path.join(dir, "last.txt");
+  // A long gap between exit and close, and a cap short enough to land inside it.
+  const { child } = exitThenClose({ resultFile, gapMs: 300 });
+
+  const out = await runCodexProcess({
+    command: "/bin/codex",
+    args: [],
+    resultFile,
+    spawnImpl: () => child,
+    treeKillImpl: async () => {},
+    timeoutMs: 120,
+    heartbeatMs: 0,
+  });
+
+  // The run finished before the cap had anything to interrupt, so it must not
+  // report a timeout it did not suffer.
+  assert.equal(out.status, "completed");
+  assert.equal(out.result, "DONE");
+  assert.deepEqual(out.warnings, []);
+});
