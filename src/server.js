@@ -310,7 +310,8 @@ if (isMain) {
   // looks exactly like a wedged install — and doctor cannot answer "is this even
   // the right binary?" until a host is already wired up. No other flag is parsed:
   // treating an unknown one as --help would break `npx -y` with stray args.
-  if (process.argv.slice(2).includes("--version")) {
+  const argv = process.argv.slice(2);
+  if (argv.includes("--version") || argv.includes("-v")) {
     console.log(VERSION);
   } else {
     const server = buildServer();

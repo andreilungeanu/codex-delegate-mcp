@@ -290,8 +290,10 @@ test("the binary answers --version without starting the transport", async () => 
   // stdio server starting and waiting on stdin forever, which reads as a wedged
   // install rather than as a wrong answer.
   const entry = fileURLToPath(new URL("../src/server.js", import.meta.url));
-  const { stdout } = await promisify(execFile)(process.execPath, [entry, "--version"], {
-    timeout: 10_000,
-  });
-  assert.equal(stdout.trim(), VERSION);
+  for (const flag of ["--version", "-v"]) {
+    const { stdout } = await promisify(execFile)(process.execPath, [entry, flag], {
+      timeout: 10_000,
+    });
+    assert.equal(stdout.trim(), VERSION, `${flag} must print the version`);
+  }
 });
