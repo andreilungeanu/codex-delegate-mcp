@@ -139,6 +139,12 @@ export async function runCodexProcess({
   if (signal?.aborted) return interruptedBeforeSpawn();
   child = spawnImpl(command, args, spawnOpts);
 
+  // readline attaches no error listener of its own, so an EPIPE on either pipe
+  // lands on a stream nobody is watching and takes the server down — the same way
+  // stdin used to before it got the listener below.
+  child.stdout?.on("error", () => {});
+  child.stderr?.on("error", () => {});
+
   // Written and closed immediately. Codex waits for EOF before it starts, and an
   // open pipe would also hold back the 'close' this run waits on — so a stdin left
   // dangling wedges the delegation as surely as an escaped child does.
@@ -233,6 +239,9 @@ export async function runCodexProcess({
   };
 
   const rl = createInterface({ input: child.stdout, crlfDelay: Infinity });
+  // readline forwards an input error onto the interface, so listening on stdout
+  // alone still leaves the re-emitted copy unhandled here.
+  rl.on("error", () => {});
   rl.on("line", (line) => {
     noteActivity();
     handleLine(line);

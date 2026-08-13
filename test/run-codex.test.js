@@ -1275,3 +1275,40 @@ test("a child that dies mid-write does not take the server down with it", async 
   assert.equal(out.status, "failed");
   assert.equal(out.exitCode, 1);
 });
+
+// A child that dies mid-run raises EPIPE on whichever pipe was being written. stdin
+// has had a listener since that took the server down once; readline attaches none of
+// its own to stdout, and forwards an input error onto the interface besides.
+test("an error on stdout or stderr does not take the server down", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-pipe-err-"));
+  const resultFile = path.join(dir, "last.txt");
+  const child = new EventEmitter();
+  child.pid = 4242;
+  child.exitCode = null;
+  child.signalCode = null;
+  child.stdout = new Readable({ read() {} });
+  child.stderr = new Readable({ read() {} });
+
+  const out = await runCodexProcess({
+    command: "/bin/codex",
+    args: [],
+    resultFile,
+    // Scheduled from inside spawnImpl so the emit lands after runCodexProcess has
+    // attached its listeners — the point of the test is the missing listener, not a
+    // race with the spawn.
+    spawnImpl: () => {
+      queueMicrotask(async () => {
+        child.stdout.emit("error", Object.assign(new Error("EPIPE"), { code: "EPIPE" }));
+        child.stderr.emit("error", Object.assign(new Error("EPIPE"), { code: "EPIPE" }));
+        await writeFile(resultFile, "DONE", "utf8");
+        child.stdout.push(null);
+        child.stderr.push(null);
+        child.exitCode = 0;
+        child.emit("close", 0);
+      });
+      return child;
+    },
+    treeKillImpl: async () => {},
+  });
+  assert.equal(out.exitCode, 0);
+});
