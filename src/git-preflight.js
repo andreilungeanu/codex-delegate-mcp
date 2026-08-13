@@ -1,3 +1,4 @@
+import process from "node:process";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -89,10 +90,17 @@ export async function isGitRepo(workspace, execFileImpl = execFileAsync) {
 function gitRunner(workspace, execFileImpl) {
   return async (args) => {
     try {
+      // A credential prompt is how one of these read-only probes stops returning: it
+      // waits on a terminal that is not there, and outlives the timeout because the
+      // default SIGTERM is catchable. Refuse the prompt, and kill uncatchably rather
+      // than trusting the deadline. Paging needs no flag here — git only pages to a
+      // terminal, and execFile gives it a pipe.
       const { stdout } = await execFileImpl("git", args, {
         cwd: workspace,
         encoding: "utf8",
+        env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
         timeout: 5000,
+        killSignal: "SIGKILL",
         windowsHide: true,
         shell: false,
       });
