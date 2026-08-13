@@ -1,5 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import process from "node:process";
+import { spawnSync } from "node:child_process";
 import {
   parseVersion,
   compareSemver,
@@ -194,4 +196,24 @@ test("a cached resolution is dropped once its binary disappears", async () => {
   await rm(bin, { force: true });
   assert.throws(() => resolveCodex(opts), /not found/);
   clearCodexCache();
+});
+
+test("a probe that ignores SIGTERM cannot outlive its own timeout", { timeout: 30_000 }, () => {
+  // spawnSync blocks the event loop, so a probe that declines the kill freezes the
+  // whole server: no progress, no cancel, no stdio. Measured, not argued — with the
+  // default catchable SIGTERM this call never returns at all.
+  const started = Date.now();
+  const result = whichOnPath(
+    "codex",
+    process.platform,
+    process.env,
+    (_probe, _args, options) =>
+      spawnSync(
+        process.execPath,
+        ["-e", "process.on('SIGTERM', () => {}); setInterval(() => {}, 1 << 30);"],
+        { ...options, timeout: 400 }
+      )
+  );
+  assert.equal(result, null);
+  assert.ok(Date.now() - started < 15_000, "the probe outlived its timeout");
 });
