@@ -231,11 +231,19 @@ export async function runCodexProcess({
   // Only the startup deadline and the hard cap bound a run.
   const noteActivity = () => {
     lastActivityAt = Date.now();
-    if (!sawFirstEvent) {
-      sawFirstEvent = true;
-      clearTimeout(startupTimer);
-      startupTimer = undefined;
-    }
+  };
+
+  // Only a parsed JSONL event clears the startup deadline. That deadline is the one
+  // guard on a launcher that never gets going, and a diagnostic on stderr or a banner
+  // on stdout is exactly what such a launcher emits on its way to wedging — counting
+  // either as "started" handed the run the whole hard cap instead. Both still count
+  // as activity, which is what the heartbeat reports.
+  const noteEvent = () => {
+    noteActivity();
+    if (sawFirstEvent) return;
+    sawFirstEvent = true;
+    clearTimeout(startupTimer);
+    startupTimer = undefined;
   };
 
   const heartbeat = () => {
@@ -250,8 +258,8 @@ export async function runCodexProcess({
   // alone still leaves the re-emitted copy unhandled here.
   rl.on("error", () => {});
   rl.on("line", (line) => {
-    noteActivity();
-    handleLine(line);
+    if (handleLine(line)) noteEvent();
+    else noteActivity();
   });
 
   const drained = new Promise((resolve) => rl.once("close", resolve));
@@ -386,13 +394,25 @@ function createEventReducer({ emit, onThreadId }) {
     lastCommand: null,
   };
 
+  /**
+   * Reports whether the line was a JSONL event at all. The caller needs that apart
+   * from anything the event said: it is what the startup deadline is waiting for,
+   * and a line Codex printed that is not JSON is not the launcher getting going.
+   *
+   * @returns {boolean}
+   */
   const handleLine = (line) => {
     let event;
     try {
       event = JSON.parse(line);
     } catch {
-      return;
+      return false;
     }
+    reduce(event);
+    return true;
+  };
+
+  const reduce = (event) => {
     if (event?.type === "thread.started" && event.thread_id) {
       const id = String(event.thread_id);
       // Truncating would produce a plausible id that resumes nothing and matches

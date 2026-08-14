@@ -1466,3 +1466,73 @@ test("cancelling a live run kills the tree Codex started, not just Codex", async
     } catch {}
   }
 });
+
+// The startup deadline is the only guard on a launcher that never gets going, and
+// "output" is not the same fact as "a JSONL event". A wedged Codex that writes one
+// diagnostic line first used to buy itself the whole hard cap.
+test("a stderr line before any JSONL does not disarm the startup deadline", async () => {
+  const { spawn } = await import("node:child_process");
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-startup-stderr-"));
+
+  const out = await runCodexProcess({
+    command: process.execPath,
+    args: ["-e", 'process.stderr.write("a diagnostic\\n"); setInterval(() => {}, 1000);'],
+    cwd: dir,
+    resultFile: path.join(dir, "last.txt"),
+    spawnImpl: spawn,
+    heartbeatMs: 0,
+    startupMs: 300,
+    timeoutMs: 8000,
+  });
+
+  assert.equal(out.reason, "startup-timeout");
+  assert.equal(out.status, "interrupted");
+});
+
+test("a non-JSON stdout line before any JSONL does not disarm the startup deadline", async () => {
+  const { spawn } = await import("node:child_process");
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-startup-junk-"));
+
+  const out = await runCodexProcess({
+    command: process.execPath,
+    args: ["-e", 'console.log("not json"); setInterval(() => {}, 1000);'],
+    cwd: dir,
+    resultFile: path.join(dir, "last.txt"),
+    spawnImpl: spawn,
+    heartbeatMs: 0,
+    startupMs: 300,
+    timeoutMs: 8000,
+  });
+
+  assert.equal(out.reason, "startup-timeout");
+  assert.equal(out.status, "interrupted");
+});
+
+test("a JSONL event does disarm the startup deadline", async () => {
+  const { spawn } = await import("node:child_process");
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-startup-ok-"));
+  const resultFile = path.join(dir, "last.txt");
+
+  const out = await runCodexProcess({
+    command: process.execPath,
+    args: [
+      "-e",
+      `console.log(JSON.stringify({ type: "turn.started" }));
+       setTimeout(() => {
+         console.log(JSON.stringify({ type: "turn.completed" }));
+         require("fs").writeFileSync(process.argv[1], "done");
+         process.exit(0);
+       }, 600);`,
+      resultFile,
+    ],
+    cwd: dir,
+    resultFile,
+    spawnImpl: spawn,
+    heartbeatMs: 0,
+    startupMs: 300,
+    timeoutMs: 8000,
+  });
+
+  assert.equal(out.status, "completed");
+  assert.equal(out.result, "done");
+});
