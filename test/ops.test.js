@@ -98,6 +98,43 @@ test("cancel with no id cancels every active delegation", async () => {
   b.release();
 });
 
+test("cancel all waits for every selected delegation before reporting a failure", async () => {
+  const reg = createOperationRegistry();
+  let releaseSlowCancel;
+  let slowCancelSettled = false;
+  let cancelReturned = false;
+  const slowCancel = new Promise((resolve) => {
+    releaseSlowCancel = resolve;
+  });
+
+  const failed = reg.acquire({
+    cancel: async () => {
+      throw new Error("first kill failed");
+    },
+  });
+  const slow = reg.acquire({
+    cancel: async () => {
+      await slowCancel;
+      slowCancelSettled = true;
+    },
+  });
+
+  const pending = reg.cancel({}).catch((err) => err);
+  pending.finally(() => {
+    cancelReturned = true;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  const returnedBeforeSlowCancel = cancelReturned;
+  releaseSlowCancel();
+
+  const error = await pending;
+  assert.equal(returnedBeforeSlowCancel, false);
+  assert.equal(slowCancelSettled, true);
+  assert.match(error.message, /first kill failed/);
+  failed.release();
+  slow.release();
+});
+
 /**
  * A resume shares its thread id with the turn it resumes. Both are live and both
  * are cancellable; storing one delegation per thread id would let whichever
@@ -116,6 +153,45 @@ test("a thread id shared by two delegations cancels both", async () => {
   assert.equal(result.cancelled.length, 2);
   first.release();
   second.release();
+});
+
+test("cancel by shared thread waits for every selected delegation before failing", async () => {
+  const reg = createOperationRegistry();
+  let releaseSlowCancel;
+  let slowCancelSettled = false;
+  let cancelReturned = false;
+  const slowCancel = new Promise((resolve) => {
+    releaseSlowCancel = resolve;
+  });
+
+  const failed = reg.acquire({
+    threadId: "shared-failure",
+    cancel: async () => {
+      throw new Error("shared kill failed");
+    },
+  });
+  const slow = reg.acquire({
+    threadId: "shared-failure",
+    cancel: async () => {
+      await slowCancel;
+      slowCancelSettled = true;
+    },
+  });
+
+  const pending = reg.cancel({ id: "shared-failure" }).catch((err) => err);
+  pending.finally(() => {
+    cancelReturned = true;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  const returnedBeforeSlowCancel = cancelReturned;
+  releaseSlowCancel();
+
+  const error = await pending;
+  assert.equal(returnedBeforeSlowCancel, false);
+  assert.equal(slowCancelSettled, true);
+  assert.match(error.message, /shared kill failed/);
+  failed.release();
+  slow.release();
 });
 
 test("releasing one of two delegations on a thread leaves the other cancellable", async () => {

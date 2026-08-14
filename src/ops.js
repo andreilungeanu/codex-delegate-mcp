@@ -80,18 +80,18 @@ export class OperationRegistry {
     if (!wanted) {
       if (this.#active.size === 0) return { status: "nothing-active" };
       const targets = [...this.#active.values()];
-      await Promise.all(targets.map((record) => this.#cancelOne(record, cause)));
+      await this.#cancelSelected(targets, cause);
       return { status: "cancelled", cause, cancelled: targets.map(summarize) };
     }
 
     const targets = this.#resolveTargets(wanted);
     if (targets.length === 0) {
-      // A finished thread and a garbage id used to be indistinguishable, which read
-      // as "bad id" for a thread that ran fine and is still resumable. Split them.
+      // Within the bounded recent history, distinguish a finished thread from an
+      // unknown id. Older finished threads eventually age back to `not-found`.
       const known = this.#seenThreads.has(wanted);
       return { status: known ? "not-running" : "not-found", id: wanted };
     }
-    await Promise.all(targets.map((record) => this.#cancelOne(record, cause)));
+    await this.#cancelSelected(targets, cause);
     return { status: "cancelled", cause, id: wanted, cancelled: targets.map(summarize) };
   }
 
@@ -141,6 +141,15 @@ export class OperationRegistry {
         });
     }
     return record.cancelPromise;
+  }
+
+  /** @param {any[]} records */
+  async #cancelSelected(records, cause) {
+    const outcomes = await Promise.allSettled(
+      records.map((record) => this.#cancelOne(record, cause))
+    );
+    const failure = outcomes.find((outcome) => outcome.status === "rejected");
+    if (failure) throw failure.reason;
   }
 
   /** @param {string} wanted */
