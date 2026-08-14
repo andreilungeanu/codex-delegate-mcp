@@ -4,6 +4,44 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.21.1] - 2026-08-14
+
+### Added
+
+- `codex-delegate-mcp --version` (and `-v`) prints the version and exits rather than starting the
+  stdio server and waiting on stdin forever, so an install can be confirmed before it is wired
+  into a host and before `doctor` can run.
+
+### Fixed
+
+- A progress notification the host rejects no longer exits the server. `sendNotification` returns a
+  promise, and its rejection settled outside the surrounding `try`, taking every concurrent
+  delegation down with the process; the heartbeat drove that path for the length of every turn.
+  The child's stdout and stderr, and the readline interface reading them, now carry the error
+  listener stdin already had.
+- A cancel arriving after Codex has exited no longer discards the answer it already wrote. The
+  outcome is read on the exit that decides it rather than after the pipes drain, so a cancel landing
+  in that window cannot turn a finished run into an interrupted one and drop the final-message file
+  with it. The run timers are disarmed on the same boundary: a hard cap firing during the drain used
+  to leave a completed run warning that it had timed out.
+- Cancelling reaches the tree Codex started even once Codex itself has exited. The kill was skipped
+  whenever the direct child was gone — exactly the case where a shell, watcher or test run it
+  spawned is still going. On POSIX the process group outlives its leader and is the only handle
+  left on those processes. The single-pid fallback stays conditional, because that pid can have
+  been reaped and reused.
+- `SIGINT` and `SIGTERM` cancel in-flight delegations before the server exits. A detached worker
+  does not receive a signal aimed at this process, so a host reload or Ctrl-C left an auto-approved
+  agent writing the workspace with nothing left to stop it.
+- The Claude Code plugin installs its dependencies on Windows. `npm.cmd` is a batch file, which Node
+  refuses to spawn without a shell, so the first session after a plugin install failed with
+  `spawnSync npm.cmd EINVAL` — before `doctor` existed to report it. The dependency check now looks
+  for the SDK rather than a bare `node_modules`, which a half-finished install leaves behind.
+- Probe timeouts kill with a signal the child cannot decline. `codex --version`, `codex login
+  status`, the `--help` smoke and the git preflight probes all bounded themselves with the default
+  `SIGTERM`, which a wedged process can catch and ignore; `codex --version` runs synchronously, so
+  that hang froze the whole server. Git probes also run with `GIT_TERMINAL_PROMPT=0`, so a
+  credential prompt cannot wait on a terminal that is not there.
+
 ## [1.21.0] - 2026-08-12
 
 ### Changed
