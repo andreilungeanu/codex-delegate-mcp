@@ -516,7 +516,7 @@ test("an interrupted run salvages the last streamed message as a caveat", async 
   assert.equal(result.resultSource, "stream-fallback");
 });
 
-test("a completed run never falls back to streamed narration", async () => {
+test("an authoritative final file wins over streamed narration", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-nofall-"));
   const resultFile = path.join(dir, "last.txt");
 
@@ -544,6 +544,38 @@ test("a completed run never falls back to streamed narration", async () => {
 
   assert.equal(result.result, "FINAL ANSWER");
   assert.equal(result.resultSource, undefined);
+});
+
+test("a completed run salvages streamed narration when the final file is missing", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-completed-fallback-"));
+  const resultFile = path.join(dir, "last.txt");
+
+  const result = await runCodexProcess({
+    command: "codex",
+    args: ["exec"],
+    cwd: dir,
+    resultFile,
+    spawnImpl: () =>
+      fakeChild({
+        lines: [
+          JSON.stringify({ type: "turn.started" }),
+          JSON.stringify({
+            type: "item.completed",
+            item: { type: "agent_message", text: "the only available answer" },
+          }),
+          JSON.stringify({ type: "turn.completed", usage: {} }),
+        ],
+      }),
+    platform: "linux",
+    heartbeatMs: 0,
+    timeoutMs: 5000,
+  });
+
+  assert.equal(result.status, "completed");
+  assert.equal(result.finalMessageAvailable, false);
+  assert.equal(result.result, "the only available answer");
+  assert.equal(result.resultSource, "stream-fallback");
+  assert.ok(result.warnings.some((warning) => /Final result file missing/.test(warning)));
 });
 
 test("an oversized stream fallback is truncated, not shipped whole", async () => {
