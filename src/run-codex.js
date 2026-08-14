@@ -94,28 +94,22 @@ export async function runCodexProcess({
   const { state: events, handleLine } = createEventReducer({ emit, onThreadId });
   const stderrBuffer = createStderrTail(DEFAULT_STDERR_BYTES);
 
-  const interruptedBeforeSpawn = async () => {
-    const status = "interrupted";
-    const exitCode = 1;
-    const final = await readFinalResult({
-      filePath: resultFile,
-      status,
-      exitCode,
-      maxResultBytes,
-    });
-    return {
-      status,
-      reason: "cancelled",
-      exitCode,
-      threadId: events.threadId,
-      result: final.result,
-      finalMessageAvailable: final.finalMessageAvailable,
-      warnings: final.warnings,
-      stderrBytes: 0,
-      stderrTail: "",
-      filesReportedByEditTools: [],
-    };
-  };
+  // Nothing has been spawned, so there is nothing to report and nothing to read:
+  // the final-message file is only ever accepted after a clean exit, and this run
+  // never had one. Asking readFinalResult would return the same empty answer by way
+  // of its own status guard.
+  const interruptedBeforeSpawn = () => ({
+    status: "interrupted",
+    reason: "cancelled",
+    exitCode: 1,
+    threadId: null,
+    result: "",
+    finalMessageAvailable: false,
+    warnings: [],
+    stderrBytes: 0,
+    stderrTail: "",
+    filesReportedByEditTools: [],
+  });
 
   const childEnv = { ...env };
   // Recursion marker for nested delegate detection by the parent server.
