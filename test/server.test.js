@@ -1,5 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { z } from "zod";
 import {
   buildServer,
@@ -376,4 +379,131 @@ test("a cancel that fails on shutdown still exits and raises no unhandled reject
     process.off("unhandledRejection", onUnhandled);
   }
   assert.deepEqual(rejections, []);
+});
+
+test("stdin closing dispatches the kill before the process exits", async () => {
+  // The MCP stdio shutdown sequence is: close the server's stdin, wait for it to
+  // exit, then signal. A server that ignores EOF never reaches the signal on a host
+  // that shuts down politely, and the delegation runs on with nobody to hand it to.
+  const { EventEmitter } = await import("node:events");
+  const order = [];
+  const stdin = new EventEmitter();
+  const exits = [];
+  const before = process.listeners("SIGINT").slice();
+
+  installSignalCleanup(
+    {
+      cancel: async () => {
+        order.push("kill-dispatched");
+      },
+    },
+    {
+      exit: (code) => {
+        order.push("exit");
+        exits.push(code);
+      },
+      stdin,
+    }
+  );
+  stdin.emit("end");
+  process.removeAllListeners("SIGINT");
+  process.removeAllListeners("SIGTERM");
+  for (const listener of before) process.on("SIGINT", listener);
+
+  assert.deepEqual(order, ["kill-dispatched", "exit"]);
+  assert.deepEqual(exits, [0], "a host that closed the pipe is a clean shutdown");
+});
+
+// The only test here that runs the actual entrypoint against a real worker. Every
+// test above injects an exit and a registry, and none of them would notice that
+// nothing is listening for EOF. An idle server would not either: with no delegation
+// holding the loop open it exits on its own the moment stdin ends, whatever the
+// handlers do. So this one has to be busy to mean anything.
+test("a real server kills its worker and exits when its stdin closes", { timeout: 60_000 }, async () => {
+  const { spawn } = await import("node:child_process");
+  const { fileURLToPath } = await import("node:url");
+  const { readFileSync, existsSync } = await import("node:fs");
+  const serverPath = fileURLToPath(new URL("../src/server.js", import.meta.url));
+
+  // Stand in for the Codex binary: `node` launched against a file called `exec`,
+  // which is the first argument the bridge always passes. It reports a pid and hangs.
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-eof-"));
+  const pidFile = path.join(dir, "worker.pid");
+  await writeFile(
+    path.join(dir, "exec"),
+    `require("fs").writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));
+     console.log(JSON.stringify({ type: "turn.started" }));
+     setInterval(() => {}, 1000);`
+  );
+
+  // The suite itself can be running inside a delegation, and the recursion marker is
+  // inherited through this spread: the server would then refuse its own delegate call
+  // and this test would wait out the whole spawn deadline for a worker that never came.
+  const env = { ...process.env, CODEX_DELEGATE_COMMAND: process.execPath };
+  delete env.CODEX_DELEGATE_DEPTH;
+
+  const child = spawn(process.execPath, [serverPath], {
+    stdio: ["pipe", "pipe", "pipe"],
+    env,
+  });
+  const alive = (pid) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  let workerPid;
+  try {
+    let buffer = "";
+    const sawServerInfo = new Promise((resolve) => {
+      child.stdout.on("data", (chunk) => {
+        buffer += chunk;
+        if (buffer.includes("serverInfo")) resolve();
+      });
+    });
+    const write = (msg) => child.stdin.write(JSON.stringify(msg) + "\n");
+    write({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2025-06-18",
+        capabilities: {},
+        clientInfo: { name: "test", version: "1" },
+      },
+    });
+    await sawServerInfo;
+    write({ jsonrpc: "2.0", method: "notifications/initialized", params: {} });
+    write({
+      jsonrpc: "2.0",
+      id: 2,
+      method: "tools/call",
+      params: { name: "delegate", arguments: { spec: "hang", workspace: dir, timeoutMs: 600_000 } },
+    });
+
+    const spawned = Date.now() + 30_000;
+    while (Date.now() < spawned && !existsSync(pidFile)) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    workerPid = Number(readFileSync(pidFile, "utf8").trim());
+    assert.ok(alive(workerPid), "the worker must be running before the pipe closes");
+
+    child.stdin.end();
+
+    const exitCode = await new Promise((resolve) => child.on("exit", resolve));
+    assert.equal(exitCode, 0, "a host that closed the pipe is a clean shutdown");
+
+    const until = Date.now() + 20_000;
+    while (Date.now() < until && alive(workerPid)) await new Promise((r) => setTimeout(r, 50));
+    assert.equal(alive(workerPid), false, "the worker outlived the host that closed the pipe");
+  } finally {
+    if (child.exitCode === null) child.kill();
+    if (workerPid && alive(workerPid)) {
+      try {
+        process.kill(workerPid, "SIGKILL");
+      } catch {}
+    }
+  }
 });

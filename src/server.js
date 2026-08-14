@@ -298,7 +298,7 @@ export function buildServer({
 }
 
 /**
- * Kill what is still running, then exit, on a signal aimed at this process.
+ * Kill what is still running, then exit, on any way the host has of going away.
  *
  * On POSIX the worker is spawned into its own process group so the whole tree can be
  * killed at once, and that same detachment means a Ctrl-C sent to this process no
@@ -309,31 +309,43 @@ export function buildServer({
  * tests, and process-wide handlers do not belong to it.
  *
  * @param {any} operationRegistry
- * @param {{ exit?: (code: number) => void }} [options]
+ * @param {{ exit?: (code: number) => void, stdin?: any }} [options]
  */
-export function installSignalCleanup(operationRegistry, { exit = (code) => process.exit(code) } = {}) {
+export function installSignalCleanup(
+  operationRegistry,
+  { exit = (code) => process.exit(code), stdin = process.stdin } = {}
+) {
   let shuttingDown = false;
+
+  const shutdown = (code) => {
+    // Registering a handler replaces Node's default exit, so every path here has to
+    // reach `exit`: a server that swallows Ctrl-C is a worse bug than the tree it
+    // would have leaked. A second signal skips straight to it.
+    if (shuttingDown) return exit(code);
+    shuttingDown = true;
+    // Dispatch, do not await. `cancel` reaches the kill before its first await, so
+    // the signal has already been delivered by the time this returns; waiting for
+    // the tree to actually die would stall teardown for the kill deadline. The
+    // rejection still has to be observed — an unhandled one exits by itself.
+    try {
+      Promise.resolve(operationRegistry.cancel({ cause: "shutdown" })).catch(() => {});
+    } catch {}
+    exit(code);
+  };
+
   const signals = /** @type {[NodeJS.Signals, number][]} */ ([
     ["SIGINT", 130],
     ["SIGTERM", 143],
   ]);
-  for (const [signal, code] of signals) {
-    process.on(signal, () => {
-      // Registering a handler replaces Node's default exit, so every path here has to
-      // reach `exit`: a server that swallows Ctrl-C is a worse bug than the tree it
-      // would have leaked. A second signal skips straight to it.
-      if (shuttingDown) return exit(code);
-      shuttingDown = true;
-      // Dispatch, do not await. `cancel` reaches the kill before its first await, so
-      // the signal has already been delivered by the time this returns; waiting for
-      // the tree to actually die would stall teardown for the kill deadline. The
-      // rejection still has to be observed — an unhandled one exits by itself.
-      try {
-        Promise.resolve(operationRegistry.cancel({ cause: "shutdown" })).catch(() => {});
-      } catch {}
-      exit(code);
-    });
-  }
+  for (const [signal, code] of signals) process.on(signal, () => shutdown(code));
+
+  // Closing the server's stdin is how the stdio transport is shut down, and it is
+  // what a host reaches for before it resorts to a signal. The SDK transport does not
+  // listen for it — it subscribes to `data` and `error` only — so EOF used to leave
+  // this process up with a delegation still running and nobody left to hand it to.
+  // An idle server falls out here on its own; a busy one is held up by the child it
+  // spawned and by the heartbeat, which is exactly the case that needed this.
+  stdin.on("end", () => shutdown(0));
 }
 
 const __filename = fileURLToPath(import.meta.url);
