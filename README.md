@@ -44,7 +44,7 @@ Delegated work runs on the **OpenAI Codex CLI** and its own usage — separate f
 - 📦 **Clean, typed results** — one compact JSON block: the final answer, `status`, the files Codex edited, and per-turn token counts. Fields that carry no signal are omitted, so anything present is worth reading.
 - 📋 **Four modes** — `agent` edits, `plan` requests a schema-validated plan for you to review and approve, `ask` answers questions, and `review` runs Codex's own reviewer over uncommitted work, a base branch, or a single commit.
 - 🧵 **Resume** — continue the same Codex thread with `resumeThreadId`, and get told if the context didn't actually carry over.
-- 🧑‍🤝‍🧑 **Parallel, and cancellable for real** — fan a question across models or put independent workers on independent directories; `cancel` returns once the process has *ended*, not once the kill was requested.
+- 🧑‍🤝‍🧑 **Parallel, and cancellable for real** — fan a question across models or put independent workers on independent directories; `cancel` waits for the exit and warns when a process outlives the kill deadline.
 - 🩺 **Self-diagnosing** — a `doctor` tool that tells you exactly what's missing if setup isn't right.
 - 🔌 **Works everywhere MCP does** — VS Code, JetBrains, Windsurf, Visual Studio, and more.
 
