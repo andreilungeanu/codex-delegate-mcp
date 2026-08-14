@@ -50,7 +50,6 @@ export async function executeDelegate(rawArgs, options = {}) {
   // Created before the work that can throw, so every exit path has to clean it up.
   const tmp = await mkdtemp(path.join(tmpdir(), "codex-delegate-"));
   let processResult;
-  let cancellation;
   let delegationId;
   try {
     const resultFile = path.join(tmp, "last-message.txt");
@@ -108,7 +107,6 @@ export async function executeDelegate(rawArgs, options = {}) {
         onProgress,
         onThreadId: (id) => lease.updateThreadId(id),
       });
-      cancellation = lease.getCancellation();
     } finally {
       markSettled();
       lease.release();
@@ -154,18 +152,16 @@ export async function executeDelegate(rawArgs, options = {}) {
     processResult.filesReportedByEditTools || [],
     request.workspace
   );
-  // A cancel that lands after a clean finish cancelled nothing; saying otherwise
-  // invites the caller to throw away work that actually landed.
-  const lateCancel =
-    processResult.status !== "completed" && cancellation?.status === "cancelled";
-
   // Everything below is omitted when it carries no signal: a field that is
   // present on every call teaches the caller to stop reading it.
   return {
     result: planResult ?? processResult.result,
     resultSource: processResult.resultSource,
     status: processResult.status,
-    reason: processResult.reason ?? (lateCancel ? "cancelled" : undefined),
+    // Every outcome that is not `completed` names its own reason, cancellation
+    // included: the run reads the cancel flag on the exit that decides the outcome,
+    // so there is nothing left for this layer to add.
+    reason: processResult.reason,
     threadId: processResult.threadId || undefined,
     delegationId,
     resumed: request.resumeThreadId ? resumed : undefined,
