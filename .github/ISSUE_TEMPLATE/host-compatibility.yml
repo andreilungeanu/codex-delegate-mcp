@@ -34,8 +34,9 @@ body:
       label: What worked
       options:
         - label: "`doctor` reported client identity and resolved the Codex CLI"
-        - label: "`ask` mode answered without changing files"
-        - label: "`plan` mode returned a structured plan and changed no files"
+        - label: "`ask` mode returned an answer"
+        - label: "`plan` mode returned a structured plan object"
+        - label: "I reviewed the git diff after `ask`/`plan` — every mode can edit files"
         - label: "Resuming the plan thread in `agent` mode produced the expected edit"
         - label: "`review` mode reviewed a diff, branch, or commit"
         - label: "`cancel` stopped a running delegation"
