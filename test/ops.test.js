@@ -217,6 +217,22 @@ test("a thread that finished is not-running; an id never seen is not-found", asy
   assert.equal((await reg.cancel({ id: "never-existed" })).status, "not-found");
 });
 
+test("recently reused finished threads remain in the bounded not-running history", async () => {
+  const reg = createOperationRegistry();
+  const remember = (threadId) => {
+    const lease = reg.acquire({ threadId, cancel: async () => {} });
+    lease.release();
+  };
+
+  remember("keep-recent");
+  for (let i = 0; i < 499; i += 1) remember(`older-${i}`);
+  remember("keep-recent");
+  remember("newest");
+
+  assert.equal((await reg.cancel({ id: "keep-recent" })).status, "not-running");
+  assert.equal((await reg.cancel({ id: "older-0" })).status, "not-found");
+});
+
 test("a thread id learned mid-run becomes cancellable", async () => {
   const reg = createOperationRegistry();
   let hits = 0;

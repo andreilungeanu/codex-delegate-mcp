@@ -2,9 +2,9 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 
 /**
- * Thread ids are remembered after their run ends so cancel can tell a finished
- * thread (over, but still resumable) from an id that never existed. Bounded so a
- * long-lived server does not grow without limit.
+ * Recently used thread ids are remembered after their run ends so cancel can
+ * usually tell a finished thread (over, but still resumable) from an id that was
+ * never seen. This is a bounded diagnostic history, not a permanent ledger.
  */
 const SEEN_THREAD_CAP = 500;
 
@@ -181,7 +181,9 @@ export class OperationRegistry {
 
   /** @param {string} threadId */
   #rememberThread(threadId) {
-    if (this.#seenThreads.has(threadId)) return;
+    // Set iteration order makes this a tiny LRU: a resumed/reused thread remains
+    // more useful diagnostically than an equally old thread that was never reused.
+    if (this.#seenThreads.has(threadId)) this.#seenThreads.delete(threadId);
     this.#seenThreads.add(threadId);
     if (this.#seenThreads.size > SEEN_THREAD_CAP) {
       this.#seenThreads.delete(this.#seenThreads.values().next().value);

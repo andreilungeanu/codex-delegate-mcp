@@ -80,8 +80,8 @@ The normal result has one of the following forms:
 | `status` | Additional fields |
 |---|---|
 | `"nothing-active"` | None. |
-| `"not-found"` | `id`, the delegation or thread identifier that was not known. |
-| `"not-running"` | `id`, a known thread identifier with no active delegation. |
+| `"not-found"` | `id`, an identifier that is neither active nor in the bounded recent-thread history. |
+| `"not-running"` | `id`, a recently used thread identifier with no active delegation. Older finished threads eventually age back to `"not-found"`. |
 | `"cancelled"` | `cause: "user"`; `id` when a specific identifier was requested; and `cancelled`, an array of `{ delegationId, threadId }` records. |
 
 If cancellation itself fails, the tool returns an error payload with `error: "cancel_failed"` and `message`, and marks the MCP response as an error.

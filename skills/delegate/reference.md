@@ -78,7 +78,9 @@ the warning arrives after the runs are already racing. Split by directory, or se
 To cancel: `delegationId` cancels one run, `threadId` cancels every delegation on that thread,
 and passing neither cancels all of them. `cancel` waits for the processes to end rather than
 returning on the kill request, with a status of `cancelled`, `nothing-active`, `not-running` or
-`not-found`. A tree that outlives the kill deadline returns anyway and says so in `warnings`.
+`not-found`. `not-running` means the thread is in the server's bounded recent history; an older
+finished thread can age back to `not-found`. A tree that outlives the kill deadline returns anyway
+and says so in `warnings`.
 
 ## Timeouts
 
