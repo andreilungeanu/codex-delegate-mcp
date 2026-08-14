@@ -50,6 +50,11 @@ export class OperationRegistry {
       /** @param {string} id */
       updateThreadId: (id) => {
         if (!id || this.#active.get(delegationId) !== record) return;
+        if (record.threadId === id) return;
+        // A resume that did not resume: `resume A` can come back as a new thread B,
+        // which is the case `resumed: false` reports. Leaving A pointing here made a
+        // cancel aimed at the thread that ended kill the run that replaced it.
+        this.#deindexThread(record);
         record.threadId = id;
         this.#indexThread(record);
       },

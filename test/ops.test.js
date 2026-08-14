@@ -291,3 +291,29 @@ test("a cancel that throws synchronously is still reported, not rethrown at the 
   });
   await assert.rejects(() => registry.cancel({ cause: "user" }), /cancel exploded/);
 });
+
+// A resume that does not resume: Codex answers `resume A` by starting thread B.
+// Both ids used to point at the live record, so a cancel aimed at the thread that
+// ended killed the one that replaced it.
+test("a replaced thread id stops resolving to the delegation that moved on", async () => {
+  const reg = createOperationRegistry();
+  let cancels = 0;
+  const lease = reg.acquire({
+    threadId: "thread-a",
+    cancel: async () => {
+      cancels += 1;
+    },
+  });
+
+  lease.updateThreadId("thread-b");
+
+  assert.deepEqual(await reg.cancel({ id: "thread-a" }), {
+    status: "not-running",
+    id: "thread-a",
+  });
+  assert.equal(cancels, 0, "cancelling the old thread killed the run that replaced it");
+
+  const byNew = await reg.cancel({ id: "thread-b" });
+  assert.equal(byNew.status, "cancelled");
+  assert.equal(cancels, 1);
+});
