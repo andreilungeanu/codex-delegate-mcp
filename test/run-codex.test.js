@@ -610,6 +610,53 @@ test("an oversized final result file is truncated rather than discarded", async 
   assert.match(out.warnings[0], /5000 bytes, truncated to the 100 byte cap/);
 });
 
+test("a capped final result file does not split a UTF-8 codepoint", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-file-utf8-"));
+  const file = path.join(dir, "out.txt");
+  await writeFile(file, "€€€", "utf8");
+
+  const out = await readFinalResult({
+    filePath: file,
+    status: "completed",
+    exitCode: 0,
+    maxResultBytes: 7,
+  });
+
+  assert.equal(out.result, "€€");
+  assert.ok(!out.result.includes("�"));
+  assert.match(out.warnings[0], /9 bytes, truncated to the 7 byte cap/);
+});
+
+test("an oversized final result file is read only through its UTF-8 boundary", async () => {
+  let requestedBytes = 0;
+  let closed = false;
+  const file = {
+    stat: async () => ({ size: 1_000_000 }),
+    read: async (buffer, offset, length) => {
+      requestedBytes += length;
+      buffer.fill("z", offset, offset + length);
+      return { bytesRead: length };
+    },
+    close: async () => {
+      closed = true;
+    },
+  };
+
+  const out = await readFinalResult({
+    filePath: "virtual-result.txt",
+    status: "completed",
+    exitCode: 0,
+    maxResultBytes: 100,
+    openFileImpl: async () => file,
+  });
+
+  assert.equal(out.finalMessageAvailable, true);
+  assert.equal(out.result, "z".repeat(100));
+  assert.ok(requestedBytes <= 104, `read requested ${requestedBytes} bytes`);
+  assert.equal(closed, true);
+  assert.match(out.warnings[0], /1000000 bytes, truncated to the 100 byte cap/);
+});
+
 test("readUsage keeps only the counts Codex actually reported", () => {
   assert.deepEqual(
     readUsage({ input_tokens: 10, cached_input_tokens: 2, output_tokens: 3 }),

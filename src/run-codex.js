@@ -1,7 +1,7 @@
 import process from "node:process";
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
-import { readFile, unlink } from "node:fs/promises";
+import { open as openFile, unlink } from "node:fs/promises";
 import { isChildAlive, treeKill } from "./proc.js";
 import { pathsFromFileChangeItem } from "./edit-tool-files.js";
 
@@ -633,6 +633,38 @@ export function capResultBytes(text, maxResultBytes) {
   };
 }
 
+async function readCappedFile(filePath, maxResultBytes, openFileImpl) {
+  const file = await openFileImpl(filePath, "r");
+  try {
+    if (!(Number.isSafeInteger(maxResultBytes) && maxResultBytes > 0)) {
+      return capResultBytes(await file.readFile({ encoding: "utf8" }), maxResultBytes);
+    }
+
+    const stats = await file.stat();
+    const fileBytes = Number.isFinite(stats?.size) && stats.size >= 0 ? stats.size : 0;
+    // Four look-ahead bytes are enough to finish any UTF-8 codepoint that crosses
+    // the cap, without allowing the read itself to grow with an oversized file.
+    const readLimit = Math.min(maxResultBytes + 4, fileBytes);
+    const buffer = Buffer.alloc(readLimit);
+    let bytesRead = 0;
+    while (bytesRead < readLimit) {
+      const chunk = await file.read(buffer, bytesRead, readLimit - bytesRead, bytesRead);
+      if (!(chunk.bytesRead > 0)) break;
+      bytesRead += chunk.bytesRead;
+    }
+
+    const capped = capResultBytes(buffer.subarray(0, bytesRead).toString("utf8"), maxResultBytes);
+    if (fileBytes > maxResultBytes) {
+      capped.warnings = [
+        `Result was ${fileBytes} bytes, truncated to the ${maxResultBytes} byte cap.`,
+      ];
+    }
+    return capped;
+  } finally {
+    await file.close();
+  }
+}
+
 /**
  * Resolve true if the promise settled inside the deadline, false if the deadline
  * won. The timer is cleared either way: an unref'd one lets the process fall out
@@ -717,7 +749,7 @@ export function readAgentError(source, maxChars = 600) {
  *   status?: string,
  *   exitCode?: number | null,
  *   maxResultBytes?: number,
- *   readFileImpl?: any,
+ *   openFileImpl?: typeof openFile,
  * }} [options]
  */
 export async function readFinalResult({
@@ -725,7 +757,7 @@ export async function readFinalResult({
   status,
   exitCode,
   maxResultBytes = DEFAULT_MAX_RESULT_BYTES,
-  readFileImpl = readFile,
+  openFileImpl = openFile,
 } = {}) {
   if (status !== "completed" || exitCode !== 0) {
     return {
@@ -735,7 +767,7 @@ export async function readFinalResult({
     };
   }
   try {
-    const capped = capResultBytes(await readFileImpl(filePath, "utf8"), maxResultBytes);
+    const capped = await readCappedFile(filePath, maxResultBytes, openFileImpl);
     return { result: capped.text, finalMessageAvailable: true, warnings: capped.warnings };
   } catch {
     return {
