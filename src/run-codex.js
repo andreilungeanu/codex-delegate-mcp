@@ -316,9 +316,11 @@ export async function runCodexProcess({
     maxResultBytes,
   });
 
-  // The file is authoritative and is only written on a clean exit. When it is
-  // absent, the last narration line is better than nothing — but it is never
-  // allowed to stand in for a final answer on a run that actually completed.
+  // The file is authoritative and is only written on a clean exit. When it is absent
+  // the last narration line is better than nothing, including on a run that exited
+  // cleanly without ever writing one — an empty result would throw away the only
+  // account of what happened. `resultSource` and the missing-file warning are what
+  // say this is salvage rather than the final message.
   let result = final.result;
   let resultSource;
   const fallbackWarnings = [];
@@ -682,7 +684,7 @@ export function describeNonSuccessfulItem(item, maxChars = 200) {
   return `${label}${status}${exit}`;
 }
 
-/** Codex prints this on every non-TTY run; it is not a diagnosis. */
+/** Codex has printed this while reading a piped prompt; it is not a diagnosis. */
 const BENIGN_STDERR = /^Reading additional input from stdin\.\.\.$/;
 
 export function meaningfulStderr(stderr) {
