@@ -141,3 +141,63 @@ test("the kill reaches a grandchild while the leader is still running", async ()
     } catch {}
   }
 });
+
+const win32Only = { skip: process.platform === "win32" ? false : "windows taskkill" };
+
+// POSIX gates the bare-pid kill on childAlive because a reaped pid can be recycled.
+// taskkill has no group to aim at, so the bare pid is all it ever has — which makes
+// the gate matter more on Windows, not less.
+test("the windows kill does not fire once the child has exited", win32Only, async () => {
+  const victim = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+    stdio: "ignore",
+  });
+  const alive = () => {
+    try {
+      process.kill(victim.pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  try {
+    await new Promise((r) => setTimeout(r, 600));
+    assert.ok(alive(), "the stand-in for a recycled pid must be running");
+
+    await treeKill(victim.pid, { childAlive: false });
+    await new Promise((r) => setTimeout(r, 900));
+
+    assert.equal(alive(), true, "treeKill killed a pid it was told was no longer the child");
+  } finally {
+    try {
+      victim.kill();
+    } catch {}
+  }
+});
+
+test("the windows kill still fires while the child is alive", win32Only, async () => {
+  const victim = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+    stdio: "ignore",
+  });
+  const alive = () => {
+    try {
+      process.kill(victim.pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  try {
+    await new Promise((r) => setTimeout(r, 600));
+    assert.ok(alive(), "the victim must be running before the kill");
+
+    await treeKill(victim.pid, { childAlive: true });
+    const deadline = Date.now() + 8000;
+    while (Date.now() < deadline && alive()) await new Promise((r) => setTimeout(r, 50));
+
+    assert.equal(alive(), false, "the gate swallowed a kill that should have landed");
+  } finally {
+    try {
+      victim.kill();
+    } catch {}
+  }
+});
