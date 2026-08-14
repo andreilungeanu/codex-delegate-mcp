@@ -348,7 +348,7 @@ export async function runCodexProcess({
     startupMs,
     hardCapMs,
     unusableThreadIdChars: events.unusableThreadIdChars,
-    droppedPaths: events.droppedPaths,
+    pathsTruncated: events.pathsTruncated,
     nonSuccessfulItems: events.nonSuccessfulItems,
     killEscaped,
     killDeadlineMs,
@@ -389,7 +389,7 @@ function createEventReducer({ emit, onThreadId }) {
     usage: null,
     nonSuccessfulItems: [],
     reportedPaths: new Set(),
-    droppedPaths: 0,
+    pathsTruncated: false,
     unusableThreadIdChars: 0,
     lastCommand: null,
   };
@@ -472,7 +472,10 @@ function createEventReducer({ emit, onThreadId }) {
         for (const p of pathsFromFileChangeItem(item)) {
           if (state.reportedPaths.has(p)) continue;
           if (state.reportedPaths.size >= MAX_REPORTED_PATHS) {
-            state.droppedPaths += 1;
+            // A flag, not a tally. Codex announces the same item twice, so counting
+            // each over-cap path as it arrives reported one omission per
+            // announcement; remembering them to count once would defeat the cap.
+            state.pathsTruncated = true;
             continue;
           }
           state.reportedPaths.add(p);
@@ -559,7 +562,7 @@ function buildRunWarnings({
   startupMs,
   hardCapMs,
   unusableThreadIdChars,
-  droppedPaths,
+  pathsTruncated,
   nonSuccessfulItems,
   killEscaped,
   killDeadlineMs,
@@ -583,9 +586,9 @@ function buildRunWarnings({
       `Codex reported a ${unusableThreadIdChars}-character thread id, past the ${MAX_THREAD_ID_CHARS} character limit; it was dropped, so this run cannot be resumed.`
     );
   }
-  if (droppedPaths) {
+  if (pathsTruncated) {
     warnings.push(
-      `Codex reported more than ${MAX_REPORTED_PATHS} edited files; ${droppedPaths} are missing from the list. Read the git diff for the full set.`
+      `Codex reported more than ${MAX_REPORTED_PATHS} edited files; the list stops there and the rest are missing from it. Read the git diff for the full set.`
     );
   }
   // Only on a run that broke. Routing around a failed command is the agent doing its

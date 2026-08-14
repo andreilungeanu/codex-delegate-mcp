@@ -1010,8 +1010,45 @@ test("the edited-file list is bounded and says so", async () => {
 
   assert.equal(result.filesReportedByEditTools.length, 500);
   assert.ok(
-    result.warnings.some((w) => /2500 are missing from the list/.test(w)),
+    result.warnings.some((w) => /more than 500 edited files.+missing from it/.test(w)),
     `expected a truncated-file-list warning, got ${JSON.stringify(result.warnings)}`
+  );
+});
+
+// Codex announces a file_change twice, and the same over-cap path arriving in both
+// events used to be counted as two separate casualties.
+test("paths past the cap are reported as omitted once, not once per announcement", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-cap-"));
+  const resultFile = path.join(dir, "last.txt");
+  const item = {
+    type: "file_change",
+    changes: Array.from({ length: 501 }, (_, i) => ({ path: `f${i}.txt` })),
+  };
+
+  const out = await runCodexProcess({
+    command: "codex",
+    args: ["exec"],
+    cwd: dir,
+    resultFile,
+    spawnImpl: () =>
+      fakeChild({
+        lines: [
+          JSON.stringify({ type: "item.started", item }),
+          JSON.stringify({ type: "item.completed", item }),
+          JSON.stringify({ type: "turn.completed" }),
+        ],
+        writeResult: () => writeFile(resultFile, "ok"),
+      }),
+    platform: "linux",
+    heartbeatMs: 0,
+  });
+
+  assert.equal(out.filesReportedByEditTools.length, 500);
+  const warning = out.warnings.find((w) => w.includes("edited files"));
+  assert.ok(warning, "the cap must still be reported");
+  assert.ok(
+    !/\b2 are missing\b/.test(warning),
+    `the same over-cap path was counted twice: ${warning}`
   );
 });
 
