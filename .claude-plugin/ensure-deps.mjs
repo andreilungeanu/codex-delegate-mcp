@@ -1,15 +1,25 @@
 // Install runtime dependencies on SessionStart when the plugin cache has none.
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
-// The SDK rather than node_modules: a half-finished install leaves the directory
-// behind, and a bare existence check would then skip the repair on every session
-// while the server keeps failing to import.
-if (existsSync(join(root, "node_modules", "@modelcontextprotocol", "sdk"))) {
+// Every declared dependency, and the package.json inside each rather than the
+// directory holding it: a half-finished install leaves directories behind, and a
+// bare existence check would then skip the repair on every session while the server
+// keeps failing to import. Reading the list keeps a later dependency covered too.
+let complete = false;
+try {
+  const { dependencies } = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+  complete = Object.keys(dependencies || {}).every((name) =>
+    existsSync(join(root, "node_modules", name, "package.json"))
+  );
+} catch {
+  // An unreadable manifest is no reason to trust the tree. Install, and let npm report.
+}
+if (complete) {
   process.exit(0);
 }
 

@@ -1,7 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { cp, mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
@@ -92,74 +96,92 @@ test("no host auto-discovery leak configs at conventional paths", () => {
   assert.ok(!existsSync(resolve(ROOT, ".agents/plugins")), "Codex marketplace packaging is not used");
 });
 
-test("the SessionStart hook can spawn npm on this platform", async () => {
-  const { mkdtemp, mkdir, writeFile, cp } = await import("node:fs/promises");
-  const { tmpdir } = await import("node:os");
-  const { execFile } = await import("node:child_process");
-  const { promisify } = await import("node:util");
-  const { join } = await import("node:path");
+// The probe carries the real dependency names so the sentinel is exercised on the
+// paths it ships against, and resolves them from local directories so the install is
+// offline and fast. An empty dependency set cannot tell a working hook from one that
+// exits 0 having installed nothing — npm writes a lockfile either way.
+const FIXTURES = { "@modelcontextprotocol/sdk": "sdk", zod: "zod" };
 
-  // npm.cmd is a batch file, and Node refuses to spawn one without a shell — the
-  // failure is `spawnSync npm.cmd EINVAL` on the first session after a plugin
-  // install, before doctor exists to report it. Only a real spawn catches that, so
-  // this runs the hook against an empty dependency set rather than asserting on the
-  // source.
+const buildProbe = async (prepare) => {
   const root = await mkdtemp(join(tmpdir(), "cdm-plugin-"));
   await mkdir(join(root, ".claude-plugin"));
   await cp(resolve(ROOT, ".claude-plugin/ensure-deps.mjs"), join(root, ".claude-plugin/ensure-deps.mjs"));
+
+  const dependencies = {};
+  for (const [name, dir] of Object.entries(FIXTURES)) {
+    await mkdir(join(root, "fixtures", dir), { recursive: true });
+    await writeFile(join(root, "fixtures", dir, "package.json"), JSON.stringify({ name, version: "1.0.0" }), "utf8");
+    dependencies[name] = `file:./fixtures/${dir}`;
+  }
   await writeFile(
     join(root, "package.json"),
-    JSON.stringify({ name: "cdm-plugin-probe", version: "1.0.0", private: true, dependencies: {} }),
+    JSON.stringify({ name: "cdm-plugin-probe", version: "1.0.0", private: true, dependencies }),
     "utf8"
   );
 
-  const { stdout } = await promisify(execFile)(
-    process.execPath,
-    [join(root, ".claude-plugin", "ensure-deps.mjs")],
-    { timeout: 120_000 }
-  );
+  if (prepare) await prepare(root);
+  return root;
+};
+
+const runHook = (root) =>
+  promisify(execFile)(process.execPath, [join(root, ".claude-plugin", "ensure-deps.mjs")], { timeout: 120_000 });
+
+// npm writes a lockfile when it runs, so its absence is the observable proof the hook
+// skipped and its presence the proof it did not.
+const installRan = (root) => existsSync(join(root, "package-lock.json"));
+const importable = (root, name) => existsSync(join(root, "node_modules", name, "package.json"));
+const placeDep = async (root, name, complete) => {
+  await mkdir(join(root, "node_modules", name), { recursive: true });
+  if (complete) await writeFile(join(root, "node_modules", name, "package.json"), JSON.stringify({ name }), "utf8");
+};
+
+test("the SessionStart hook can spawn npm on this platform", async () => {
+  // npm.cmd is a batch file, and Node refuses to spawn one without a shell — the
+  // failure is `spawnSync npm.cmd EINVAL` on the first session after a plugin
+  // install, before doctor exists to report it. Only a real spawn catches that, so
+  // this runs the hook rather than asserting on the source.
+  const root = await buildProbe();
+  const { stdout } = await runHook(root);
+
   assert.doesNotMatch(stdout, /dependency install failed/);
+  for (const name of Object.keys(FIXTURES)) {
+    assert.ok(importable(root, name), `${name} must be installed once the hook returns`);
+  }
 });
 
-test("the dependency sentinel checks the SDK, not a bare node_modules", async () => {
-  const { mkdtemp, mkdir, writeFile, cp } = await import("node:fs/promises");
-  const { tmpdir } = await import("node:os");
-  const { execFile } = await import("node:child_process");
-  const { promisify } = await import("node:util");
-  const { join } = await import("node:path");
+test("the dependency sentinel repairs every incomplete install", async () => {
+  // A half-finished install leaves directories behind. Skipping on their bare
+  // existence keeps the plugin broken on every later session, with the server still
+  // failing to import. Asserted by running the hook rather than by reading it: the
+  // source can name a path in a comment and still skip wrong.
+  const complete = await buildProbe(async (root) => {
+    for (const name of Object.keys(FIXTURES)) await placeDep(root, name, true);
+  });
+  await runHook(complete);
+  assert.ok(!installRan(complete), "a complete install must be left alone");
 
-  // A half-finished install leaves node_modules behind. Skipping on its bare
-  // existence would keep the plugin broken on every later session, with the server
-  // still failing to import the SDK. Asserted by running the hook rather than by
-  // reading it: the source can name the SDK path in a comment and still skip wrong.
-  const build = async (sdkPresent) => {
-    const root = await mkdtemp(join(tmpdir(), "cdm-sentinel-"));
-    await mkdir(join(root, ".claude-plugin"));
-    await cp(
-      resolve(ROOT, ".claude-plugin/ensure-deps.mjs"),
-      join(root, ".claude-plugin/ensure-deps.mjs")
-    );
-    await writeFile(
-      join(root, "package.json"),
-      JSON.stringify({ name: "cdm-sentinel", version: "1.0.0", private: true, dependencies: {} }),
-      "utf8"
-    );
-    const sdk = join(root, "node_modules", "@modelcontextprotocol", "sdk");
-    await mkdir(sdkPresent ? sdk : join(root, "node_modules"), { recursive: true });
-    await promisify(execFile)(process.execPath, [join(root, ".claude-plugin", "ensure-deps.mjs")], {
-      timeout: 120_000,
-    });
-    return root;
-  };
+  const bare = await buildProbe(async (root) => {
+    await mkdir(join(root, "node_modules"), { recursive: true });
+  });
+  await runHook(bare);
+  assert.ok(installRan(bare), "an empty node_modules must still install");
 
-  // npm writes a lockfile when it runs, so its absence is the observable proof the
-  // hook skipped and its presence the proof it did not.
-  assert.ok(
-    !existsSync(join(await build(true), "package-lock.json")),
-    "an installed SDK must skip the install"
-  );
-  assert.ok(
-    existsSync(join(await build(false), "package-lock.json")),
-    "a node_modules without the SDK must still install"
-  );
+  // The SDK is only one of the dependencies the server imports; an install that dies
+  // after it and before zod satisfies a check that names the SDK alone.
+  const partialTree = await buildProbe(async (root) => {
+    await placeDep(root, "@modelcontextprotocol/sdk", true);
+  });
+  await runHook(partialTree);
+  assert.ok(installRan(partialTree), "a dependency missing beside the SDK must still install");
+  assert.ok(importable(partialTree, "zod"), "the repair must land the missing dependency");
+
+  // npm extracts into the package directory, so an interrupted unpack leaves the
+  // directory present and its package.json absent.
+  const partialPackage = await buildProbe(async (root) => {
+    await placeDep(root, "@modelcontextprotocol/sdk", false);
+    await placeDep(root, "zod", true);
+  });
+  await runHook(partialPackage);
+  assert.ok(installRan(partialPackage), "a half-extracted dependency must still install");
+  assert.ok(importable(partialPackage, "@modelcontextprotocol/sdk"), "the repair must complete the extraction");
 });
