@@ -89,10 +89,7 @@ export async function runCodexProcess({
     exitCode: null,
     threadId: null,
     result: "",
-    finalMessageAvailable: false,
     warnings: [],
-    stderrBytes: 0,
-    stderrTail: "",
     filesReportedByEditTools: [],
   });
 
@@ -154,7 +151,7 @@ export async function runCodexProcess({
   /**
    * treeKill is best effort — taskkill can report success and leave the tree up.
    * Without this the close we await never arrives and the delegation wedges for
-   * the life of the process, holding its slot in the registry with it.
+   * the life of the process.
    */
   const armKillDeadline = () => {
     if (killTimer || killDeadlineMs <= 0) return;
@@ -274,8 +271,8 @@ export async function runCodexProcess({
     clearTimers();
     // The pipes can still hold queued lines; a dropped turn.failed would read as
     // success. Bounded, and only from the exit onwards: whatever inherited stdout
-    // may hold it open for its own lifetime, and waiting on that would wedge the
-    // delegation and the single-slot registry behind it for exactly that long.
+    // may hold it open for its own lifetime, and waiting on that would wedge this
+    // delegation for exactly that long.
     drainEscaped = !(await withDeadline(Promise.all([pipesClosed, drained]), drainMs));
   } finally {
     clearTimers();
@@ -334,13 +331,9 @@ export async function runCodexProcess({
     reason,
     exitCode,
     threadId: events.threadId,
-    agentError: events.agentError,
     usage: events.usage,
     result,
-    finalMessageAvailable: final.finalMessageAvailable,
     warnings,
-    stderrBytes: stderrBuffer.bytes,
-    stderrTail: status !== "completed" ? stderrTail : "",
     filesReportedByEditTools: [...events.reportedPaths],
   };
 }
@@ -449,7 +442,7 @@ function createEventReducer({ emit, onThreadId }) {
 
 /**
  * A rolling tail, not the first 64 KB: the diagnosis is the last thing a dying
- * process writes, and stderrTail then takes the tail of whatever this kept. Keep
+ * process writes, and the warning then takes the tail of whatever this kept. Keep
  * the head and a megabyte of noise buries the one line that says why.
  */
 function createStderrTail(maxBytes) {
@@ -472,9 +465,6 @@ function createStderrTail(maxBytes) {
           bytes -= excess;
         }
       }
-    },
-    get bytes() {
-      return bytes;
     },
     text() {
       return Buffer.concat(chunks, bytes).toString("utf8");
@@ -546,7 +536,7 @@ function buildRunWarnings({
     );
   } else if (drainEscaped) {
     warnings.push(
-      `Codex exited but something it started still holds its output open after ${drainMs}ms — a server or watcher is probably still running in the workspace.`
+      `Codex exited but something it started still holds its output open after ${drainMs}ms.`
     );
   }
   if (status !== "completed" && stderrTail.trim()) {

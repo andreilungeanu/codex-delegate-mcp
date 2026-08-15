@@ -90,11 +90,9 @@ export async function isGitRepo(workspace, execFileImpl = execFileAsync) {
 function gitRunner(workspace, execFileImpl) {
   return async (args) => {
     try {
-      // A credential prompt is how one of these read-only probes stops returning: it
-      // waits on a terminal that is not there, and outlives the timeout because the
-      // default SIGTERM is catchable. Refuse the prompt, and kill uncatchably rather
-      // than trusting the deadline. Paging needs no flag here — git only pages to a
-      // terminal, and execFile gives it a pipe.
+      // GIT_TERMINAL_PROMPT=0 refuses a prompt on stdin that is not there.
+      // killSignal SIGKILL because SIGTERM is catchable and would outlive the timeout.
+      // Paging needs no flag — git only pages to a terminal, and execFile gives it a pipe.
       const { stdout } = await execFileImpl("git", args, {
         cwd: workspace,
         encoding: "utf8",

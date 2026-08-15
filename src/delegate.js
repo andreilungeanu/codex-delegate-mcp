@@ -125,8 +125,8 @@ export async function executeDelegate(rawArgs, options = {}) {
     // Plan mode promised structured output: the final message IS the plan JSON,
     // so returning it verbatim in `result` would ship the same payload twice.
     // Once it parses, `plan` carries the structure and `result` keeps only the
-    // overview. Text that is not a valid plan is a failed result contract, not
-    // a completed run with a warning and raw salvage.
+    // overview. Text that is not a valid plan fails the result contract:
+    // `failed` / `result-unavailable` / empty `result`.
     let parsed;
     try {
       parsed = JSON.parse(result);

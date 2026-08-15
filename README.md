@@ -48,7 +48,7 @@ Delegated work runs on the **OpenAI Codex CLI** and its own usage — separate f
 - 🩺 **Self-diagnosing** — a `doctor` tool that tells you exactly what's missing if setup isn't right.
 - 🔌 **Works everywhere MCP does** — VS Code, JetBrains, Windsurf, Visual Studio, and more.
 
-The caveats are documented rather than buried: what an empty `warnings` does *not* prove, and when `result` is salvage instead of an answer, are in the [delegate reference](skills/delegate/reference.md).
+The caveats are documented rather than buried: what an empty `warnings` does *not* prove, and that `result` is an answer only on `status: "completed"`, are in the [delegate reference](skills/delegate/reference.md).
 
 ## Install
 

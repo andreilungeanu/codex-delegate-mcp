@@ -41,6 +41,16 @@ test("delegate tool derives defaults and descriptions from command constants", (
   assert.ok(!SERVER_INSTRUCTIONS.includes(DEFAULT_MODEL));
 });
 
+test("cancel tool description is the live-run status schema", () => {
+  // cancel has no outputSchema; the description is the only place a caller
+  // sees which statuses exist.
+  const cancel = buildServer()._registeredTools.cancel;
+  assert.match(cancel.description, /cancelled/);
+  assert.match(cancel.description, /nothing-active/);
+  assert.match(cancel.description, /not-found/);
+  assert.equal(cancel.description.includes("not-running"), false);
+});
+
 test("runDelegateTool returns the result as its only payload on success", async () => {
   const registry = createOperationRegistry();
   const response = await runDelegateTool({
@@ -49,7 +59,6 @@ test("runDelegateTool returns the result as its only payload on success", async 
     operationRegistry: registry,
     execute: async () => ({
       result: "done",
-      finalMessageAvailable: true,
       status: "completed",
       resumed: false,
       mode: "agent",
@@ -202,9 +211,7 @@ test("an unknowable exit code does not cost the caller the whole result", async 
         exitCode: null,
         threadId: "thr_immortal",
         result: "",
-        finalMessageAvailable: false,
         warnings: ["Hard-cap timeout after 1000ms. Raise timeoutMs for longer tasks."],
-        stderrBytes: 0,
         filesReportedByEditTools: ["important.ts"],
       }),
     }
@@ -270,7 +277,6 @@ test("the serialized delegation result never contains resultSource", async () =>
 
 const progressResult = {
   result: "ok",
-  finalMessageAvailable: true,
   status: "completed",
   resumed: false,
   mode: "agent",

@@ -207,7 +207,6 @@ test("exit 0 while turn still in_progress is not completed", async () => {
   });
 
   assert.notEqual(result.status, "completed");
-  assert.equal(result.finalMessageAvailable, false);
   assert.equal(result.result, "");
 });
 
@@ -238,7 +237,6 @@ test("turn.completed with non-zero exit refuses final file contents", async () =
   });
 
   assert.equal(result.status, "failed");
-  assert.equal(result.finalMessageAvailable, false);
   assert.equal(result.result, "");
 });
 
@@ -340,7 +338,7 @@ test("spawn ENOENT rejects and does not leave registry leased", async () => {
   assert.equal((await registry.cancel({})).status, "nothing-active");
 });
 
-test("an orphan holding stdout does not wedge the single-slot registry", async () => {
+test("an orphan holding stdout does not prevent the next delegation", async () => {
   const registry = createOperationRegistry();
   // Every run leaves a background process on stdout, so 'close' never arrives.
   const options = () => ({
@@ -374,7 +372,7 @@ test("an orphan holding stdout does not wedge the single-slot registry", async (
     { spec: "one", mode: "ask", workspace: process.cwd() },
     options()
   );
-  // The slot has to be free for this one, or it comes back operation_in_progress.
+  // The first run has to settle despite the open pipe, or this one never starts.
   const second = await executeDelegate(
     { spec: "two", mode: "ask", workspace: process.cwd() },
     options()
@@ -406,9 +404,7 @@ test("plan mode with invalid shape fails with result-unavailable", async () => {
           timedOut: false,
           cancelled: false,
           result: JSON.stringify({ nope: true, steps: "not-array" }),
-          finalMessageAvailable: true,
           warnings: [],
-          stderrBytes: 0,
           filesReportedByEditTools: [],
         };
       },
@@ -436,9 +432,7 @@ test("a plan over the former step limit is returned in full", async () => {
         exitCode: 0,
         threadId: "t-plan-big",
         result: JSON.stringify({ overview: "big", steps }),
-        finalMessageAvailable: true,
         warnings: [],
-        stderrBytes: 0,
         filesReportedByEditTools: [],
       }),
     }
@@ -477,9 +471,7 @@ test("pre-aborted outer signal interrupts before/during run", async () => {
           timedOut: false,
           cancelled: true,
           result: "",
-          finalMessageAvailable: false,
           warnings: ["interrupted"],
-          stderrBytes: 0,
           filesReportedByEditTools: [],
         };
       },

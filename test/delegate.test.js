@@ -22,7 +22,6 @@ function delegateOptions(threadId) {
       timedOut: false,
       cancelled: false,
       result: "done",
-      finalMessageAvailable: true,
       warnings: [],
       filesReportedByEditTools: [],
     }),
@@ -62,9 +61,7 @@ test("executeDelegate wires resolve + process + edit-tool files", async () => {
           timedOut: false,
           cancelled: false,
           result: "looks fine",
-          finalMessageAvailable: true,
           warnings: [],
-          stderrBytes: 0,
           filesReportedByEditTools: [],
         };
       },
@@ -151,7 +148,6 @@ test("executeDelegate plan mode fails with result-unavailable on non-JSON", asyn
           timedOut: false,
           cancelled: false,
           result: "not-json{{{",
-          finalMessageAvailable: true,
           warnings: [],
           filesReportedByEditTools: [],
         };
@@ -187,7 +183,6 @@ test("executeDelegate plan mode parses valid plan JSON", async () => {
         timedOut: false,
         cancelled: false,
         result: JSON.stringify(plan),
-        finalMessageAvailable: true,
         warnings: [],
         filesReportedByEditTools: [],
       }),
@@ -245,7 +240,6 @@ test("a cancel landing after a clean finish is not reported as cancelled", async
       timedOut: false,
       cancelled: false,
       result: "done",
-      finalMessageAvailable: true,
       warnings: [],
       filesReportedByEditTools: [],
     };
@@ -270,7 +264,6 @@ test("plan mode returns the plan once, with result holding only the overview", a
     exitCode: 0,
     threadId: "tid-plan",
     result: raw,
-    finalMessageAvailable: true,
     warnings: [],
     filesReportedByEditTools: [],
   });
@@ -299,7 +292,6 @@ test("an unparseable plan fails with result-unavailable and no raw text", async 
     exitCode: 0,
     threadId: "tid-bad",
     result: "not json at all",
-    finalMessageAvailable: true,
     warnings: [],
     filesReportedByEditTools: [],
   });
@@ -338,7 +330,6 @@ test("cancel resolves only after the delegation has actually settled", async () 
       exitCode: 1,
       threadId: "tid-cancel",
       result: "",
-      finalMessageAvailable: false,
       warnings: [],
       filesReportedByEditTools: [],
     };
@@ -409,14 +400,13 @@ test("two delegations in one workspace warn about clobbering each other", async 
           exitCode: 0,
           threadId: "thread-1",
           result: "done",
-          finalMessageAvailable: true,
           warnings: [],
           filesReportedByEditTools: [],
         };
       },
     }
   );
-  // Let the first delegation reach the registry before the second asks for a slot.
+  // Let the first delegation reach the registry before the second starts.
   await new Promise((resolve) => setImmediate(resolve));
 
   const second = await executeDelegate(

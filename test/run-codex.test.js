@@ -83,7 +83,6 @@ test("runCodexProcess parses thread id and requires final file", async () => {
 
   assert.equal(result.status, "completed");
   assert.equal(result.threadId, "tid-1");
-  assert.equal(result.finalMessageAvailable, true);
   assert.equal(result.result, "hello from codex");
   assert.ok(progress.includes("thread started: tid-1"));
 });
@@ -488,7 +487,7 @@ test("a red suite on a completed turn is not raised as a warning", async () => {
 });
 
 test("an unsuccessful run never promotes streamed narration to result", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "cdm-salvage-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-narration-"));
   const resultFile = path.join(dir, "last.txt");
 
   const result = await runCodexProcess({
@@ -516,10 +515,38 @@ test("an unsuccessful run never promotes streamed narration to result", async ()
   // Narration is a mid-turn breadcrumb, never an answer. Resume reads the real
   // session history; a half-truth in `result` is progress mistaken for outcome.
   assert.equal(result.status, "failed");
-  assert.equal(result.finalMessageAvailable, false);
   assert.equal(result.result, "");
   assert.equal("resultSource" in result, false);
   assert.equal(result.threadId, "tid-s");
+});
+
+test("the run result carries no internal-only fields", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-shape-"));
+  const resultFile = path.join(dir, "last.txt");
+
+  const result = await runCodexProcess({
+    command: "codex",
+    args: ["exec"],
+    cwd: dir,
+    resultFile,
+    spawnImpl: () =>
+      fakeChild({
+        lines: [JSON.stringify({ type: "thread.started", thread_id: "tid-shape" })],
+        writeResult: () => writeFile(resultFile, "ok", "utf8"),
+      }),
+    platform: "linux",
+    heartbeatMs: 0,
+    timeoutMs: 5000,
+  });
+
+  assert.equal(result.status, "completed");
+  // These stayed in the return long after their last production reader went
+  // away: agentError and stderr live on in warnings, finalMessageAvailable in
+  // the status itself. A field kept alive only for tests is still a field every
+  // reader has to rule out.
+  for (const key of ["agentError", "stderrBytes", "stderrTail", "finalMessageAvailable"]) {
+    assert.equal(key in result, false, `${key} must not be returned`);
+  }
 });
 
 test("an authoritative final file wins over streamed narration", async () => {
@@ -578,13 +605,12 @@ test("a completed process with a missing final file fails with result-unavailabl
     timeoutMs: 5000,
   });
 
-  // Exit 0 with no file is the CLI failing its output contract, not a success
-  // to be salvaged. Completed must mean the authoritative file was read.
+  // Exit 0 with no file is the CLI failing its output contract.
+  // Completed must mean the authoritative file was read.
   assert.equal(result.status, "failed");
   assert.equal(result.reason, "result-unavailable");
   assert.equal(result.result, "");
   assert.equal("resultSource" in result, false);
-  assert.equal(result.finalMessageAvailable, false);
   assert.equal(result.threadId, "tid-missing");
 });
 
@@ -613,7 +639,6 @@ test("a present but empty final file is a completed result", async () => {
   // The file is authoritative and emptiness is an answer, not a failure.
   assert.equal(result.status, "completed");
   assert.equal(result.reason, undefined);
-  assert.equal(result.finalMessageAvailable, true);
   assert.equal(result.result, "");
 });
 
@@ -748,7 +773,6 @@ test("runCodexProcess surfaces the reason from a turn.failed event", async () =>
   });
 
   assert.equal(result.status, "failed");
-  assert.equal(result.agentError, "model rejected the request");
   assert.ok(result.warnings.some((w) => w === "Codex error: model rejected the request"));
 });
 
@@ -776,7 +800,6 @@ test("runCodexProcess non-zero exit yields failed without final message", async 
 
   assert.equal(result.status, "failed");
   assert.equal(result.exitCode, 2);
-  assert.equal(result.finalMessageAvailable, false);
   assert.equal(result.result, "");
   // status and exitCode already say this; a warning repeating them is noise.
   assert.deepEqual(result.warnings, []);
@@ -820,7 +843,6 @@ test("runCodexProcess turn.failed yields failed status", async () => {
   });
 
   assert.equal(result.status, "failed");
-  assert.equal(result.finalMessageAvailable, false);
   assert.ok(progress.includes("turn failed"));
 });
 
@@ -864,7 +886,7 @@ test("runCodexProcess abort signal marks interrupted and cancelled", async () =>
 
   assert.equal(result.status, "interrupted");
   assert.equal(result.reason, "cancelled");
-  assert.equal(result.finalMessageAvailable, false);
+  assert.equal(result.result, "");
 });
 
 test("runCodexProcess does not spawn for a pre-aborted signal", async () => {
@@ -889,10 +911,7 @@ test("runCodexProcess does not spawn for a pre-aborted signal", async () => {
   assert.equal(spawnCalls, 0);
   assert.equal(result.status, "interrupted");
   assert.equal(result.reason, "cancelled");
-  assert.equal(result.finalMessageAvailable, false);
   assert.equal(result.result, "");
-  assert.equal(result.stderrBytes, 0);
-  assert.equal(result.stderrTail, "");
   // No process ever existed, so there is no exit code to report.
   assert.equal(result.exitCode, null);
   assert.deepEqual(result.warnings, []);
@@ -1108,11 +1127,12 @@ test("runCodexProcess appends stderr tail on failure", async () => {
   });
 
   assert.equal(result.status, "failed");
-  assert.match(result.stderrTail, /permission denied/);
   assert.ok(result.warnings.some((w) => /stderr:.*permission denied/i.test(w)));
 });
 
-test("runCodexProcess caps stderr by UTF-8 bytes", async () => {
+// The rolling tail is byte-bounded, not char-bounded: multibyte stderr stays
+// intact through the buffer and the warning that carries it.
+test("multibyte stderr survives the rolling tail", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-stderr-bytes-"));
   const resultFile = path.join(dir, "last.txt");
   const stderr = "€".repeat(30_000);
@@ -1140,7 +1160,9 @@ test("runCodexProcess caps stderr by UTF-8 bytes", async () => {
   });
 
   assert.equal(result.status, "failed");
-  assert.equal(result.stderrBytes, 64 * 1024);
+  const stderrWarning = result.warnings.find((w) => w.startsWith("stderr:"));
+  assert.ok(stderrWarning, `expected an stderr warning, got ${JSON.stringify(result.warnings)}`);
+  assert.ok(stderrWarning.includes("€€€"), "the tail must not be mangled multibyte text");
 });
 
 test("a noisy stderr keeps the failure at its end, not the padding at its front", async () => {
@@ -1173,14 +1195,15 @@ test("a noisy stderr keeps the failure at its end, not the padding at its front"
   });
 
   assert.equal(result.status, "failed");
-  assert.match(result.stderrTail, /fatal: the real reason is at the very end/);
   assert.ok(
     result.warnings.some((w) => w.includes(reason)),
     "the warning has to carry the diagnosis, not a megabyte of padding"
   );
-  // Still bounded, and still the last 2000 chars of what was kept.
-  assert.equal(result.stderrBytes, 64 * 1024);
-  assert.ok(result.stderrTail.length <= 2000);
+  // And still bounded: the last 2000 chars of what the tail kept, not the
+  // megabyte that came before them.
+  const stderrWarning = result.warnings.find((w) => w.startsWith("stderr:"));
+  assert.ok(stderrWarning, `expected an stderr warning, got ${JSON.stringify(result.warnings)}`);
+  assert.ok(stderrWarning.length <= "stderr: ".length + 2000);
 });
 
 test("runCodexProcess does not time out a silent mid-turn run", async () => {
@@ -1412,7 +1435,6 @@ test("a cancel during the drain does not discard a result the child already wrot
   assert.equal(out.status, "completed");
   assert.equal(out.reason, undefined);
   assert.equal(out.result, "DONE");
-  assert.equal(out.finalMessageAvailable, true);
 });
 
 test("teardown still reaches the group once the direct child has exited", async () => {
