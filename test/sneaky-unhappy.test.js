@@ -421,8 +421,8 @@ test("plan mode with invalid shape fails with result-unavailable", async () => {
   assert.equal(result.result, "");
 });
 
-test("a runaway plan is trimmed to a bounded number of steps", async () => {
-  const steps = Array.from({ length: 2000 }, (_, i) => ({
+test("a plan over the former step limit is returned in full", async () => {
+  const steps = Array.from({ length: 201 }, (_, i) => ({
     title: `step ${i}`,
     detail: "d".repeat(200),
   }));
@@ -445,9 +445,13 @@ test("a runaway plan is trimmed to a bounded number of steps", async () => {
     }
   );
 
-  assert.equal(result.plan.steps.length, 200);
+  // A model cannot emit a pathological plan without hitting its own output
+  // limit first; truncating the step list was a cap on content already bounded
+  // by construction.
+  assert.equal(result.status, "completed");
+  assert.equal(result.plan.steps.length, 201);
   assert.equal(result.plan.overview, "big");
-  assert.ok(result.warnings.some((w) => /2000 steps; only the first 200/.test(w)));
+  assert.equal(result.result, "big");
 });
 
 test("pre-aborted outer signal interrupts before/during run", async () => {

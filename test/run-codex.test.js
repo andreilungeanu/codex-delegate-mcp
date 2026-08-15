@@ -6,7 +6,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { Readable, Writable } from "node:stream";
 import {
-  capResultBytes,
   describeNonSuccessfulItem,
   readUsage,
   meaningfulStderr,
@@ -616,77 +615,19 @@ test("a present but empty final file is a completed result", async () => {
   assert.equal(result.result, "");
 });
 
-test("capResultBytes cuts on a codepoint boundary", () => {
-  // 3 bytes each: a cap of 7 has to stop at 6 rather than split the third.
-  const cut = capResultBytes("€€€", 7);
-  assert.equal(cut.text, "€€");
-  assert.ok(!cut.text.includes("�"));
-  assert.match(cut.warnings[0], /9 bytes, truncated to the 7 byte cap/);
-  assert.deepEqual(capResultBytes("€€€", 9), { text: "€€€", warnings: [] });
-});
-
-test("an oversized final result file is truncated rather than discarded", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "cdm-file-cap-"));
+test("a final result file above the former 10 MiB cap is returned verbatim", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-file-nocap-"));
   const file = path.join(dir, "out.txt");
-  await writeFile(file, "y".repeat(5000), "utf8");
+  // Just over the former 10 MiB ceiling: model output is bounded by the model's
+  // own token limit, so there is nothing left for a byte cap to guard against.
+  const text = "y".repeat(10 * 1024 * 1024 + 1024);
+  await writeFile(file, text, "utf8");
 
-  const out = await readFinalResult({
-    filePath: file,
-    status: "completed",
-    exitCode: 0,
-    maxResultBytes: 100,
-  });
+  const out = await readFinalResult({ filePath: file, status: "completed", exitCode: 0 });
 
   assert.equal(out.finalMessageAvailable, true);
-  assert.equal(out.result, "y".repeat(100));
-  assert.match(out.warnings[0], /5000 bytes, truncated to the 100 byte cap/);
-});
-
-test("a capped final result file does not split a UTF-8 codepoint", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "cdm-file-utf8-"));
-  const file = path.join(dir, "out.txt");
-  await writeFile(file, "€€€", "utf8");
-
-  const out = await readFinalResult({
-    filePath: file,
-    status: "completed",
-    exitCode: 0,
-    maxResultBytes: 7,
-  });
-
-  assert.equal(out.result, "€€");
-  assert.ok(!out.result.includes("�"));
-  assert.match(out.warnings[0], /9 bytes, truncated to the 7 byte cap/);
-});
-
-test("an oversized final result file is read only through its UTF-8 boundary", async () => {
-  let requestedBytes = 0;
-  let closed = false;
-  const file = {
-    stat: async () => ({ size: 1_000_000 }),
-    read: async (buffer, offset, length) => {
-      requestedBytes += length;
-      buffer.fill("z", offset, offset + length);
-      return { bytesRead: length };
-    },
-    close: async () => {
-      closed = true;
-    },
-  };
-
-  const out = await readFinalResult({
-    filePath: "virtual-result.txt",
-    status: "completed",
-    exitCode: 0,
-    maxResultBytes: 100,
-    openFileImpl: async () => file,
-  });
-
-  assert.equal(out.finalMessageAvailable, true);
-  assert.equal(out.result, "z".repeat(100));
-  assert.ok(requestedBytes <= 104, `read requested ${requestedBytes} bytes`);
-  assert.equal(closed, true);
-  assert.match(out.warnings[0], /1000000 bytes, truncated to the 100 byte cap/);
+  assert.equal(out.result, text);
+  assert.deepEqual(out.warnings, []);
 });
 
 test("readUsage keeps only the counts Codex actually reported", () => {
@@ -1028,9 +969,10 @@ test("runCodexProcess collects file_change paths", async () => {
   assert.deepEqual(result.filesReportedByEditTools.sort(), [absA, absB].sort());
 });
 
-test("an absurd thread id is refused rather than echoed back", async () => {
+test("a thread id over the former limit is preserved exactly", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-tid-"));
   const resultFile = path.join(dir, "last.txt");
+  const longId = "x".repeat(201);
   const seen = [];
 
   const result = await runCodexProcess({
@@ -1042,7 +984,7 @@ test("an absurd thread id is refused rather than echoed back", async () => {
     spawnImpl: () =>
       fakeChild({
         lines: [
-          JSON.stringify({ type: "thread.started", thread_id: "x".repeat(50_000) }),
+          JSON.stringify({ type: "thread.started", thread_id: longId }),
           JSON.stringify({ type: "turn.completed", usage: {} }),
         ],
         writeResult: () => writeFile(resultFile, "ok", "utf8"),
@@ -1052,22 +994,20 @@ test("an absurd thread id is refused rather than echoed back", async () => {
     timeoutMs: 5000,
   });
 
+  // The id is child-authored; echoing it verbatim is the only behavior that
+  // keeps resume and cancel working. A length cap was a guard against content
+  // a model or CLI had already bounded.
   assert.equal(result.status, "completed");
-  assert.equal(result.threadId, null);
-  assert.deepEqual(seen, []);
-  assert.ok(
-    result.warnings.some((w) => /50000-character thread id/.test(w) && /cannot be resumed/.test(w)),
-    `expected a dropped-thread-id warning, got ${JSON.stringify(result.warnings)}`
-  );
+  assert.equal(result.threadId, longId);
+  assert.deepEqual(seen, [longId]);
+  assert.deepEqual(result.warnings, []);
 });
 
-test("the edited-file list is bounded and says so", async () => {
+test("every unique edited path is reported, past the former limit", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-manyfiles-"));
   const resultFile = path.join(dir, "last.txt");
-  const changes = Array.from({ length: 3000 }, (_, i) => ({
-    path: path.join(dir, `f${i}.ts`),
-    kind: "update",
-  }));
+  const paths = Array.from({ length: 501 }, (_, i) => path.join(dir, `f${i}.ts`));
+  const changes = paths.map((p) => ({ path: p, kind: "update" }));
 
   const result = await runCodexProcess({
     command: "codex",
@@ -1087,16 +1027,17 @@ test("the edited-file list is bounded and says so", async () => {
     timeoutMs: 5000,
   });
 
-  assert.equal(result.filesReportedByEditTools.length, 500);
-  assert.ok(
-    result.warnings.some((w) => /more than 500 edited files.+missing from it/.test(w)),
-    `expected a truncated-file-list warning, got ${JSON.stringify(result.warnings)}`
+  assert.equal(result.filesReportedByEditTools.length, 501);
+  assert.deepEqual(
+    result.filesReportedByEditTools.slice().sort(),
+    paths.slice().sort()
   );
+  assert.deepEqual(result.warnings, []);
 });
 
-// Codex announces a file_change twice, and the same over-cap path arriving in both
-// events used to be counted as two separate casualties.
-test("paths past the cap are reported as omitted once, not once per announcement", async () => {
+// Codex announces a file_change twice; the deduplication Set keeps each path
+// once, and with the count cap gone there is no second behavior to check.
+test("a path announced in both events is still reported exactly once", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-cap-"));
   const resultFile = path.join(dir, "last.txt");
   const item = {
@@ -1114,21 +1055,15 @@ test("paths past the cap are reported as omitted once, not once per announcement
         lines: [
           JSON.stringify({ type: "item.started", item }),
           JSON.stringify({ type: "item.completed", item }),
-          JSON.stringify({ type: "turn.completed" }),
+          JSON.stringify({ type: "turn.completed", usage: {} }),
         ],
-        writeResult: () => writeFile(resultFile, "ok"),
+        writeResult: () => writeFile(resultFile, "ok", "utf8"),
       }),
     platform: "linux",
     heartbeatMs: 0,
   });
 
-  assert.equal(out.filesReportedByEditTools.length, 500);
-  const warning = out.warnings.find((w) => w.includes("edited files"));
-  assert.ok(warning, "the cap must still be reported");
-  assert.ok(
-    !/\b2 are missing\b/.test(warning),
-    `the same over-cap path was counted twice: ${warning}`
-  );
+  assert.equal(out.filesReportedByEditTools.length, 501);
 });
 
 test("runCodexProcess appends stderr tail on failure", async () => {

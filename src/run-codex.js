@@ -1,26 +1,13 @@
 import process from "node:process";
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
-import { open as openFile, unlink } from "node:fs/promises";
+import { readFile, unlink } from "node:fs/promises";
 import { isChildAlive, treeKill } from "./proc.js";
 import { pathsFromFileChangeItem } from "./edit-tool-files.js";
 
-/**
- * Deliberately generous. This is the ceiling that stops a runaway process, not a
- * budget for the caller's context: an answer is worth more delivered whole than
- * cut to fit a window, and the windows keep getting bigger.
- */
-const DEFAULT_MAX_RESULT_BYTES = 10 * 1024 * 1024;
 const DEFAULT_STDERR_BYTES = 64 * 1024;
 const STDERR_TAIL_CHARS = 2000;
 const DRAIN_MS = 2000;
-/**
- * Both of these are chosen by the child process and echoed back verbatim, so both
- * need a ceiling. A real thread id is a 36-character uuid; a run that edits more
- * files than this has a git diff worth reading instead of a list worth shipping.
- */
-const MAX_THREAD_ID_CHARS = 200;
-const MAX_REPORTED_PATHS = 500;
 /** Spawn to first JSONL event. Silence here does mean a wedged launcher. */
 export const DEFAULT_STARTUP_MS = 60_000;
 export const DEFAULT_HEARTBEAT_MS = 30_000;
@@ -47,7 +34,6 @@ export const DEFAULT_HARD_CAP_MS = 3_600_000;
  *   heartbeatMs?: number,
  *   killDeadlineMs?: number,
  *   drainMs?: number,
- *   maxResultBytes?: number,
  *   spawnImpl?: any,
  *   treeKillImpl?: any,
  *   platform?: string,
@@ -68,7 +54,6 @@ export async function runCodexProcess({
   heartbeatMs = DEFAULT_HEARTBEAT_MS,
   killDeadlineMs = DEFAULT_KILL_DEADLINE_MS,
   drainMs = DRAIN_MS,
-  maxResultBytes = DEFAULT_MAX_RESULT_BYTES,
   spawnImpl = spawn,
   treeKillImpl = treeKill,
   platform = process.platform,
@@ -318,7 +303,6 @@ export async function runCodexProcess({
     filePath: resultFile,
     status: outcome.status,
     exitCode,
-    maxResultBytes,
   });
 
   const resultUnavailable = outcome.status === "completed" && !final.finalMessageAvailable;
@@ -336,8 +320,6 @@ export async function runCodexProcess({
     timeoutReason,
     startupMs,
     hardCapMs,
-    unusableThreadIdChars: events.unusableThreadIdChars,
-    pathsTruncated: events.pathsTruncated,
     nonSuccessfulItems: events.nonSuccessfulItems,
     killEscaped,
     killDeadlineMs,
@@ -376,8 +358,6 @@ function createEventReducer({ emit, onThreadId }) {
     usage: null,
     nonSuccessfulItems: [],
     reportedPaths: new Set(),
-    pathsTruncated: false,
-    unusableThreadIdChars: 0,
     lastCommand: null,
   };
 
@@ -402,12 +382,6 @@ function createEventReducer({ emit, onThreadId }) {
   const reduce = (event) => {
     if (event?.type === "thread.started" && event.thread_id) {
       const id = String(event.thread_id);
-      // Truncating would produce a plausible id that resumes nothing and matches
-      // no cancel; refusing it loses the same run and says so.
-      if (id.length > MAX_THREAD_ID_CHARS) {
-        state.unusableThreadIdChars = id.length;
-        return;
-      }
       state.threadId = id;
       try {
         onThreadId?.(state.threadId);
@@ -455,16 +429,9 @@ function createEventReducer({ emit, onThreadId }) {
           state.lastCommand = null;
         }
       } else if (item.type === "file_change") {
-        // Collected from both events: either one alone may carry the full list.
+        // Collected from both events: either one alone may carry the full list,
+        // and Codex announces each item twice, so the Set keeps each path once.
         for (const p of pathsFromFileChangeItem(item)) {
-          if (state.reportedPaths.has(p)) continue;
-          if (state.reportedPaths.size >= MAX_REPORTED_PATHS) {
-            // A flag, not a tally. Codex announces the same item twice, so counting
-            // each over-cap path as it arrives reported one omission per
-            // announcement; remembering them to count once would defeat the cap.
-            state.pathsTruncated = true;
-            continue;
-          }
           state.reportedPaths.add(p);
         }
         if (started) {
@@ -543,8 +510,6 @@ function buildRunWarnings({
   timeoutReason,
   startupMs,
   hardCapMs,
-  unusableThreadIdChars,
-  pathsTruncated,
   nonSuccessfulItems,
   killEscaped,
   killDeadlineMs,
@@ -562,16 +527,6 @@ function buildRunWarnings({
     );
   } else if (timedOut && timeoutReason === "hard-cap") {
     warnings.push(`Hard-cap timeout after ${hardCapMs}ms. Raise timeoutMs for longer tasks.`);
-  }
-  if (unusableThreadIdChars) {
-    warnings.push(
-      `Codex reported a ${unusableThreadIdChars}-character thread id, past the ${MAX_THREAD_ID_CHARS} character limit; it was dropped, so this run cannot be resumed.`
-    );
-  }
-  if (pathsTruncated) {
-    warnings.push(
-      `Codex reported more than ${MAX_REPORTED_PATHS} edited files; the list stops there and the rest are missing from it. Read the git diff for the full set.`
-    );
   }
   // Only on a run that broke. Routing around a failed command is the agent doing its
   // job, and it reports the ones it cannot route around; surfacing every discarded
@@ -598,57 +553,6 @@ function buildRunWarnings({
     warnings.push(`stderr: ${stderrTail.trim()}`);
   }
   return warnings;
-}
-
-/**
- * Trim to a UTF-8 byte budget, backing off to a codepoint boundary so the cut
- * cannot emit a replacement character. Discarding an oversized result would throw
- * the answer away to punish its length; the front of it plus a warning tells the
- * caller both what was said and that it was cut.
- */
-export function capResultBytes(text, maxResultBytes) {
-  const value = String(text ?? "");
-  const bytes = Buffer.byteLength(value, "utf8");
-  if (!(maxResultBytes > 0) || bytes <= maxResultBytes) return { text: value, warnings: [] };
-  const buffer = Buffer.from(value, "utf8");
-  let end = maxResultBytes;
-  while (end > 0 && (buffer[end] & 0xc0) === 0x80) end -= 1;
-  return {
-    text: buffer.subarray(0, end).toString("utf8"),
-    warnings: [`Result was ${bytes} bytes, truncated to the ${maxResultBytes} byte cap.`],
-  };
-}
-
-async function readCappedFile(filePath, maxResultBytes, openFileImpl) {
-  const file = await openFileImpl(filePath, "r");
-  try {
-    if (!(Number.isSafeInteger(maxResultBytes) && maxResultBytes > 0)) {
-      return capResultBytes(await file.readFile({ encoding: "utf8" }), maxResultBytes);
-    }
-
-    const stats = await file.stat();
-    const fileBytes = Number.isFinite(stats?.size) && stats.size >= 0 ? stats.size : 0;
-    // Four look-ahead bytes are enough to finish any UTF-8 codepoint that crosses
-    // the cap, without allowing the read itself to grow with an oversized file.
-    const readLimit = Math.min(maxResultBytes + 4, fileBytes);
-    const buffer = Buffer.alloc(readLimit);
-    let bytesRead = 0;
-    while (bytesRead < readLimit) {
-      const chunk = await file.read(buffer, bytesRead, readLimit - bytesRead, bytesRead);
-      if (!(chunk.bytesRead > 0)) break;
-      bytesRead += chunk.bytesRead;
-    }
-
-    const capped = capResultBytes(buffer.subarray(0, bytesRead).toString("utf8"), maxResultBytes);
-    if (fileBytes > maxResultBytes) {
-      capped.warnings = [
-        `Result was ${fileBytes} bytes, truncated to the ${maxResultBytes} byte cap.`,
-      ];
-    }
-    return capped;
-  } finally {
-    await file.close();
-  }
 }
 
 /**
@@ -730,21 +634,17 @@ export function readAgentError(source, maxChars = 600) {
 }
 
 /**
+ * The final-message file is written by the model and read whole: its size is
+ * bounded by the model's own output limit, and a partial read would be a partial
+ * answer — the exact thing this contract refuses to produce.
+ *
  * @param {{
  *   filePath?: string,
  *   status?: string,
  *   exitCode?: number | null,
- *   maxResultBytes?: number,
- *   openFileImpl?: typeof openFile,
  * }} [options]
  */
-export async function readFinalResult({
-  filePath,
-  status,
-  exitCode,
-  maxResultBytes = DEFAULT_MAX_RESULT_BYTES,
-  openFileImpl = openFile,
-} = {}) {
+export async function readFinalResult({ filePath, status, exitCode } = {}) {
   if (status !== "completed" || exitCode !== 0) {
     return {
       result: "",
@@ -753,8 +653,7 @@ export async function readFinalResult({
     };
   }
   try {
-    const capped = await readCappedFile(filePath, maxResultBytes, openFileImpl);
-    return { result: capped.text, finalMessageAvailable: true, warnings: capped.warnings };
+    return { result: await readFile(filePath, "utf8"), finalMessageAvailable: true, warnings: [] };
   } catch {
     // The run layer reports this as reason "result-unavailable"; a warning
     // repeating the reason is noise.

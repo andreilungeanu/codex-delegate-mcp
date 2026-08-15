@@ -14,8 +14,6 @@ import { normalizeEditToolFiles } from "./edit-tool-files.js";
 import { createOperationRegistry } from "./ops.js";
 import { preflightReviewTarget } from "./git-preflight.js";
 
-const MAX_PLAN_STEPS = 200;
-
 export async function executeDelegate(rawArgs, options = {}) {
   const {
     cwd = process.cwd(),
@@ -134,17 +132,7 @@ export async function executeDelegate(rawArgs, options = {}) {
       parsed = JSON.parse(result);
     } catch {}
     if (parsed && isValidPlanShape(parsed)) {
-      if (parsed.steps.length > MAX_PLAN_STEPS) {
-        // The step list is model-authored and unbounded; a 2000-step plan is a
-        // malfunction, and shipping all of it costs the caller more than the tail
-        // of it is worth.
-        plan = { ...parsed, steps: parsed.steps.slice(0, MAX_PLAN_STEPS) };
-        warnings.push(
-          `Plan had ${parsed.steps.length} steps; only the first ${MAX_PLAN_STEPS} are returned.`
-        );
-      } else {
-        plan = parsed;
-      }
+      plan = parsed;
       planResult = parsed.overview;
     } else {
       status = "failed";
