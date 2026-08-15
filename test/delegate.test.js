@@ -381,6 +381,30 @@ test("the delegation id is announced before the run and returned with it", async
   assert.equal(progress[0], `delegation id: ${result.delegationId}`);
 });
 
+test("an onProgress throwing on the announce still releases the lease", async () => {
+  const registry = createOperationRegistry();
+  // The server's sink cannot throw; a library caller's can. The delegate fails
+  // either way — what matters is that the record is gone, so a later cancel
+  // settles instead of waiting on a run that will never start.
+  await assert.rejects(
+    () =>
+      executeDelegate(
+        { spec: "x", mode: "ask", workspace: process.cwd() },
+        {
+          ...delegateOptions("thread-1"),
+          operationRegistry: registry,
+          onProgress: () => {
+            throw new Error("progress sink broke");
+          },
+        }
+      ),
+    /progress sink broke/
+  );
+
+  const cancel = await registry.cancel({ cause: "user" });
+  assert.equal(cancel.status, "nothing-active");
+});
+
 test("two delegations in one workspace warn about clobbering each other", async () => {
   const registry = createOperationRegistry();
   const options = { ...delegateOptions("thread-1"), operationRegistry: registry };

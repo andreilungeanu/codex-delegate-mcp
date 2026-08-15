@@ -87,10 +87,13 @@ export async function executeDelegate(rawArgs, options = {}) {
     // Announced before the spawn, and before Codex has a thread id to announce:
     // this is the only handle a caller has for cancelling a run that wedges during
     // startup, and it arrives too late to be useful if it waits for the result.
+    // Inside the try on purpose: the server's progress sink never throws, a
+    // library caller's can, and a throw before this block skipped the release —
+    // leaving a record whose cancel waits on `settled` forever.
     delegationId = lease.delegationId;
-    onProgress?.(`delegation id: ${lease.delegationId}`);
 
     try {
+      onProgress?.(`delegation id: ${lease.delegationId}`);
       processResult = await runProcess({
         command: codex.command,
         args: built.args,
