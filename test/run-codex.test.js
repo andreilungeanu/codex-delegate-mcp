@@ -206,7 +206,7 @@ test("a kill that never reaps the tree still settles the delegation", async () =
   assert.ok(result.warnings.some((w) => /did not exit within 40ms/.test(w)));
 });
 
-test("a kill deadline that fires still reports a numeric exit code", async () => {
+test("a kill deadline that fires settles without inventing an exit code", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-killcode-"));
   const resultFile = path.join(dir, "last.txt");
   const edited = path.join(dir, "important.ts");
@@ -252,8 +252,10 @@ test("a kill deadline that fires still reports a numeric exit code", async () =>
 
   assert.equal(result.status, "interrupted");
   assert.equal(result.reason, "hard-cap");
-  // null here fails the delegate output schema, which discards the whole payload.
-  assert.equal(result.exitCode, 1);
+  // The tree never reported a code. An exit code the process never produced is
+  // omitted, not synthesized — the delegate layer drops non-integers, and the
+  // reason already says what happened.
+  assert.equal(result.exitCode, null);
   // The diagnostics that ride along are the reason this matters.
   assert.equal(result.threadId, "thr_immortal");
   assert.deepEqual(result.filesReportedByEditTools, [edited]);
@@ -891,6 +893,8 @@ test("runCodexProcess does not spawn for a pre-aborted signal", async () => {
   assert.equal(result.result, "");
   assert.equal(result.stderrBytes, 0);
   assert.equal(result.stderrTail, "");
+  // No process ever existed, so there is no exit code to report.
+  assert.equal(result.exitCode, null);
   assert.deepEqual(result.warnings, []);
 });
 

@@ -86,7 +86,7 @@ export async function runCodexProcess({
   const interruptedBeforeSpawn = () => ({
     status: "interrupted",
     reason: "cancelled",
-    exitCode: 1,
+    exitCode: null,
     threadId: null,
     result: "",
     finalMessageAvailable: false,
@@ -258,10 +258,10 @@ export async function runCodexProcess({
     if (heartbeatMs > 0) heartbeatTimer = setInterval(heartbeat, heartbeatMs);
 
     // Every settle path lands here, and two of them carry no code: a death by
-    // signal, and the kill deadline giving up on a tree that refuses to die. A
-    // null here fails output validation and takes the whole result with it —
-    // thread id, edited files, warnings — precisely when the run went wrong.
-    exitCode = (await exited) ?? 1;
+    // signal, and the kill deadline giving up on a tree that refuses to die.
+    // An unknown code stays unknown — the delegate layer omits it, and the
+    // status/reason carry the truthful explanation.
+    exitCode = await exited;
     // Read once, here, rather than after the drain below: `interrupted` discards the
     // final-message file, so a cancel landing in the drain window would throw away an
     // answer the child had already finished writing. A cancel that caused this exit

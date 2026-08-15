@@ -219,6 +219,9 @@ test("an unknowable exit code does not cost the caller the whole result", async 
   assert.equal(payload.threadId, "thr_immortal");
   assert.deepEqual(payload.filesReportedByEditTools, ["important.ts"]);
   assert.equal(payload.warnings.length, 1);
+  // The process never reported a code; the payload omits it rather than
+  // synthesizing one.
+  assert.equal(payload.exitCode, undefined);
 });
 
 test("the output shape accepts result-unavailable and rejects an unknown reason", () => {
