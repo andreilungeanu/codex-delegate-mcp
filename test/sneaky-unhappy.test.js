@@ -386,7 +386,7 @@ test("an orphan holding stdout does not wedge the single-slot registry", async (
   assert.equal(registry.snapshot().active, false);
 });
 
-test("plan mode accepts JSON but warns when schema shape is wrong", async () => {
+test("plan mode with invalid shape fails with result-unavailable", async () => {
   const result = await executeDelegate(
     { spec: "plan", mode: "plan", workspace: process.cwd() },
     {
@@ -415,8 +415,10 @@ test("plan mode accepts JSON but warns when schema shape is wrong", async () => 
       },
     }
   );
+  assert.equal(result.status, "failed");
+  assert.equal(result.reason, "result-unavailable");
   assert.equal(result.plan, undefined);
-  assert.ok(result.warnings.some((w) => /plan/i.test(w) && /schema|shape|invalid/i.test(w)));
+  assert.equal(result.result, "");
 });
 
 test("a runaway plan is trimmed to a bounded number of steps", async () => {

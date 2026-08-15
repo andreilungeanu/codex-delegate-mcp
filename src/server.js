@@ -41,7 +41,6 @@ const reviewTargetSchema = z.discriminatedUnion("kind", [
 // skills/delegate/reference.md.
 export const delegateOutputShape = {
   result: z.string(),
-  resultSource: z.literal("stream-fallback").optional(),
   status: z.enum(["completed", "failed", "interrupted"]),
   reason: z
     .enum([
@@ -51,6 +50,7 @@ export const delegateOutputShape = {
       "agent-error",
       "died-mid-turn",
       "exit-nonzero",
+      "result-unavailable",
     ])
     .optional(),
   threadId: z.string().optional(),

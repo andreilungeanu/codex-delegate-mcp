@@ -47,10 +47,9 @@ A successful result contains these fields. Optional fields are omitted when they
 
 | Field | Type | Meaning |
 |---|---|---|
-| `result` | string | The final Codex message. For a valid plan, this is the plan overview rather than a second copy of the plan JSON. |
-| `resultSource` | `"stream-fallback"` | Present only when the final message file was unavailable and streamed agent narration was used. |
-| `status` | `"completed"` \| `"failed"` \| `"interrupted"` | Final run status. |
-| `reason` | `"cancelled"` \| `"startup-timeout"` \| `"hard-cap"` \| `"agent-error"` \| `"died-mid-turn"` \| `"exit-nonzero"` | Present for an applicable non-completed result. |
+| `result` | string | The authoritative final Codex message, present whole on `completed` only; every other status returns an empty string rather than a partial or streamed substitute. For a valid plan, this is the plan overview rather than a second copy of the plan JSON. |
+| `status` | `"completed"` \| `"failed"` \| `"interrupted"` | Final run status. `completed` guarantees the final-message file was read. |
+| `reason` | `"cancelled"` \| `"startup-timeout"` \| `"hard-cap"` \| `"agent-error"` \| `"died-mid-turn"` \| `"exit-nonzero"` \| `"result-unavailable"` | Present for an applicable non-completed result. `result-unavailable` means an otherwise finished run produced no readable final message — or, in plan mode, a final message that was not a valid plan. |
 | `threadId` | string | Codex thread ID, when reported. |
 | `delegationId` | string | Server-created ID for this delegation. It is announced in progress before the process starts and is returned for every result. |
 | `resumed` | boolean | Present when a resume was requested; true only when Codex reported the requested thread ID. |

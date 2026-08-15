@@ -42,7 +42,7 @@ test("readFinalResult accepts file only on completed exit 0", async () => {
   assert.equal(bad.result, "");
 });
 
-test("readFinalResult reports missing file on completed exit 0", async () => {
+test("readFinalResult treats a missing file as unavailable, with no extra warning", async () => {
   const missing = path.join(tmpdir(), "cdm-missing-no-such-file.txt");
   const out = await readFinalResult({
     filePath: missing,
@@ -51,7 +51,9 @@ test("readFinalResult reports missing file on completed exit 0", async () => {
   });
   assert.equal(out.finalMessageAvailable, false);
   assert.equal(out.result, "");
-  assert.match(out.warnings[0], /missing or unreadable/);
+  // The run layer reports this as reason "result-unavailable"; a warning
+  // repeating the reason is noise.
+  assert.deepEqual(out.warnings, []);
 });
 
 test("runCodexProcess parses thread id and requires final file", async () => {
@@ -484,7 +486,7 @@ test("a red suite on a completed turn is not raised as a warning", async () => {
   );
 });
 
-test("an interrupted run salvages the last streamed message as a caveat", async () => {
+test("an unsuccessful run never promotes streamed narration to result", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-salvage-"));
   const resultFile = path.join(dir, "last.txt");
 
@@ -510,10 +512,13 @@ test("an interrupted run salvages the last streamed message as a caveat", async 
     timeoutMs: 5000,
   });
 
+  // Narration is a mid-turn breadcrumb, never an answer. Resume reads the real
+  // session history; a half-truth in `result` is progress mistaken for outcome.
   assert.equal(result.status, "failed");
   assert.equal(result.finalMessageAvailable, false);
-  assert.equal(result.result, "Halfway through the refactor.");
-  assert.equal(result.resultSource, "stream-fallback");
+  assert.equal(result.result, "");
+  assert.equal("resultSource" in result, false);
+  assert.equal(result.threadId, "tid-s");
 });
 
 test("an authoritative final file wins over streamed narration", async () => {
@@ -543,10 +548,10 @@ test("an authoritative final file wins over streamed narration", async () => {
   });
 
   assert.equal(result.result, "FINAL ANSWER");
-  assert.equal(result.resultSource, undefined);
+  assert.equal("resultSource" in result, false);
 });
 
-test("a completed run salvages streamed narration when the final file is missing", async () => {
+test("a completed process with a missing final file fails with result-unavailable", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-completed-fallback-"));
   const resultFile = path.join(dir, "last.txt");
 
@@ -558,6 +563,7 @@ test("a completed run salvages streamed narration when the final file is missing
     spawnImpl: () =>
       fakeChild({
         lines: [
+          JSON.stringify({ type: "thread.started", thread_id: "tid-missing" }),
           JSON.stringify({ type: "turn.started" }),
           JSON.stringify({
             type: "item.completed",
@@ -571,17 +577,19 @@ test("a completed run salvages streamed narration when the final file is missing
     timeoutMs: 5000,
   });
 
-  assert.equal(result.status, "completed");
+  // Exit 0 with no file is the CLI failing its output contract, not a success
+  // to be salvaged. Completed must mean the authoritative file was read.
+  assert.equal(result.status, "failed");
+  assert.equal(result.reason, "result-unavailable");
+  assert.equal(result.result, "");
+  assert.equal("resultSource" in result, false);
   assert.equal(result.finalMessageAvailable, false);
-  assert.equal(result.result, "the only available answer");
-  assert.equal(result.resultSource, "stream-fallback");
-  assert.ok(result.warnings.some((warning) => /Final result file missing/.test(warning)));
+  assert.equal(result.threadId, "tid-missing");
 });
 
-test("an oversized stream fallback is truncated, not shipped whole", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "cdm-fallback-cap-"));
+test("a present but empty final file is a completed result", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-empty-final-"));
   const resultFile = path.join(dir, "last.txt");
-  const huge = "z".repeat(200_000);
 
   const result = await runCodexProcess({
     command: "codex",
@@ -591,29 +599,21 @@ test("an oversized stream fallback is truncated, not shipped whole", async () =>
     spawnImpl: () =>
       fakeChild({
         lines: [
-          JSON.stringify({ type: "thread.started", thread_id: "t-huge" }),
-          JSON.stringify({ type: "turn.started" }),
-          JSON.stringify({
-            type: "item.completed",
-            item: { type: "agent_message", text: huge },
-          }),
+          JSON.stringify({ type: "thread.started", thread_id: "tid-empty" }),
+          JSON.stringify({ type: "turn.completed", usage: {} }),
         ],
-        // No final file, so the stream fallback stands in — the path that used to
-        // hand back 64 MB verbatim under status "completed".
-        exitCode: 1,
+        writeResult: () => writeFile(resultFile, "", "utf8"),
       }),
     platform: "linux",
     heartbeatMs: 0,
     timeoutMs: 5000,
-    maxResultBytes: 1000,
   });
 
-  assert.equal(result.resultSource, "stream-fallback");
-  assert.equal(Buffer.byteLength(result.result, "utf8"), 1000);
-  assert.ok(
-    result.warnings.some((w) => /200000 bytes, truncated to the 1000 byte cap/.test(w)),
-    `expected a truncation warning, got ${JSON.stringify(result.warnings)}`
-  );
+  // The file is authoritative and emptiness is an answer, not a failure.
+  assert.equal(result.status, "completed");
+  assert.equal(result.reason, undefined);
+  assert.equal(result.finalMessageAvailable, true);
+  assert.equal(result.result, "");
 });
 
 test("capResultBytes cuts on a codepoint boundary", () => {

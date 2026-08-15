@@ -119,30 +119,37 @@ export async function executeDelegate(rawArgs, options = {}) {
   warnings.push(...(processResult.warnings || []));
 
   let plan;
-  // In plan mode the final message IS the plan JSON, so returning it verbatim in
-  // `result` ships the same payload twice. Once it parses, `plan` carries the
-  // structure and `result` keeps only the overview.
   let planResult;
-  if (request.mode === "plan" && processResult.finalMessageAvailable) {
+  let status = processResult.status;
+  let reason = processResult.reason;
+  let result = processResult.result;
+  if (request.mode === "plan" && status === "completed") {
+    // Plan mode promised structured output: the final message IS the plan JSON,
+    // so returning it verbatim in `result` would ship the same payload twice.
+    // Once it parses, `plan` carries the structure and `result` keeps only the
+    // overview. Text that is not a valid plan is a failed result contract, not
+    // a completed run with a warning and raw salvage.
+    let parsed;
     try {
-      const parsed = JSON.parse(processResult.result);
-      if (!isValidPlanShape(parsed)) {
-        warnings.push("Plan mode final message JSON did not match the expected plan schema shape.");
-      } else if (parsed.steps.length > MAX_PLAN_STEPS) {
+      parsed = JSON.parse(result);
+    } catch {}
+    if (parsed && isValidPlanShape(parsed)) {
+      if (parsed.steps.length > MAX_PLAN_STEPS) {
         // The step list is model-authored and unbounded; a 2000-step plan is a
         // malfunction, and shipping all of it costs the caller more than the tail
         // of it is worth.
         plan = { ...parsed, steps: parsed.steps.slice(0, MAX_PLAN_STEPS) };
-        planResult = parsed.overview;
         warnings.push(
           `Plan had ${parsed.steps.length} steps; only the first ${MAX_PLAN_STEPS} are returned.`
         );
       } else {
         plan = parsed;
-        planResult = parsed.overview;
       }
-    } catch {
-      warnings.push("Plan mode final message was not valid JSON.");
+      planResult = parsed.overview;
+    } else {
+      status = "failed";
+      reason = "result-unavailable";
+      result = "";
     }
   }
 
@@ -155,13 +162,12 @@ export async function executeDelegate(rawArgs, options = {}) {
   // Everything below is omitted when it carries no signal: a field that is
   // present on every call teaches the caller to stop reading it.
   return {
-    result: planResult ?? processResult.result,
-    resultSource: processResult.resultSource,
-    status: processResult.status,
+    result: planResult ?? result,
+    status,
     // Every outcome that is not `completed` names its own reason, cancellation
     // included: the run reads the cancel flag on the exit that decides the outcome,
     // so there is nothing left for this layer to add.
-    reason: processResult.reason,
+    reason,
     threadId: processResult.threadId || undefined,
     delegationId,
     resumed: request.resumeThreadId ? resumed : undefined,
@@ -171,7 +177,7 @@ export async function executeDelegate(rawArgs, options = {}) {
     filesReportedByEditTools: files.length ? files : undefined,
     plan,
     warnings: warnings.length ? warnings : undefined,
-    exitCode: processResult.status === "completed" ? undefined : toExitCode(processResult.exitCode),
+    exitCode: status === "completed" ? undefined : toExitCode(processResult.exitCode),
   };
 }
 

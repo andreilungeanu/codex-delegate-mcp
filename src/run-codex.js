@@ -301,7 +301,12 @@ export async function runCodexProcess({
     child.stderr?.destroy();
   }
 
-  const { status, reason } = classifyOutcome({
+  // Classification runs before the file read, and every path that can outrank
+  // the file — cancellation, timeouts, turn failure, a non-zero exit — is decided
+  // there. Only a process that otherwise completed can be demoted by its final
+  // result: a missing or unreadable file means the CLI broke its output contract,
+  // and `completed` must never assert an answer the bridge could not read.
+  const outcome = classifyOutcome({
     interrupted,
     timedOut,
     timeoutReason,
@@ -311,34 +316,22 @@ export async function runCodexProcess({
 
   const final = await readFinalResult({
     filePath: resultFile,
-    status,
+    status: outcome.status,
     exitCode,
     maxResultBytes,
   });
 
-  // The file is authoritative and is only written on a clean exit. When it is absent
-  // the last narration line is better than nothing, including on a run that exited
-  // cleanly without ever writing one — an empty result would throw away the only
-  // account of what happened. `resultSource` and the missing-file warning are what
-  // say this is salvage rather than the final message.
-  let result = final.result;
-  let resultSource;
-  const fallbackWarnings = [];
-  if (!final.finalMessageAvailable && events.lastAgentMessage) {
-    // Capped like the file path: a run whose authoritative file is missing is the
-    // more likely one to be pathological, not the less, and this path used to
-    // hand back whatever the CLI streamed at whatever size it streamed it.
-    const capped = capResultBytes(events.lastAgentMessage, maxResultBytes);
-    result = capped.text;
-    resultSource = "stream-fallback";
-    fallbackWarnings.push(...capped.warnings);
-  }
+  const resultUnavailable = outcome.status === "completed" && !final.finalMessageAvailable;
+  const status = resultUnavailable ? "failed" : outcome.status;
+  const reason = resultUnavailable ? "result-unavailable" : outcome.reason;
+
+  const result = final.result;
 
   const stderrTail = meaningfulStderr(stderrBuffer.text()).slice(-STDERR_TAIL_CHARS);
 
   const warnings = buildRunWarnings({
     agentError: events.agentError,
-    resultWarnings: [...final.warnings, ...fallbackWarnings],
+    resultWarnings: final.warnings,
     timedOut,
     timeoutReason,
     startupMs,
@@ -362,7 +355,6 @@ export async function runCodexProcess({
     agentError: events.agentError,
     usage: events.usage,
     result,
-    resultSource,
     finalMessageAvailable: final.finalMessageAvailable,
     warnings,
     stderrBytes: stderrBuffer.bytes,
@@ -381,7 +373,6 @@ function createEventReducer({ emit, onThreadId }) {
     threadId: null,
     turnStatus: "running",
     agentError: null,
-    lastAgentMessage: null,
     usage: null,
     nonSuccessfulItems: [],
     reportedPaths: new Set(),
@@ -480,11 +471,6 @@ function createEventReducer({ emit, onThreadId }) {
           const n = Array.isArray(item.changes) ? item.changes.length : 0;
           emit(n ? `editing ${n} file(s)` : "editing files");
         }
-      } else if (item.type === "agent_message") {
-        // Narration, not the answer. Kept only to salvage something when the
-        // authoritative --output-last-message file never gets written.
-        const text = String(item.text || "").trim();
-        if (text) state.lastAgentMessage = text;
       } else if (item.type === "web_search") {
         emit("web search");
       }
@@ -770,10 +756,12 @@ export async function readFinalResult({
     const capped = await readCappedFile(filePath, maxResultBytes, openFileImpl);
     return { result: capped.text, finalMessageAvailable: true, warnings: capped.warnings };
   } catch {
+    // The run layer reports this as reason "result-unavailable"; a warning
+    // repeating the reason is noise.
     return {
       result: "",
       finalMessageAvailable: false,
-      warnings: ["Final result file missing or unreadable."],
+      warnings: [],
     };
   }
 }

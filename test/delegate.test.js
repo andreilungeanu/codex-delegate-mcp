@@ -125,7 +125,7 @@ test("executeDelegate reports a fresh run as not resumed", async () => {
   assert.equal(result.warnings, undefined);
 });
 
-test("executeDelegate plan mode warns when final message is not JSON", async () => {
+test("executeDelegate plan mode fails with result-unavailable on non-JSON", async () => {
   const registry = createOperationRegistry();
   let capturedSchema = null;
   const result = await executeDelegate(
@@ -159,12 +159,12 @@ test("executeDelegate plan mode warns when final message is not JSON", async () 
     }
   );
 
-  assert.equal(result.mode, undefined);
+  // Plan mode promised structured output; prose that cannot be parsed is a
+  // failed result contract, not a completed run with a warning.
+  assert.equal(result.status, "failed");
+  assert.equal(result.reason, "result-unavailable");
   assert.equal(result.plan, undefined);
-  assert.ok(
-    result.warnings.some((w) => /not valid JSON/i.test(w)),
-    `expected JSON warning, got ${JSON.stringify(result.warnings)}`
-  );
+  assert.equal(result.result, "");
 });
 
 test("executeDelegate plan mode parses valid plan JSON", async () => {
@@ -292,7 +292,7 @@ test("plan mode returns the plan once, with result holding only the overview", a
   }
 });
 
-test("an unparseable plan keeps the raw final message in result", async () => {
+test("an unparseable plan fails with result-unavailable and no raw text", async () => {
   const options = delegateOptions("tid-bad");
   options.runProcess = async () => ({
     status: "completed",
@@ -309,9 +309,12 @@ test("an unparseable plan keeps the raw final message in result", async () => {
     options
   );
 
+  // The raw text is not exposed either: it is not the structured plan that was
+  // promised, and half an answer is worse than an explicit absence.
+  assert.equal(result.status, "failed");
+  assert.equal(result.reason, "result-unavailable");
   assert.equal(result.plan, undefined);
-  assert.equal(result.result, "not json at all");
-  assert.ok(result.warnings.some((w) => /not valid JSON/i.test(w)));
+  assert.equal(result.result, "");
 });
 
 test("cancel resolves only after the delegation has actually settled", async () => {

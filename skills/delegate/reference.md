@@ -28,10 +28,9 @@ anything present is worth reading.
 
 | Field | When present | Meaning |
 | --- | --- | --- |
-| `result` | always | The final answer. Empty only when nothing could be salvaged. **Check `status` before trusting it** — a run that spawns and then fails returns normally rather than raising, so a caller that only catches errors reads a failure as an empty success. |
+| `result` | always | The authoritative final message on `status: "completed"` — empty or partial answers are never substituted. Empty on every other status; the thread and warnings carry what happened instead. **Check `status` before trusting it** — a run that spawns and then fails returns normally rather than raising, so a caller that only catches errors reads a failure as an empty success. |
 | `status` | always | `completed`, `failed` or `interrupted`. |
-| `reason` | not `completed` | `cancelled`, `startup-timeout`, `hard-cap`, `agent-error`, `died-mid-turn`, `exit-nonzero`. |
-| `resultSource` | salvage only | `stream-fallback` — the final-message file was unavailable, so `result` is the last thing Codex narrated rather than its answer. It can arrive on any `status`, `completed` included. Treat it as salvage and resume the thread. |
+| `reason` | not `completed` | `cancelled`, `startup-timeout`, `hard-cap`, `agent-error`, `died-mid-turn`, `exit-nonzero`, `result-unavailable`. The last means the run finished but its final message was missing, unreadable, or (in plan mode) not a valid plan — resume the thread for a concise final answer. |
 | `warnings` | non-empty only | Real diagnostics; read them first. Absence is **not** a clean bill of health: the bridge sees failures Codex reports as failed or declined tool calls, not ones it narrates in prose. Such a warning reports what Codex reported, not a verdict; it carries its own reading of that status. |
 | `filesReportedByEditTools` | non-empty only | Only what Codex's edit tool reported. Files written by a shell command it ran are **not** listed. Paths inside the workspace are relative to it; anything the edit tool touched outside it is listed as an absolute path. Read the git diff; it is the better record, not a complete one. |
 | `resumed` | resume requested | `false` means Codex minted a fresh thread and prior context did not carry over. |

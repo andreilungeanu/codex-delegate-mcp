@@ -221,6 +221,50 @@ test("an unknowable exit code does not cost the caller the whole result", async 
   assert.equal(payload.warnings.length, 1);
 });
 
+test("the output shape accepts result-unavailable and rejects an unknown reason", () => {
+  const base = { result: "", status: "failed", workspace: "/w" };
+
+  const ok = z.object(delegateOutputShape).strict().safeParse({
+    ...base,
+    reason: "result-unavailable",
+  });
+  assert.equal(ok.success, true);
+
+  const typo = z.object(delegateOutputShape).strict().safeParse({
+    ...base,
+    reason: "result-unavailible",
+  });
+  assert.equal(typo.success, false);
+});
+
+test("the serialized delegation result never contains resultSource", async () => {
+  // Whatever the outcome, the payload must not carry a salvage marker: there is
+  // no salvage. A field that can appear on some outcomes is caller knowledge
+  // forever, and this one stopped existing.
+  const outcomes = [
+    { result: "the answer", status: "completed", workspace: "/w" },
+    {
+      result: "",
+      status: "failed",
+      reason: "result-unavailable",
+      threadId: "t1",
+      workspace: "/w",
+      warnings: ["Final result file missing or unreadable."],
+    },
+    { result: "", status: "interrupted", reason: "cancelled", workspace: "/w" },
+  ];
+  for (const payload of outcomes) {
+    const response = await runDelegateTool({
+      args: { spec: "hi" },
+      extra: {},
+      operationRegistry: createOperationRegistry(),
+      execute: async () => payload,
+    });
+    assert.equal(response.isError, undefined);
+    assert.equal(response.content[0].text.includes("resultSource"), false);
+  }
+});
+
 const progressResult = {
   result: "ok",
   finalMessageAvailable: true,
