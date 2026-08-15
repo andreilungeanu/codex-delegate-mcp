@@ -44,6 +44,12 @@ test("resume requires an explicit workspace because resume has no --cd", () => {
     () => validateDelegateInput({ spec: "x", resumeThreadId: "tid-1" }),
     /workspace is required when resuming/
   );
+  // An empty string is the same hazard: `raw.workspace || cwd` would resolve it
+  // to the server cwd, exactly what this guard exists to refuse.
+  assert.throws(
+    () => validateDelegateInput({ spec: "x", resumeThreadId: "tid-1", workspace: "" }),
+    /workspace is required when resuming/
+  );
   const ok = validateDelegateInput({
     spec: "x",
     resumeThreadId: "tid-1",

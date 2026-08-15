@@ -242,10 +242,10 @@ export function validateDelegateInput(raw, { cwd = process.cwd() } = {}) {
     // `codex exec resume` has no --cd: the turn runs wherever the child is
     // spawned. Defaulting would silently run a thread against this server's own
     // directory, with the original workspace's context still loaded.
-    if (raw.workspace == null) {
+    if (!raw.workspace) {
       throw bad(
         "invalid_workspace",
-        "workspace is required when resuming: resume has no --cd, so an omitted workspace would run the thread in the server's directory rather than the one it started in"
+        "workspace is required when resuming: resume has no --cd, so an omitted or empty workspace would run the thread in the server's directory rather than the one it started in"
       );
     }
   }
