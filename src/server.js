@@ -242,7 +242,7 @@ export function buildServer({
     "cancel",
     {
       description:
-        "Cancel active runs. delegationId selects one (announced in progress before spawn — the only handle if a run wedges at startup), threadId all on its thread, neither all. Waits for settlement; if a process tree survives the kill deadline, it still returns and the delegate result warns. Status: cancelled, nothing-active, not-running, or not-found.",
+        "Cancel active runs. delegationId selects one (announced in progress before spawn — the only handle if a run wedges at startup), threadId all on its thread, neither all. Waits for settlement; if a process tree survives the kill deadline, it still returns and the delegate result warns. Status: cancelled, nothing-active, or not-found (no active run with this ID).",
       inputSchema: z
         .object({
           delegationId: z.string().optional(),

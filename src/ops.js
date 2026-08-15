@@ -2,13 +2,6 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 
 /**
- * Recently used thread ids are remembered after their run ends so cancel can
- * usually tell a finished thread (over, but still resumable) from an id that was
- * never seen. This is a bounded diagnostic history, not a permanent ledger.
- */
-const SEEN_THREAD_CAP = 500;
-
-/**
  * Owns the in-flight delegations. Cancel can run while delegate awaits.
  *
  * Two structures, not one: `#active` is keyed by a delegation id this server
@@ -24,8 +17,6 @@ export class OperationRegistry {
   #active = new Map();
   /** @type {Map<string, Set<string>>} */
   #byThread = new Map();
-  /** @type {Set<string>} */
-  #seenThreads = new Set();
 
   /** @param {{ threadId?: string | null, workspace?: string | null, cancel?: Function }} [options] */
   acquire({ threadId = null, workspace = null, cancel } = {}) {
@@ -39,7 +30,6 @@ export class OperationRegistry {
       workspace: workspace || null,
       cancel,
       cancelPromise: null,
-      cancellation: null,
     };
     this.#active.set(delegationId, record);
     this.#indexThread(record);
@@ -58,7 +48,6 @@ export class OperationRegistry {
         record.threadId = id;
         this.#indexThread(record);
       },
-      getCancellation: () => record.cancellation,
       release: () => {
         if (this.#active.get(delegationId) !== record) return;
         this.#active.delete(delegationId);
@@ -86,36 +75,17 @@ export class OperationRegistry {
 
     const targets = this.#resolveTargets(wanted);
     if (targets.length === 0) {
-      // Within the bounded recent history, distinguish a finished thread from an
-      // unknown id. Older finished threads eventually age back to `not-found`.
-      const known = this.#seenThreads.has(wanted);
-      return { status: known ? "not-running" : "not-found", id: wanted };
+      // Inactive is inactive: an id with no active run is not-found, whether it
+      // finished a moment ago or never ran. Nothing can cancel it either way.
+      return { status: "not-found", id: wanted };
     }
     await this.#cancelSelected(targets, cause);
     return { status: "cancelled", cause, id: wanted, cancelled: targets.map(summarize) };
   }
 
-  snapshot() {
-    if (this.#active.size === 0) return { active: false };
-    return {
-      active: true,
-      count: this.#active.size,
-      delegations: this.#describeActive(),
-    };
-  }
-
-  #describeActive() {
-    return [...this.#active.values()].map((record) => ({
-      ...summarize(record),
-      workspace: record.workspace,
-      cancellation: record.cancellation,
-    }));
-  }
-
   /** @param {any} record */
   #cancelOne(record, cause) {
     if (!record.cancelPromise) {
-      record.cancellation = { status: "cancelling", cause };
       // Started here, not on a later microtask. Shutdown dispatches cancellation and
       // exits without awaiting anything, so a start deferred through
       // `Promise.resolve().then(…)` would never run at all. The try is what that
@@ -127,18 +97,7 @@ export class OperationRegistry {
       } catch (err) {
         started = Promise.reject(err);
       }
-      record.cancelPromise = started
-        .then(() => {
-          record.cancellation = { status: "cancelled", cause };
-        })
-        .catch((err) => {
-          record.cancellation = {
-            status: "failed",
-            cause,
-            message: err?.message || String(err),
-          };
-          throw err;
-        });
+      record.cancelPromise = started;
     }
     return record.cancelPromise;
   }
@@ -167,7 +126,6 @@ export class OperationRegistry {
     const ids = this.#byThread.get(record.threadId);
     if (ids) ids.add(record.delegationId);
     else this.#byThread.set(record.threadId, new Set([record.delegationId]));
-    this.#rememberThread(record.threadId);
   }
 
   /** @param {any} record */
@@ -177,17 +135,6 @@ export class OperationRegistry {
     if (!ids) return;
     ids.delete(record.delegationId);
     if (ids.size === 0) this.#byThread.delete(record.threadId);
-  }
-
-  /** @param {string} threadId */
-  #rememberThread(threadId) {
-    // Set iteration order makes this a tiny LRU: a resumed/reused thread remains
-    // more useful diagnostically than an equally old thread that was never reused.
-    if (this.#seenThreads.has(threadId)) this.#seenThreads.delete(threadId);
-    this.#seenThreads.add(threadId);
-    if (this.#seenThreads.size > SEEN_THREAD_CAP) {
-      this.#seenThreads.delete(this.#seenThreads.values().next().value);
-    }
   }
 
   /**

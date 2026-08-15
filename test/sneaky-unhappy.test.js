@@ -146,7 +146,6 @@ test("failed cancel surfaces and second cancel rethrows same failure", async () 
   });
   await assert.rejects(() => reg.cancel({}), /kill failed/);
   await assert.rejects(() => reg.cancel({}), /kill failed/);
-  assert.equal(lease.getCancellation()?.status, "failed");
   lease.release();
 });
 
@@ -338,7 +337,7 @@ test("spawn ENOENT rejects and does not leave registry leased", async () => {
       ),
     /ENOENT/
   );
-  assert.equal(registry.snapshot().active, false);
+  assert.equal((await registry.cancel({})).status, "nothing-active");
 });
 
 test("an orphan holding stdout does not wedge the single-slot registry", async () => {
@@ -383,7 +382,7 @@ test("an orphan holding stdout does not wedge the single-slot registry", async (
 
   assert.equal(first.status, "completed");
   assert.equal(second.status, "completed");
-  assert.equal(registry.snapshot().active, false);
+  assert.equal((await registry.cancel({})).status, "nothing-active");
 });
 
 test("plan mode with invalid shape fails with result-unavailable", async () => {

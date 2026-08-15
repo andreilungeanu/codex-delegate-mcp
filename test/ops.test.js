@@ -3,12 +3,14 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { createOperationRegistry } from "../src/ops.js";
 
-test("delegations are not rationed", () => {
+test("delegations are not rationed", async () => {
   const reg = createOperationRegistry();
   const leases = Array.from({ length: 25 }, () => reg.acquire({ cancel: async () => {} }));
-  assert.equal(reg.snapshot().count, 25);
+  const result = await reg.cancel({});
+  assert.equal(result.status, "cancelled");
+  assert.equal(result.cancelled.length, 25);
   for (const lease of leases) lease.release();
-  assert.deepEqual(reg.snapshot(), { active: false });
+  assert.equal((await reg.cancel({})).status, "nothing-active");
 });
 
 test("every delegation gets a distinct id, available before it runs", () => {
@@ -39,7 +41,6 @@ test("cancel by threadId invokes that delegation's cancel", async () => {
   const result = await reg.cancel({ threadId: "t1" });
   assert.equal(result.status, "cancelled");
   assert.equal(hits, 1);
-  assert.equal(lease.getCancellation()?.status, "cancelled");
   lease.release();
 });
 
@@ -79,7 +80,6 @@ test("cancel leaves the other delegations running", async () => {
   assert.deepEqual(result.cancelled, [{ delegationId: a.delegationId, threadId: "thread-a" }]);
   assert.equal(killedA, 1);
   assert.equal(killedB, 0);
-  assert.equal(b.getCancellation(), null);
   a.release();
   b.release();
 });
@@ -208,29 +208,15 @@ test("releasing one of two delegations on a thread leaves the other cancellable"
   second.release();
 });
 
-test("a thread that finished is not-running; an id never seen is not-found", async () => {
+test("an inactive id is not-found, whether it just finished or never ran", async () => {
   const reg = createOperationRegistry();
   const lease = reg.acquire({ threadId: "done", cancel: async () => {} });
   lease.release();
 
-  assert.equal((await reg.cancel({ id: "done" })).status, "not-running");
+  // Inactive is inactive: whether the id finished a moment ago or was never
+  // seen does not change what cancel can do about it now.
+  assert.equal((await reg.cancel({ id: "done" })).status, "not-found");
   assert.equal((await reg.cancel({ id: "never-existed" })).status, "not-found");
-});
-
-test("recently reused finished threads remain in the bounded not-running history", async () => {
-  const reg = createOperationRegistry();
-  const remember = (threadId) => {
-    const lease = reg.acquire({ threadId, cancel: async () => {} });
-    lease.release();
-  };
-
-  remember("keep-recent");
-  for (let i = 0; i < 499; i += 1) remember(`older-${i}`);
-  remember("keep-recent");
-  remember("newest");
-
-  assert.equal((await reg.cancel({ id: "keep-recent" })).status, "not-running");
-  assert.equal((await reg.cancel({ id: "older-0" })).status, "not-found");
 });
 
 test("a thread id learned mid-run becomes cancellable", async () => {
@@ -263,7 +249,6 @@ test("double cancel shares one cancel invocation", async () => {
 
   const first = reg.cancel({ threadId: "t-double" });
   const second = reg.cancel({ threadId: "t-double" });
-  assert.equal(lease.getCancellation()?.status, "cancelling");
   releaseGate();
   const [a, b] = await Promise.all([first, second]);
   assert.equal(a.status, "cancelled");
@@ -272,7 +257,7 @@ test("double cancel shares one cancel invocation", async () => {
   lease.release();
 });
 
-test("a cancel that throws is reported on the delegation and rethrown", async () => {
+test("a cancel that throws is rethrown at the caller", async () => {
   const reg = createOperationRegistry();
   const lease = reg.acquire({
     threadId: "boom",
@@ -281,36 +266,20 @@ test("a cancel that throws is reported on the delegation and rethrown", async ()
     },
   });
   await assert.rejects(reg.cancel({ id: "boom" }), /kill failed/);
-  assert.equal(lease.getCancellation()?.status, "failed");
-  assert.match(lease.getCancellation()?.message, /kill failed/);
   lease.release();
 });
 
-test("snapshot reports the active delegations", async () => {
-  const reg = createOperationRegistry();
-  assert.deepEqual(reg.snapshot(), { active: false });
-
-  const lease = reg.acquire({ threadId: "in-flight", cancel: async () => {} });
-  const snap = reg.snapshot();
-  assert.equal(snap.active, true);
-  assert.equal(snap.count, 1);
-  assert.equal(snap.delegations[0].threadId, "in-flight");
-  assert.equal(snap.delegations[0].cancellation, null);
-
-  await reg.cancel({ cause: "user" });
-  assert.equal(reg.snapshot().delegations[0].cancellation.status, "cancelled");
-  assert.equal(lease.getCancellation()?.cause, "user");
-  lease.release();
-  assert.deepEqual(reg.snapshot(), { active: false });
-});
-
-test("releasing twice does not disturb a delegation that reused the thread id", () => {
+test("releasing twice does not disturb a delegation that reused the thread id", async () => {
   const reg = createOperationRegistry();
   const lease = reg.acquire({ threadId: "recycled", cancel: async () => {} });
   lease.release();
   lease.release();
   const next = reg.acquire({ threadId: "recycled", cancel: async () => {} });
-  assert.equal(reg.snapshot().count, 1);
+  const result = await reg.cancel({ id: "recycled" });
+  assert.equal(result.status, "cancelled");
+  assert.deepEqual(result.cancelled, [
+    { delegationId: next.delegationId, threadId: "recycled" },
+  ]);
   next.release();
 });
 
@@ -320,7 +289,6 @@ test("a thread id set after release does not resurrect the delegation", async ()
   lease.release();
   lease.updateThreadId("after-the-fact");
   assert.equal((await reg.cancel({ id: "after-the-fact" })).status, "not-found");
-  assert.deepEqual(reg.snapshot(), { active: false });
 });
 
 test("an overlapping workspace warns, a disjoint one does not", () => {
@@ -400,7 +368,7 @@ test("a replaced thread id stops resolving to the delegation that moved on", asy
   lease.updateThreadId("thread-b");
 
   assert.deepEqual(await reg.cancel({ id: "thread-a" }), {
-    status: "not-running",
+    status: "not-found",
     id: "thread-a",
   });
   assert.equal(cancels, 0, "cancelling the old thread killed the run that replaced it");
