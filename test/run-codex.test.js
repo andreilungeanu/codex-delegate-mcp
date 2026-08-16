@@ -50,9 +50,9 @@ test("readFinalResult treats a missing file as unavailable, with no extra warnin
   });
   assert.equal(out.finalMessageAvailable, false);
   assert.equal(out.result, "");
-  // The run layer reports this as reason "result-unavailable"; a warning
-  // repeating the reason is noise.
-  assert.deepEqual(out.warnings, []);
+  // The run layer reports this as reason "result-unavailable"; the reader
+  // never had a warning of its own to add, so the field is gone entirely.
+  assert.equal("warnings" in out, false);
 });
 
 test("runCodexProcess parses thread id and requires final file", async () => {
@@ -580,7 +580,7 @@ test("an authoritative final file wins over streamed narration", async () => {
 });
 
 test("a completed process with a missing final file fails with result-unavailable", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "cdm-completed-fallback-"));
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-missing-final-"));
   const resultFile = path.join(dir, "last.txt");
 
   const result = await runCodexProcess({
@@ -654,7 +654,7 @@ test("a final result file above the former 10 MiB cap is returned verbatim", asy
 
   assert.equal(out.finalMessageAvailable, true);
   assert.equal(out.result, text);
-  assert.deepEqual(out.warnings, []);
+  assert.equal("warnings" in out, false);
 });
 
 test("readUsage keeps only the counts Codex actually reported", () => {
@@ -914,6 +914,8 @@ test("runCodexProcess does not spawn for a pre-aborted signal", async () => {
   assert.equal(result.result, "");
   // No process ever existed, so there is no exit code to report.
   assert.equal(result.exitCode, null);
+  // Same shape as every other return path, usage included.
+  assert.equal(result.usage, null);
   assert.deepEqual(result.warnings, []);
 });
 

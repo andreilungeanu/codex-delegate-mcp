@@ -88,6 +88,7 @@ export async function runCodexProcess({
     reason: "cancelled",
     exitCode: null,
     threadId: null,
+    usage: null,
     result: "",
     warnings: [],
     filesReportedByEditTools: [],
@@ -312,7 +313,6 @@ export async function runCodexProcess({
 
   const warnings = buildRunWarnings({
     agentError: events.agentError,
-    resultWarnings: final.warnings,
     timedOut,
     timeoutReason,
     startupMs,
@@ -495,7 +495,6 @@ function classifyOutcome({ interrupted, timedOut, timeoutReason, turnStatus, exi
 /** Every warning the run itself can raise, in the order the caller reads them. */
 function buildRunWarnings({
   agentError,
-  resultWarnings,
   timedOut,
   timeoutReason,
   startupMs,
@@ -510,7 +509,6 @@ function buildRunWarnings({
 }) {
   const warnings = [];
   if (agentError) warnings.push(`Codex error: ${agentError}`);
-  warnings.push(...resultWarnings);
   if (timedOut && timeoutReason === "startup-timeout") {
     warnings.push(
       `Codex produced no output within ${startupMs}ms of spawning. Run doctor to check the CLI resolves and is logged in; raise CODEX_DELEGATE_STARTUP_MS on a slow machine.`
@@ -636,21 +634,12 @@ export function readAgentError(source, maxChars = 600) {
  */
 export async function readFinalResult({ filePath, status, exitCode } = {}) {
   if (status !== "completed" || exitCode !== 0) {
-    return {
-      result: "",
-      finalMessageAvailable: false,
-      warnings: [],
-    };
+    return { result: "", finalMessageAvailable: false };
   }
   try {
-    return { result: await readFile(filePath, "utf8"), finalMessageAvailable: true, warnings: [] };
+    return { result: await readFile(filePath, "utf8"), finalMessageAvailable: true };
   } catch {
-    // The run layer reports this as reason "result-unavailable"; a warning
-    // repeating the reason is noise.
-    return {
-      result: "",
-      finalMessageAvailable: false,
-      warnings: [],
-    };
+    // The run layer reports this as reason "result-unavailable".
+    return { result: "", finalMessageAvailable: false };
   }
 }
