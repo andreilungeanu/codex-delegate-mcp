@@ -356,24 +356,35 @@ test("the binary answers --version without starting the transport", async () => 
 });
 
 /** Drive installSignalCleanup without signalling the test runner. */
-function fireSignal(registry) {
+async function fireSignal(registry) {
   const exits = [];
+  const scheduled = [];
   const before = process.listeners("SIGINT").slice();
-  installSignalCleanup(registry, { exit: (code) => exits.push(code) });
+  installSignalCleanup(registry, {
+    exit: (code) => exits.push(code),
+    setExitCode: () => {},
+    armExitBelt: () => {},
+    schedule: (fn) => scheduled.push(fn),
+  });
   const added = process.listeners("SIGINT").filter((l) => !before.includes(l));
   for (const listener of added) listener();
   for (const listener of added) listener();
   process.removeAllListeners("SIGINT");
   process.removeAllListeners("SIGTERM");
   for (const listener of before) process.on("SIGINT", listener);
+  // The exit rides the kills' settlement, one clean loop turn later; flush the
+  // microtasks and drain the turn so callers observe the exited process.
+  await new Promise((resolve) => setImmediate(resolve));
+  for (const fn of scheduled.splice(0)) fn();
   return exits;
 }
 
 test("a shutdown signal dispatches the kill before the process exits", async () => {
   // The load-bearing assertion. The handler cannot await — that would stall Ctrl-C
-  // for the kill deadline — so the kill has to be under way by the time exit runs.
-  // A cancel started on a later microtask would never run at all.
+  // for the kill deadline — so the kill has to be under way by the time the handler
+  // returns. A cancel started on a later microtask would never run at all.
   const order = [];
+  const scheduled = [];
   const registry = {
     cancel: async () => {
       order.push("kill-dispatched");
@@ -386,22 +397,30 @@ test("a shutdown signal dispatches the kill before the process exits", async () 
       order.push("exit");
       exits.push(code);
     },
+    setExitCode: () => {},
+    armExitBelt: () => {},
+    schedule: (fn) => scheduled.push(fn),
   });
   const added = process.listeners("SIGINT").filter((l) => !before.includes(l));
   added[0]();
   process.removeAllListeners("SIGINT");
   process.removeAllListeners("SIGTERM");
   for (const listener of before) process.on("SIGINT", listener);
+  // Still inside the handler's aftermath: the kill is dispatched, the exit is not.
+  assert.deepEqual(order, ["kill-dispatched"]);
+  assert.deepEqual(exits, []);
+  await new Promise((resolve) => setImmediate(resolve));
+  for (const fn of scheduled.splice(0)) fn();
 
   assert.deepEqual(order, ["kill-dispatched", "exit"]);
   assert.deepEqual(exits, [130]);
 });
 
-test("a shutdown signal always exits, including a second one", () => {
+test("a shutdown signal always exits, including a second one", async () => {
   // Registering a handler replaces Node's default exit. A path that misses `exit`
   // would swallow Ctrl-C, which is worse than the tree it was meant to clean up.
   let calls = 0;
-  const exits = fireSignal({
+  const exits = await fireSignal({
     cancel: async () => {
       calls += 1;
     },
@@ -415,12 +434,12 @@ test("a cancel that fails on shutdown still exits and raises no unhandled reject
   const onUnhandled = (err) => rejections.push(err);
   process.on("unhandledRejection", onUnhandled);
   try {
-    const async = fireSignal({
+    const async = await fireSignal({
       cancel: async () => {
         throw new Error("tree would not die");
       },
     });
-    const sync = fireSignal({
+    const sync = await fireSignal({
       cancel: () => {
         throw new Error("cancel threw synchronously");
       },
@@ -441,6 +460,7 @@ test("stdin closing dispatches the kill before the process exits", async () => {
   const { EventEmitter } = await import("node:events");
   const order = [];
   const stdin = new EventEmitter();
+  const scheduled = [];
   const exits = [];
   const before = process.listeners("SIGINT").slice();
 
@@ -455,6 +475,9 @@ test("stdin closing dispatches the kill before the process exits", async () => {
         order.push("exit");
         exits.push(code);
       },
+      setExitCode: () => {},
+      armExitBelt: () => {},
+      schedule: (fn) => scheduled.push(fn),
       stdin,
     }
   );
@@ -462,9 +485,77 @@ test("stdin closing dispatches the kill before the process exits", async () => {
   process.removeAllListeners("SIGINT");
   process.removeAllListeners("SIGTERM");
   for (const listener of before) process.on("SIGINT", listener);
+  await new Promise((resolve) => setImmediate(resolve));
+  for (const fn of scheduled.splice(0)) fn();
 
   assert.deepEqual(order, ["kill-dispatched", "exit"]);
   assert.deepEqual(exits, [0], "a host that closed the pipe is a clean shutdown");
+});
+
+test("the exit leaves the signal path, but the exit code and belt do not wait", async () => {
+  // Two reasons the exit is carried by the kills' settlement instead of the
+  // handler: a process.exit before taskkill has walked the tree orphans the
+  // tree on Windows (measured in the sibling cursor bridge), and a handler
+  // stack is the worst place from which to tear a process down. The exit code
+  // and the hard-kill belt are armed inside the handler itself, so they hold
+  // even if that deferred exit never gets to run.
+  const exitCodes = [];
+  const exits = [];
+  const belts = [];
+  const scheduled = [];
+  const before = process.listeners("SIGINT").slice();
+  installSignalCleanup(
+    { cancel: async () => {} },
+    {
+      exit: (code) => exits.push(code),
+      setExitCode: (code) => exitCodes.push(code),
+      armExitBelt: (kill) => belts.push(kill),
+      schedule: (fn) => scheduled.push(fn),
+    }
+  );
+  const added = process.listeners("SIGINT").filter((l) => !before.includes(l));
+  added[0]();
+  process.removeAllListeners("SIGINT");
+  process.removeAllListeners("SIGTERM");
+  for (const listener of before) process.on("SIGINT", listener);
+
+  assert.deepEqual(exitCodes, [130], "exit code is recorded in the handler");
+  assert.equal(belts.length, 1, "the belt is armed in the handler");
+  assert.deepEqual(exits, [], "no exit inside the handler");
+  assert.deepEqual(scheduled, [], "nothing even scheduled yet — kills settle first");
+
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(scheduled.length, 1, "one deferred exit, after the kills settled");
+  scheduled[0]();
+  assert.deepEqual(exits, [130]);
+});
+
+test("the exit belt hard-kills the process if the graceful exit never lands", async () => {
+  // A belt on the main loop cannot fire when the main loop is the thing that
+  // stopped, which is why the default belt runs on a worker thread; this pins
+  // the contract it fulfills.
+  const hardKills = [];
+  const belts = [];
+  const before = process.listeners("SIGINT").slice();
+  installSignalCleanup(
+    { cancel: async () => {} },
+    {
+      exit: () => {},
+      setExitCode: () => {},
+      armExitBelt: (kill) => belts.push(kill),
+      killSelf: () => hardKills.push("sigkill"),
+      schedule: () => {},
+    }
+  );
+  const added = process.listeners("SIGINT").filter((l) => !before.includes(l));
+  added[0]();
+  process.removeAllListeners("SIGINT");
+  process.removeAllListeners("SIGTERM");
+  for (const listener of before) process.on("SIGINT", listener);
+
+  assert.equal(belts.length, 1, "armed on shutdown");
+  belts[0]();
+  assert.deepEqual(hardKills, ["sigkill"], "the belt's only move is the hard kill");
 });
 
 // The only test here that runs the actual entrypoint against a real worker. Every

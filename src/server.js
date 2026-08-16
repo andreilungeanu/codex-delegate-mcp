@@ -2,6 +2,7 @@
 import process from "node:process";
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { Worker } from "node:worker_threads";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -305,15 +306,42 @@ export function buildServer({
  * longer reaches Codex. Without this the host goes away and an auto-approved agent
  * keeps writing the workspace with nothing left to stop it.
  *
+ * The graceful exit is deliberately not called from inside the signal handler,
+ * and not before the kills have settled: on Windows the kill is a separate
+ * taskkill process, and a process.exit before it has walked the tree orphans
+ * everything below the wrapper (measured in the sibling cursor bridge: its
+ * launcher and agent survived the server's exit). So the kills are dispatched
+ * synchronously, and the exit is carried by their settlement — bounded by the
+ * kill deadline — onto a clean loop turn instead of the handler's stack.
+ * `exitCode` is set in the handler so a draining loop still dies with the
+ * right code, and a belt on a worker thread bounds the case where no exit
+ * ever lands.
+ *
  * Installed only from the CLI entrypoint. `buildServer()` is also a library call in
  * tests, and process-wide handlers do not belong to it.
  *
  * @param {any} operationRegistry
- * @param {{ exit?: (code: number) => void, stdin?: any }} [options]
+ * @param {{
+ *   exit?: (code: number) => void,
+ *   setExitCode?: (code: number) => void,
+ *   schedule?: (fn: () => void) => void,
+ *   armExitBelt?: (kill: () => void) => void,
+ *   killSelf?: () => void,
+ *   stdin?: any,
+ * }} [options]
  */
 export function installSignalCleanup(
   operationRegistry,
-  { exit = (code) => process.exit(code), stdin = process.stdin } = {}
+  {
+    exit = (code) => process.exit(code),
+    setExitCode = (code) => {
+      process.exitCode = code;
+    },
+    schedule = (fn) => setImmediate(fn),
+    armExitBelt = defaultArmExitBelt,
+    killSelf = () => process.kill(process.pid, "SIGKILL"),
+    stdin = process.stdin,
+  } = {}
 ) {
   let shuttingDown = false;
 
@@ -323,14 +351,29 @@ export function installSignalCleanup(
     // would have leaked. A second signal skips straight to it.
     if (shuttingDown) return exit(code);
     shuttingDown = true;
-    // Dispatch, do not await. `cancel` reaches the kill before its first await, so
-    // the signal has already been delivered by the time this returns; waiting for
-    // the tree to actually die would stall teardown for the kill deadline. The
-    // rejection still has to be observed — an unhandled one exits by itself.
+    // exitCode is set in the handler itself so that even a naturally draining loop
+    // dies with the right code if the scheduled exit below never gets to run.
+    setExitCode(code);
+    armExitBelt(killSelf);
+    // Dispatch, do not await from here. `cancel` starts every kill synchronously —
+    // before its first await — so the tree kill is under way by the time this
+    // handler returns. Its settlement then carries the exit, for two reasons:
+    // - On Windows the kill is a separate taskkill process, and a process.exit
+    //   before it has walked the tree orphans everything below the wrapper
+    //   (measured in the sibling cursor bridge: launcher and agent survived the
+    //   server's exit). cancel settles only after every run has settled, bounded
+    //   by the kill deadline, so taskkill is done first.
+    // - The exit should not run inside the signal handler's stack; a promise
+    //   continuation runs on a clean loop turn.
+    // The rejections are observed — an unhandled one exits by itself.
     try {
-      Promise.resolve(operationRegistry.cancel({ cause: "shutdown" })).catch(() => {});
-    } catch {}
-    exit(code);
+      Promise.resolve(operationRegistry.cancel({ cause: "shutdown" }))
+        .catch(() => {})
+        .then(() => schedule(() => exit(code)))
+        .catch(() => {});
+    } catch {
+      schedule(() => exit(code));
+    }
   };
 
   const signals = /** @type {[NodeJS.Signals, number][]} */ ([
@@ -346,6 +389,34 @@ export function installSignalCleanup(
   // An idle server falls out here on its own; a busy one is held up by the child it
   // spawned and by the heartbeat, which is exactly the case that needed this.
   stdin.on("end", () => shutdown(0));
+}
+
+/** Past the kill deadline (10s in run-codex) plus taskkill's own runtime. */
+const EXIT_BELT_MS = 15_000;
+
+/**
+ * A timer on the main loop cannot save a main loop that never comes back, so
+ * the belt runs on its own thread: a worker keeps its own loop and can still
+ * signal the process (verified live, 2026-08-15). The worker is unref'd against
+ * this process — the belt never holds it open, and if the graceful exit works
+ * the process is gone before the belt fires. The timer inside the worker stays
+ * ref'd on purpose: it is the only thing keeping the worker's loop alive to
+ * fire it. Best effort — a runtime that cannot start the worker still has the
+ * deferred exit as the primary path.
+ *
+ * @param {() => void} _kill the contract injected doubles call; the worker
+ *   kills the process itself, so this default never reads it
+ */
+function defaultArmExitBelt(_kill) {
+  try {
+    const worker = new Worker(
+      `import { parentPort } from "node:worker_threads";
+       const timer = setTimeout(() => process.kill(process.pid, "SIGKILL"), ${EXIT_BELT_MS});
+       parentPort.postMessage("armed");`,
+      { eval: true }
+    );
+    worker.unref();
+  } catch {}
 }
 
 const __filename = fileURLToPath(import.meta.url);
