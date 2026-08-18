@@ -12,7 +12,7 @@ import { randomUUID } from "node:crypto";
  * resumes: both are live, both are cancellable, and storing one delegation per
  * thread id would let whichever finished first deregister the other.
  */
-export class OperationRegistry {
+class OperationRegistry {
   /** @type {Map<string, any>} */
   #active = new Map();
   /** @type {Map<string, Set<string>>} */
