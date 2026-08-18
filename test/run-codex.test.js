@@ -1439,6 +1439,38 @@ test("a cancel during the drain does not discard a result the child already wrot
   assert.equal(out.result, "DONE");
 });
 
+test("a cancel during the drain does not warn about a kill with nothing left to escape", async () => {
+  // The kill deadline bounds a process that will not die. Once the exit has been
+  // observed there is nothing left for it to bound, and arming one anyway lets it
+  // fire against a process that is already gone — telling the caller a tree
+  // survived the kill on a run that completed and handed back its answer.
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-late-arm-"));
+  const resultFile = path.join(dir, "last.txt");
+  // The close trails the exit, so the abort below lands inside the drain window.
+  const { child, exited } = exitThenClose({ resultFile, gapMs: 400 });
+  const controller = new AbortController();
+  exited.then(() => controller.abort());
+
+  const out = await runCodexProcess({
+    command: "/bin/codex",
+    args: [],
+    resultFile,
+    signal: controller.signal,
+    spawnImpl: () => child,
+    treeKillImpl: async () => {},
+    // Shorter than the drain above: a deadline armed mid-drain would fire.
+    killDeadlineMs: 50,
+  });
+
+  assert.equal(out.status, "completed");
+  assert.equal(out.result, "DONE");
+  assert.deepEqual(
+    out.warnings.filter((w) => w.includes("did not exit within")),
+    [],
+    "the run had already settled; no kill deadline should have been armed"
+  );
+});
+
 test("teardown still reaches the group once the direct child has exited", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-orphan-"));
   const resultFile = path.join(dir, "last.txt");

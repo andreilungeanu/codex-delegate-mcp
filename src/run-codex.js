@@ -149,13 +149,18 @@ export async function runCodexProcess({
 
   let killTimer;
   let killEscaped = false;
+  // Set the moment the exit arrives. The kill deadline bounds a process that will
+  // not die, so past that point it has nothing left to bound: one armed by a cancel
+  // landing in the drain window would fire against a process that is already gone
+  // and report an escaped tree on a run that completed and returned its answer.
+  let exitObserved = false;
   /**
    * treeKill is best effort — taskkill can report success and leave the tree up.
    * Without this the close we await never arrives and the delegation wedges for
    * the life of the process.
    */
   const armKillDeadline = () => {
-    if (killTimer || killDeadlineMs <= 0) return;
+    if (exitObserved || killTimer || killDeadlineMs <= 0) return;
     killTimer = setTimeout(() => {
       killEscaped = true;
       settleExit(null);
@@ -193,6 +198,7 @@ export async function runCodexProcess({
     clearInterval(heartbeatTimer);
     hardCapTimer = undefined;
     startupTimer = undefined;
+    killTimer = undefined;
     heartbeatTimer = undefined;
   };
 
@@ -260,6 +266,7 @@ export async function runCodexProcess({
     // An unknown code stays unknown — the delegate layer omits it, and the
     // status/reason carry the truthful explanation.
     exitCode = await exited;
+    exitObserved = true;
     // Read once, here, rather than after the drain below: `interrupted` discards the
     // final-message file, so a cancel landing in the drain window would throw away an
     // answer the child had already finished writing. A cancel that caused this exit
@@ -276,6 +283,8 @@ export async function runCodexProcess({
     // delegation for exactly that long.
     drainEscaped = !(await withDeadline(Promise.all([pipesClosed, drained]), drainMs));
   } finally {
+    // Again, because the clear above is inside the try: a spawn that errors rejects
+    // `exited` and skips straight to here with every timer still armed.
     clearTimers();
     if (signal) signal.removeEventListener("abort", onAbort);
     rl.close();
