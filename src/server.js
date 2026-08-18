@@ -325,8 +325,7 @@ export function buildServer({
  *   exit?: (code: number) => void,
  *   setExitCode?: (code: number) => void,
  *   schedule?: (fn: () => void) => void,
- *   armExitBelt?: (kill: () => void) => void,
- *   killSelf?: () => void,
+ *   armExitBelt?: () => void,
  *   stdin?: any,
  * }} [options]
  */
@@ -339,7 +338,6 @@ export function installSignalCleanup(
     },
     schedule = (fn) => setImmediate(fn),
     armExitBelt = defaultArmExitBelt,
-    killSelf = () => process.kill(process.pid, "SIGKILL"),
     stdin = process.stdin,
   } = {}
 ) {
@@ -354,7 +352,7 @@ export function installSignalCleanup(
     // exitCode is set in the handler itself so that even a naturally draining loop
     // dies with the right code if the scheduled exit below never gets to run.
     setExitCode(code);
-    armExitBelt(killSelf);
+    armExitBelt();
     // Dispatch, do not await from here. `cancel` starts every kill synchronously —
     // before its first await — so the tree kill is under way by the time this
     // handler returns. Its settlement then carries the exit, for two reasons:
@@ -404,17 +402,20 @@ const EXIT_BELT_MS = 15_000;
  * fire it. Best effort — a runtime that cannot start the worker still has the
  * deferred exit as the primary path.
  *
- * @param {() => void} _kill the contract injected doubles call; the worker
- *   kills the process itself, so this default never reads it
+ * Exported, and the delay is a parameter, so a test can arm a real worker on a
+ * short delay: the constant is then the only part of this a test does not run.
+ *
+ * @param {number} [ms]
  */
-function defaultArmExitBelt(_kill) {
+export function defaultArmExitBelt(ms = EXIT_BELT_MS) {
   try {
     const worker = new Worker(
-      `import { parentPort } from "node:worker_threads";
-       const timer = setTimeout(() => process.kill(process.pid, "SIGKILL"), ${EXIT_BELT_MS});
-       parentPort.postMessage("armed");`,
+      `setTimeout(() => process.kill(process.pid, "SIGKILL"), ${ms});`,
       { eval: true }
     );
+    // A Worker 'error' with nothing listening is rethrown as an uncaught exception,
+    // which would take down the shutdown this backs up.
+    worker.on("error", () => {});
     worker.unref();
   } catch {}
 }

@@ -509,7 +509,7 @@ test("the exit leaves the signal path, but the exit code and belt do not wait", 
     {
       exit: (code) => exits.push(code),
       setExitCode: (code) => exitCodes.push(code),
-      armExitBelt: (kill) => belts.push(kill),
+      armExitBelt: () => belts.push("armed"),
       schedule: (fn) => scheduled.push(fn),
     }
   );
@@ -530,32 +530,58 @@ test("the exit leaves the signal path, but the exit code and belt do not wait", 
   assert.deepEqual(exits, [130]);
 });
 
-test("the exit belt hard-kills the process if the graceful exit never lands", async () => {
-  // A belt on the main loop cannot fire when the main loop is the thing that
-  // stopped, which is why the default belt runs on a worker thread; this pins
-  // the contract it fulfills.
-  const hardKills = [];
-  const belts = [];
-  const before = process.listeners("SIGINT").slice();
-  installSignalCleanup(
-    { cancel: async () => {} },
-    {
-      exit: () => {},
-      setExitCode: () => {},
-      armExitBelt: (kill) => belts.push(kill),
-      killSelf: () => hardKills.push("sigkill"),
-      schedule: () => {},
-    }
+test("the exit belt hard-kills a process whose main loop never comes back", { timeout: 30_000 }, async () => {
+  // The only test that arms a real worker, and the reason the belt is a worker at
+  // all: a timer on the main loop cannot fire when the main loop is the thing that
+  // stopped. So stop one. The child below spins without ever yielding, which no
+  // main-thread timer could interrupt — only another thread can end it.
+  const { spawn } = await import("node:child_process");
+  const serverUrl = new URL("../src/server.js", import.meta.url).href;
+  const child = spawn(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `import { defaultArmExitBelt } from ${JSON.stringify(serverUrl)};
+       defaultArmExitBelt(800);
+       const until = Date.now() + 20_000;
+       while (Date.now() < until) {}
+       console.log("SURVIVED");`,
+    ],
+    { stdio: ["ignore", "pipe", "pipe"] }
   );
-  const added = process.listeners("SIGINT").filter((l) => !before.includes(l));
-  added[0]();
-  process.removeAllListeners("SIGINT");
-  process.removeAllListeners("SIGTERM");
-  for (const listener of before) process.on("SIGINT", listener);
+  let stdout = "";
+  child.stdout.on("data", (chunk) => (stdout += chunk));
+  const startedAt = Date.now();
+  const code = await new Promise((resolve) => child.on("exit", resolve));
+  const elapsed = Date.now() - startedAt;
 
-  assert.equal(belts.length, 1, "armed on shutdown");
-  belts[0]();
-  assert.deepEqual(hardKills, ["sigkill"], "the belt's only move is the hard kill");
+  assert.equal(stdout.includes("SURVIVED"), false, "the wedged loop outlived its belt");
+  assert.ok(elapsed < 15_000, `the belt fired late (${elapsed}ms)`);
+  assert.notEqual(code, 0, "a belted process does not exit cleanly");
+});
+
+test("an armed belt does not hold an otherwise idle process open", { timeout: 30_000 }, async () => {
+  // The other half of the contract: the belt is unref'd, so a shutdown that works
+  // exits immediately instead of waiting out the fuse.
+  const { spawn } = await import("node:child_process");
+  const serverUrl = new URL("../src/server.js", import.meta.url).href;
+  const startedAt = Date.now();
+  const child = spawn(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      `import { defaultArmExitBelt } from ${JSON.stringify(serverUrl)};
+       defaultArmExitBelt(20_000);`,
+    ],
+    { stdio: ["ignore", "pipe", "pipe"] }
+  );
+  const code = await new Promise((resolve) => child.on("exit", resolve));
+  const elapsed = Date.now() - startedAt;
+
+  assert.equal(code, 0, "an idle process with a belt armed still exits cleanly");
+  assert.ok(elapsed < 10_000, `the belt held the process open (${elapsed}ms)`);
 });
 
 // The only test here that runs the actual entrypoint against a real worker. Every
