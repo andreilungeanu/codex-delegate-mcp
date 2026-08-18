@@ -87,7 +87,7 @@ export async function runDoctor({
   };
 
   if (deep) {
-    out.deep = await runDeepSmoke({ codex, execFileImpl });
+    out.deep = await runDeepSmoke({ codex, execFileImpl, warnings });
   }
 
   return out;
@@ -149,8 +149,25 @@ async function probeLogin(command, execFileImpl = execFileAsync) {
   }
 }
 
+/**
+ * What this bridge assumes about `--cd` on each surface, and why the assumption is
+ * load-bearing: an initial run passes the workspace as `--cd`, while resume and
+ * review have no such flag, so their directory comes only from the spawn — which is
+ * in turn why resume refuses a defaulted workspace. Either shape changing upstream
+ * changes what this bridge has to do, so it is worth being told rather than
+ * discovering it from a run that used the wrong tree.
+ */
+const CD_EXPECTED = Object.freeze({
+  exec: true,
+  "exec review": false,
+  "exec resume": false,
+});
+
+/** The flag as clap prints it: `-C, --cd <DIR>`. */
+const CD_FLAG = /--cd\b/;
+
 /** Lightweight deep check: help surfaces exist. No model quota. */
-async function runDeepSmoke({ codex, execFileImpl = execFileAsync }) {
+async function runDeepSmoke({ codex, execFileImpl = execFileAsync, warnings = [] }) {
   if (!codex.found) {
     return { ran: false, reason: "codex_not_found" };
   }
@@ -174,14 +191,24 @@ async function runDeepSmoke({ codex, execFileImpl = execFileAsync }) {
       stderr = err.stderr || "";
       exitCode = typeof err?.code === "number" ? err.code : null;
     }
+    const help = `${stdout}${stderr}`;
+    const hasCd = CD_FLAG.test(help);
     results[surface] = {
       ok: exitCode === 0,
       exitCode,
-      hasJson: /--json/.test(`${stdout}${stderr}`),
-      hasOutputLastMessage: /--output-last-message/.test(
-        `${stdout}${stderr}`
-      ),
+      hasJson: /--json/.test(help),
+      hasOutputLastMessage: /--output-last-message/.test(help),
+      hasCd,
     };
+    // Only on disagreement, and only when the probe itself worked: a help call that
+    // failed reports no flags at all, and `ok: false` already says so.
+    if (exitCode === 0 && hasCd !== CD_EXPECTED[surface]) {
+      warnings.push(
+        hasCd
+          ? `\`codex ${surface}\` now accepts --cd. This bridge assumes it does not: resume and review take their working directory only from the spawn, which is why resume refuses a defaulted workspace. Recheck the argument builders against the new surface.`
+          : `\`codex ${surface}\` no longer accepts --cd, which this bridge passes to set the working root. Delegations would run in this server's own directory instead of the requested workspace.`
+      );
+    }
   }
   return { ran: true, surfaces: results, note: "Help-only smoke; no model calls." };
 }
