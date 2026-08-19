@@ -433,11 +433,26 @@ test("two delegations in one workspace warn about clobbering each other", async 
   // Let the first delegation reach the registry before the second starts.
   await new Promise((resolve) => setImmediate(resolve));
 
+  const progress = [];
+  let progressAtSpawn = [];
   const second = await executeDelegate(
     { spec: "y", mode: "agent", workspace: process.cwd() },
-    options
+    {
+      ...options,
+      onProgress: (m) => progress.push(m),
+      runProcess: async (...args) => {
+        progressAtSpawn = progress.slice();
+        return options.runProcess(...args);
+      },
+    }
   );
   assert.match(second.warnings?.join(" ") ?? "", /overlapping workspace/);
+  // The result says it too, but only once the turn is over. The caller has to hear
+  // it while separating the two runs is still worth doing.
+  assert.ok(
+    progressAtSpawn.some((m) => /overlapping workspace/.test(m)),
+    "the overlap must reach progress before the run starts"
+  );
 
   releaseFirst();
   const firstResult = await first;

@@ -94,6 +94,11 @@ export async function executeDelegate(rawArgs, options = {}) {
 
     try {
       onProgress?.(`delegation id: ${lease.delegationId}`);
+      // The result carries these too, but a result arrives after the turn, and by
+      // then both agents have been writing one tree for the length of it. This is
+      // the moment the registry knows, and the only one where separating the two
+      // runs is still cheap.
+      for (const warning of lease.warnings || []) onProgress?.(warning);
       processResult = await runProcess({
         command: codex.command,
         args: built.args,
