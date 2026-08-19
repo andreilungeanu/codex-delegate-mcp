@@ -313,6 +313,26 @@ test("build initial agent args", () => {
   assert.ok(!args.includes("fix it"));
 });
 
+test("every kind asks Codex to reject a config key it does not know", () => {
+  // An unknown flag is a loud clap error, but an unknown `-c` key is not: `--disable`
+  // is `-c features.<name>=false`, so a renamed feature would still parse and quietly
+  // do nothing. --strict-config is what turns that into a refusal, and it has to ride
+  // on every surface because commonFlags is what carries the keys.
+  const base = { spec: "x", workspace: "/repo", reasoningEffort: "high", fast: true };
+  const initial = buildCodexArgs({ ...base, mode: "agent" }, { resultFile: "/tmp/out.txt" });
+  const resume = buildCodexArgs(
+    { ...base, mode: "agent", resumeThreadId: "tid" },
+    { resultFile: "/tmp/out.txt" }
+  );
+  const review = buildCodexArgs(
+    { ...base, mode: "review", reviewTarget: { kind: "uncommitted" } },
+    { resultFile: "/tmp/out.txt" }
+  );
+  for (const built of [initial, resume, review]) {
+    assert.ok(built.args.includes("--strict-config"), `${built.kind} must pass --strict-config`);
+  }
+});
+
 test("webSearch drives the Codex web search mode", () => {
   const off = buildCodexArgs(
     { spec: "x", mode: "agent", workspace: "/repo", webSearch: false },

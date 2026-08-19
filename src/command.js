@@ -174,6 +174,12 @@ function commonFlags(request, resultFile, outputSchemaFile) {
     // ~/.codex config is merged in and can change model, effort or anything else
     // under a run the caller believes it fully specified.
     "--ignore-user-config",
+    // Every `-c` key below is a contract with Codex, and an unrecognized one is
+    // otherwise a silent no-op: `--disable` is documented as `-c features.<name>=false`,
+    // so a renamed feature still parses and quietly does nothing. Codex checks the
+    // whole set at config-parse time, before the turn starts, and nothing this run
+    // reads a config.toml — `--ignore-user-config` already loads none.
+    "--strict-config",
     "--disable",
     "hooks",
     "--dangerously-bypass-approvals-and-sandbox",
