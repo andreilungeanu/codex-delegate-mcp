@@ -71,8 +71,7 @@ Delegations run concurrently, each cancellable by its own `delegationId`. Worth 
 - **independent work in independent directories** — one worker per `workspace`.
 
 Not worth doing when the tasks touch the same files. Two agents writing one tree overwrite each
-other and the diff cannot say which did what. The result warns when workspaces overlap, but
-the warning arrives after the runs are already racing. Split by directory, or serialize.
+other and the diff cannot say which did what. Split by directory, or serialize.
 
 To cancel: `delegationId` cancels one run, `threadId` cancels every delegation on that thread,
 and passing neither cancels all of them. `cancel` waits for the processes to end rather than

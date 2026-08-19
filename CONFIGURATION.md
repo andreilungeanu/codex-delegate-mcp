@@ -31,9 +31,7 @@ Delegations run concurrently, as many as you start.
 
 Give them **disjoint workspaces** — necessary, though not sufficient: `workspace` is the worker's
 working directory, and a run can reach outside it (see [SECURITY.md](SECURITY.md)). Two agents writing one
-tree overwrite each other, and the git diff cannot say which did what. Starting a delegation
-while another is running in the same directory, or in one that contains it, adds a warning to
-the result. It is not refused, because some runs really do only read.
+tree overwrite each other, and the git diff cannot say which did what.
 
 Every run announces a `delegationId` in its progress stream before it spawns, and returns it
 with the result. That is the handle `cancel` takes, and it is the only one that exists while a

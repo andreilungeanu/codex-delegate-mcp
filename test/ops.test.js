@@ -1,6 +1,5 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import path from "node:path";
 import { createOperationRegistry } from "../src/ops.js";
 
 test("delegations are not rationed", async () => {
@@ -291,44 +290,12 @@ test("a thread id set after release does not resurrect the delegation", async ()
   assert.equal((await reg.cancel({ id: "after-the-fact" })).status, "not-found");
 });
 
-test("an overlapping workspace warns, a disjoint one does not", () => {
-  const reg = createOperationRegistry();
-  const root = path.resolve("/tmp/overlap-root");
-  const first = reg.acquire({ workspace: root, cancel: async () => {} });
-  assert.deepEqual(first.warnings, []);
-
-  const nested = reg.acquire({ workspace: path.join(root, "pkg"), cancel: async () => {} });
-  assert.equal(nested.warnings.length, 1);
-  assert.match(nested.warnings[0], /overlapping workspace/);
-
-  const elsewhere = reg.acquire({
-    workspace: path.resolve("/tmp/somewhere-else"),
-    cancel: async () => {},
-  });
-  assert.deepEqual(elsewhere.warnings, []);
-
-  first.release();
-  nested.release();
-  elsewhere.release();
-});
-
-test("the same workspace twice warns", () => {
-  const reg = createOperationRegistry();
-  const dir = path.resolve("/tmp/same-tree");
-  const first = reg.acquire({ workspace: dir, cancel: async () => {} });
-  const second = reg.acquire({ workspace: dir, cancel: async () => {} });
-  assert.equal(second.warnings.length, 1);
-  first.release();
-  second.release();
-});
-
 test("cancel starts every kill synchronously, before it is awaited", () => {
   // Shutdown dispatches cancellation and exits without awaiting, so a cancel that
   // only starts on a later microtask would never run. Deliberately not awaited.
   const registry = createOperationRegistry();
   let started = false;
   registry.acquire({
-    workspace: "/w",
     cancel: async () => {
       started = true;
     },
@@ -344,7 +311,6 @@ test("a cancel that throws synchronously is still reported, not rethrown at the 
   // directly has to keep that, or the throw escapes cancel() itself.
   const registry = createOperationRegistry();
   registry.acquire({
-    workspace: "/w",
     cancel: () => {
       throw new Error("cancel exploded");
     },

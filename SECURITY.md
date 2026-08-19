@@ -22,10 +22,8 @@ anything written outside the workspace, so the diff is not a complete record eit
 
 Delegations run concurrently. Give them **disjoint workspaces** — necessary, though not
 sufficient, since `workspace` is the worker's working directory and not a wall it cannot cross.
-Two agents writing one tree overwrite each other, and the git diff cannot say which did what. Starting a
-delegation while another is running in the same directory, or in one that contains it, adds a
-warning to the result — but the warning arrives once both are already running, so the time to
-separate them is when you write the briefs.
+Two agents writing one tree overwrite each other, and the git diff cannot say which did what, so
+the time to separate them is when you write the briefs.
 
 ## The brief
 

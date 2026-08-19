@@ -11,7 +11,7 @@ This package is an MCP stdio server that delegates coding work to `codex exec`. 
 | `src/command.js` | Defines modes and defaults, validates delegate input, and builds the `codex exec` argument vector and stdin prompt for initial, resumed, and review runs. |
 | `src/run-codex.js` | Spawns Codex, consumes its JSONL output, reports progress, collects thread, usage, and edit-tool metadata, reads the final-message file, and classifies the completed process result. |
 | `src/proc.js` | Tests child-process liveness and terminates a process tree. |
-| `src/ops.js` | Tracks active delegations, assigns delegation IDs, associates running delegations with Codex thread IDs, implements cancellation, and warns about overlapping workspaces. |
+| `src/ops.js` | Tracks active delegations, assigns delegation IDs, associates running delegations with Codex thread IDs, and implements cancellation. |
 | `src/resolve-codex.js` | Resolves, probes, caches, and refreshes the Codex CLI used by delegation and diagnostics. See [CONFIGURATION.md](CONFIGURATION.md) for resolution behavior. |
 | `src/doctor.js` | Produces setup diagnostics for the plugin, MCP client, Codex CLI, login state, workspace, runtime, and optional CLI help-surface checks. |
 | `src/git-preflight.js` | Checks that a review workspace is a Git repository and validates applicable review targets before Codex is spawned. |

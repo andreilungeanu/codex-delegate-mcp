@@ -1,4 +1,3 @@
-import path from "node:path";
 import { randomUUID } from "node:crypto";
 
 /**
@@ -18,16 +17,14 @@ class OperationRegistry {
   /** @type {Map<string, Set<string>>} */
   #byThread = new Map();
 
-  /** @param {{ threadId?: string | null, workspace?: string | null, cancel?: Function }} [options] */
-  acquire({ threadId = null, workspace = null, cancel } = {}) {
+  /** @param {{ threadId?: string | null, cancel?: Function }} [options] */
+  acquire({ threadId = null, cancel } = {}) {
     if (typeof cancel !== "function") throw new TypeError("cancel must be a function");
 
-    const warnings = this.#overlapWarnings(workspace);
     const delegationId = randomUUID();
     const record = {
       delegationId,
       threadId: threadId || null,
-      workspace: workspace || null,
       cancel,
       cancelPromise: null,
     };
@@ -36,7 +33,6 @@ class OperationRegistry {
 
     return {
       delegationId,
-      warnings,
       /** @param {string} id */
       updateThreadId: (id) => {
         if (!id || this.#active.get(delegationId) !== record) return;
@@ -136,41 +132,11 @@ class OperationRegistry {
     ids.delete(record.delegationId);
     if (ids.size === 0) this.#byThread.delete(record.threadId);
   }
-
-  /**
-   * Two agents writing one tree clobber each other, and neither the bridge nor the
-   * git diff can say which one did what. Worth saying out loud; not worth refusing,
-   * because some runs really do only read.
-   *
-   * @param {string | null} workspace
-   */
-  #overlapWarnings(workspace) {
-    if (!workspace) return [];
-    const warnings = [];
-    for (const record of this.#active.values()) {
-      if (!record.workspace || !overlaps(record.workspace, workspace)) continue;
-      warnings.push(
-        `Another delegation is already running in an overlapping workspace (${record.workspace}). Concurrent agents writing one tree overwrite each other, and the git diff cannot say which one did what.`
-      );
-      break;
-    }
-    return warnings;
-  }
 }
 
 /** @param {any} record */
 function summarize(record) {
   return { delegationId: record.delegationId, threadId: record.threadId };
-}
-
-/** True when either path is the other, or contains it. */
-function overlaps(a, b) {
-  const left = path.resolve(a);
-  const right = path.resolve(b);
-  if (left === right) return true;
-  const rel = path.relative(left, right);
-  const inside = (r) => r !== "" && !r.startsWith("..") && !path.isAbsolute(r);
-  return inside(rel) || inside(path.relative(right, left));
 }
 
 export function createOperationRegistry() {

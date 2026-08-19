@@ -77,13 +77,11 @@ export async function executeDelegate(rawArgs, options = {}) {
 
     const lease = operationRegistry.acquire({
       threadId: request.resumeThreadId || null,
-      workspace: request.workspace,
       cancel: async () => {
         controller.abort(new Error("cancelled"));
         await settled;
       },
     });
-    warnings.push(...(lease.warnings || []));
     // Announced before the spawn, and before Codex has a thread id to announce:
     // this is the only handle a caller has for cancelling a run that wedges during
     // startup, and it arrives too late to be useful if it waits for the result.
@@ -94,11 +92,6 @@ export async function executeDelegate(rawArgs, options = {}) {
 
     try {
       onProgress?.(`delegation id: ${lease.delegationId}`);
-      // The result carries these too, but a result arrives after the turn, and by
-      // then both agents have been writing one tree for the length of it. This is
-      // the moment the registry knows, and the only one where separating the two
-      // runs is still cheap.
-      for (const warning of lease.warnings || []) onProgress?.(warning);
       processResult = await runProcess({
         command: codex.command,
         args: built.args,
