@@ -534,7 +534,7 @@ function buildRunWarnings({
   // Only on a run that broke. Routing around a failed command is the agent doing its
   // job, and it reports the ones it cannot route around; surfacing every discarded
   // attempt fired on most healthy runs and taught the caller to skim this array —
-  // which also carries the capacity errors and truncated results.
+  // which also carries the capacity errors.
   if (nonSuccessfulItems.length && status !== "completed") {
     const shown = nonSuccessfulItems.slice(0, 3).join("; ");
     const more =

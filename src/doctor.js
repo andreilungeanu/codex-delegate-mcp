@@ -206,7 +206,7 @@ async function runDeepSmoke({ codex, execFileImpl = execFileAsync, warnings = []
       warnings.push(
         hasCd
           ? `\`codex ${surface}\` now accepts --cd. This bridge assumes it does not: resume and review take their working directory only from the spawn, which is why resume refuses a defaulted workspace. Recheck the argument builders against the new surface.`
-          : `\`codex ${surface}\` no longer accepts --cd, which this bridge passes to set the working root. Delegations would run in this server's own directory instead of the requested workspace.`
+          : `\`codex ${surface}\` no longer accepts --cd, which this bridge passes on every initial run. An unknown flag is a hard argument error, so every delegation would fail before it started. The child is spawned in the workspace either way, so dropping the flag is the fix.`
       );
     }
   }

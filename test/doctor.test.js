@@ -152,8 +152,9 @@ test("doctor deep warns when resume gains the --cd it is assumed not to have", a
 });
 
 test("doctor deep warns when exec loses the --cd initial runs depend on", async () => {
-  // The other direction: initial runs pass --cd to set the working root. Without
-  // it every delegation would silently run in this server's own directory.
+  // The other direction: initial runs pass --cd to set the working root. The child
+  // is spawned in the workspace too (delegate.js), so losing the flag would not move
+  // the directory — it would make every delegation die on an unknown argument.
   const out = await runDoctor(
     options({
       deep: true,
