@@ -50,9 +50,8 @@ directory, or serialize.
 To cancel one of several, pass its `delegationId`. See [reference.md](reference.md).
 
 Leave `model`, `reasoningEffort` and `fast` at their defaults unless the user asks. Other models
-(`gpt-5.6-sol`, `gpt-5.6-luna`) are available — pass `model` only on request. Always pass
-`workspace`: the default is the MCP **server's** cwd, not always your project root, and it is
-required when resuming because `codex exec resume` has no `--cd`.
+(`gpt-5.6-sol`, `gpt-5.6-luna`) are available — pass `model` only on request. `workspace` is
+required on every call; a resumed thread takes the one it started in.
 
 ## Plan mode
 

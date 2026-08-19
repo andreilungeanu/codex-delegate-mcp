@@ -194,9 +194,8 @@ export function buildServer({
           ),
         workspace: z
           .string()
-          .optional()
           .describe(
-            "Codex's working directory; not confinement. Must already exist — never create one for the call. Defaults to the server cwd, often not the project root under npx/plugin. Required on resume: resume has no --cd."
+            "Codex's working directory; not confinement. Must already exist — never create one for the call."
           ),
         resumeThreadId: z
           .string()

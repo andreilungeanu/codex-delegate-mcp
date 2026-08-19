@@ -14,10 +14,10 @@ function assertApprovalsBypassed(built) {
   assert.ok(built.args.includes("--dangerously-bypass-approvals-and-sandbox"));
 }
 
-test("validateDelegateInput defaults and resolves workspace", () => {
+test("validateDelegateInput resolves workspace and fills the rest", () => {
   const cwd = process.cwd();
   const req = validateDelegateInput(
-    { spec: "do the thing" },
+    { workspace: process.cwd(), spec: "do the thing" },
     { cwd }
   );
   assert.equal(req.mode, "agent");
@@ -39,17 +39,22 @@ test("workspace must exist and be a directory", () => {
   );
 });
 
-test("resume requires an explicit workspace because resume has no --cd", () => {
-  assert.throws(
-    () => validateDelegateInput({ spec: "x", resumeThreadId: "tid-1" }),
-    /workspace is required when resuming/
-  );
-  // An empty string is the same hazard: `raw.workspace || cwd` would resolve it
-  // to the server cwd, exactly what this guard exists to refuse.
-  assert.throws(
-    () => validateDelegateInput({ spec: "x", resumeThreadId: "tid-1", workspace: "" }),
-    /workspace is required when resuming/
-  );
+test("an omitted or empty workspace is refused, on a first turn and on a resume", () => {
+  // Defaulting it ran Codex in this server's own directory — under npx a cache
+  // folder — and reported a clean completion for a tree nobody asked about. Resume
+  // refused that from the start; the first turn had the same hazard and no guard.
+  for (const extra of [{}, { resumeThreadId: "tid-1" }]) {
+    assert.throws(
+      () => validateDelegateInput({ spec: "x", ...extra }),
+      (err) => err.code === "invalid_workspace" && /workspace is required/.test(err.message)
+    );
+    // An empty string is the same hazard: `raw.workspace || cwd` used to resolve it
+    // to the server cwd, exactly what this refuses.
+    assert.throws(
+      () => validateDelegateInput({ spec: "x", workspace: "   ", ...extra }),
+      (err) => err.code === "invalid_workspace"
+    );
+  }
   const ok = validateDelegateInput({
     spec: "x",
     resumeThreadId: "tid-1",
@@ -59,16 +64,16 @@ test("resume requires an explicit workspace because resume has no --cd", () => {
 });
 
 test("reasoningEffort accepts none and max, which gpt-5.6 models take", () => {
-  assert.equal(validateDelegateInput({ spec: "x", reasoningEffort: "none" }).reasoningEffort, "none");
-  assert.equal(validateDelegateInput({ spec: "x", reasoningEffort: "max" }).reasoningEffort, "max");
+  assert.equal(validateDelegateInput({ workspace: process.cwd(), spec: "x", reasoningEffort: "none" }).reasoningEffort, "none");
+  assert.equal(validateDelegateInput({ workspace: process.cwd(), spec: "x", reasoningEffort: "max" }).reasoningEffort, "max");
   assert.throws(
-    () => validateDelegateInput({ spec: "x", reasoningEffort: "ultra" }),
+    () => validateDelegateInput({ workspace: process.cwd(), spec: "x", reasoningEffort: "ultra" }),
     /reasoningEffort must be one of/
   );
 });
 
 test("fast defaults off; only sets Codex service_tier when true", () => {
-  const off = validateDelegateInput({ spec: "x" });
+  const off = validateDelegateInput({ workspace: process.cwd(), spec: "x" });
   assert.equal(off.fast, false);
   const offArgs = buildCodexArgs(
     { ...off, workspace: "/repo", webSearch: false },
@@ -77,7 +82,7 @@ test("fast defaults off; only sets Codex service_tier when true", () => {
   assert.ok(!offArgs.some((a) => String(a).includes("service_tier")));
   assert.ok(!offArgs.some((a) => String(a).includes("fast_mode")));
 
-  const on = validateDelegateInput({ spec: "x", fast: true });
+  const on = validateDelegateInput({ workspace: process.cwd(), spec: "x", fast: true });
   assert.equal(on.fast, true);
   const onArgs = buildCodexArgs(
     { ...on, workspace: "/repo", webSearch: false },
@@ -88,7 +93,7 @@ test("fast defaults off; only sets Codex service_tier when true", () => {
 });
 
 test("model and reasoningEffort overrides are preserved when user-provided", () => {
-  const req = validateDelegateInput({
+  const req = validateDelegateInput({ workspace: process.cwd(),
     spec: "x",
     model: "gpt-5.6-sol",
     reasoningEffort: "xhigh",
@@ -99,34 +104,39 @@ test("model and reasoningEffort overrides are preserved when user-provided", () 
 
 test("validateDelegateInput rejects empty spec", () => {
   assert.throws(
-    () => validateDelegateInput({ spec: "" }),
+    () => validateDelegateInput({ workspace: process.cwd(), spec: "" }),
     (err) => err.code === "invalid_spec"
   );
   assert.throws(
-    () => validateDelegateInput({ spec: "   " }),
+    () => validateDelegateInput({ workspace: process.cwd(), spec: "   " }),
     (err) => err.code === "invalid_spec"
   );
   assert.throws(
-    () => validateDelegateInput({}),
+    () => validateDelegateInput({ workspace: process.cwd(),}),
     (err) => err.code === "invalid_spec"
   );
 });
 
 test("webSearch defaults true in every mode and can be disabled", () => {
   for (const mode of ["agent", "plan", "ask"]) {
-    assert.equal(validateDelegateInput({ spec: "x", mode }).webSearch, true);
+    assert.equal(validateDelegateInput({ workspace: process.cwd(), spec: "x", mode }).webSearch, true);
     assert.equal(
-      validateDelegateInput({ spec: "x", mode, webSearch: false }).webSearch,
+      validateDelegateInput({ workspace: process.cwd(), spec: "x", mode, webSearch: false }).webSearch,
       false
     );
   }
-  const review = { spec: "x", mode: "review", reviewTarget: { kind: "uncommitted" } };
+  const review = {
+    spec: "x",
+    mode: "review",
+    workspace: process.cwd(),
+    reviewTarget: { kind: "uncommitted" },
+  };
   assert.equal(validateDelegateInput(review).webSearch, true);
-  assert.equal(validateDelegateInput({ ...review, webSearch: false }).webSearch, false);
+  assert.equal(validateDelegateInput({ workspace: process.cwd(), ...review, webSearch: false }).webSearch, false);
 });
 
 test("ask gets web_search when connected", () => {
-  const args = buildCodexArgs(validateDelegateInput({ spec: "q", mode: "ask" }), {
+  const args = buildCodexArgs(validateDelegateInput({ workspace: process.cwd(), spec: "q", mode: "ask" }), {
     resultFile: "/tmp/o.txt",
   }).args;
   assert.ok(args.includes('web_search="live"'));
@@ -134,10 +144,10 @@ test("ask gets web_search when connected", () => {
 
 test("review requires reviewTarget", () => {
   assert.throws(
-    () => validateDelegateInput({ spec: "review me", mode: "review" }),
+    () => validateDelegateInput({ workspace: process.cwd(), spec: "review me", mode: "review" }),
     (err) => err.code === "invalid_review_target"
   );
-  const req = validateDelegateInput({
+  const req = validateDelegateInput({ workspace: process.cwd(),
     spec: "look for bugs",
     mode: "review",
     reviewTarget: { kind: "uncommitted" },
@@ -148,7 +158,7 @@ test("review requires reviewTarget", () => {
 test("resumeThreadId is forbidden with review", () => {
   assert.throws(
     () =>
-      validateDelegateInput({
+      validateDelegateInput({ workspace: process.cwd(),
         spec: "review",
         mode: "review",
         resumeThreadId: "tid-1",
@@ -160,25 +170,25 @@ test("resumeThreadId is forbidden with review", () => {
 
 test("validateDelegateInput rejects bad timeoutMs", () => {
   assert.throws(
-    () => validateDelegateInput({ spec: "x", timeoutMs: 999 }),
+    () => validateDelegateInput({ workspace: process.cwd(), spec: "x", timeoutMs: 999 }),
     (err) => err.code === "invalid_timeout"
   );
   assert.throws(
-    () => validateDelegateInput({ spec: "x", timeoutMs: 86_400_001 }),
+    () => validateDelegateInput({ workspace: process.cwd(), spec: "x", timeoutMs: 86_400_001 }),
     (err) => err.code === "invalid_timeout"
   );
   assert.throws(
-    () => validateDelegateInput({ spec: "x", timeoutMs: 1500.5 }),
+    () => validateDelegateInput({ workspace: process.cwd(), spec: "x", timeoutMs: 1500.5 }),
     (err) => err.code === "invalid_timeout"
   );
-  const ok = validateDelegateInput({ spec: "x", timeoutMs: 1000 });
+  const ok = validateDelegateInput({ workspace: process.cwd(), spec: "x", timeoutMs: 1000 });
   assert.equal(ok.timeoutMs, 1000);
 });
 
 test("validateDelegateInput rejects bad reviewTarget kinds", () => {
   assert.throws(
     () =>
-      validateDelegateInput({
+      validateDelegateInput({ workspace: process.cwd(),
         spec: "r",
         mode: "review",
         reviewTarget: { kind: "unknown" },
@@ -187,7 +197,7 @@ test("validateDelegateInput rejects bad reviewTarget kinds", () => {
   );
   assert.throws(
     () =>
-      validateDelegateInput({
+      validateDelegateInput({ workspace: process.cwd(),
         spec: "r",
         mode: "review",
         reviewTarget: { kind: "base", branch: "" },
@@ -196,7 +206,7 @@ test("validateDelegateInput rejects bad reviewTarget kinds", () => {
   );
   assert.throws(
     () =>
-      validateDelegateInput({
+      validateDelegateInput({ workspace: process.cwd(),
         spec: "r",
         mode: "review",
         reviewTarget: { kind: "commit", sha: "  " },
@@ -205,20 +215,20 @@ test("validateDelegateInput rejects bad reviewTarget kinds", () => {
   );
   assert.throws(
     () =>
-      validateDelegateInput({
+      validateDelegateInput({ workspace: process.cwd(),
         spec: "r",
         mode: "agent",
         reviewTarget: { kind: "uncommitted" },
       }),
     (err) => err.code === "invalid_review_target"
   );
-  const base = validateDelegateInput({
+  const base = validateDelegateInput({ workspace: process.cwd(),
     spec: "r",
     mode: "review",
     reviewTarget: { kind: "base", branch: "main" },
   });
   assert.deepEqual(base.reviewTarget, { kind: "base", branch: "main" });
-  const commit = validateDelegateInput({
+  const commit = validateDelegateInput({ workspace: process.cwd(),
     spec: "r",
     mode: "review",
     reviewTarget: { kind: "commit", sha: "abc123" },

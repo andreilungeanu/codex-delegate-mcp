@@ -44,10 +44,10 @@ function linesChild(lines, { exitCode = 0, afterEnd } = {}) {
 
 test("whitespace-only model is rejected; blank reasoningEffort falls back", () => {
   assert.throws(
-    () => validateDelegateInput({ spec: "x", model: "   " }),
+    () => validateDelegateInput({ workspace: process.cwd(), spec: "x", model: "   " }),
     (err) => err.code === "invalid_model"
   );
-  const req = validateDelegateInput({
+  const req = validateDelegateInput({ workspace: process.cwd(),
     spec: "x",
     reasoningEffort: "\t",
   });

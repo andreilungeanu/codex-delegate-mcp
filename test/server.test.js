@@ -30,7 +30,7 @@ test("buildServer registers delegate, cancel, doctor", () => {
 test("delegate tool derives defaults and descriptions from command constants", () => {
   const server = buildServer();
   const delegate = server._registeredTools.delegate;
-  const parsed = delegate.inputSchema.parse({ spec: "x" });
+  const parsed = delegate.inputSchema.parse({ spec: "x", workspace: "/w" });
 
   // The schema is the single source of the defaults. Restating them in the
   // description and the server instructions shipped the same fact three times,
@@ -39,6 +39,16 @@ test("delegate tool derives defaults and descriptions from command constants", (
   assert.equal(parsed.reasoningEffort, DEFAULT_REASONING_EFFORT);
   assert.ok(!delegate.description.includes(DEFAULT_MODEL));
   assert.ok(!SERVER_INSTRUCTIONS.includes(DEFAULT_MODEL));
+});
+
+test("the schema refuses a delegate call that names no workspace", () => {
+  // An optional field is a field an orchestrator drops, and dropping this one used
+  // to mean the server's own directory. Refusing it in the schema is what makes the
+  // caller say which tree, before anything spawns.
+  const delegate = buildServer()._registeredTools.delegate;
+  const missing = delegate.inputSchema.safeParse({ spec: "x" });
+  assert.equal(missing.success, false);
+  assert.ok(missing.error.issues.some((i) => i.path.includes("workspace")));
 });
 
 test("cancel tool description is the live-run status schema", () => {
@@ -181,7 +191,7 @@ test("an unknown delegate input is rejected instead of silently dropped", () => 
   const server = buildServer({ executeDelegate: async () => ({}) });
   const delegate = server._registeredTools.delegate;
 
-  const typo = delegate.inputSchema.safeParse({ spec: "x", resumeThredId: "lost" });
+  const typo = delegate.inputSchema.safeParse({ spec: "x", workspace: "/w", resumeThredId: "lost" });
   assert.equal(typo.success, false);
   assert.match(typo.error.issues[0].message, /Unrecognized key/);
 

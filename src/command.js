@@ -134,6 +134,9 @@ function buildInitialArgs(request, { resultFile, outputSchemaFile }) {
 }
 
 function buildResumeArgs(request, { resultFile, outputSchemaFile }) {
+  // `codex exec resume` has no --cd: the turn runs wherever the child is spawned,
+  // which is why delegate.js spawns it in request.workspace and why the workspace
+  // has to be the one the thread started in, not whatever this server sits on.
   const args = [
     "exec",
     "resume",
@@ -174,11 +177,12 @@ function commonFlags(request, resultFile, outputSchemaFile) {
     // ~/.codex config is merged in and can change model, effort or anything else
     // under a run the caller believes it fully specified.
     "--ignore-user-config",
-    // Every `-c` key below is a contract with Codex, and an unrecognized one is
-    // otherwise a silent no-op: `--disable` is documented as `-c features.<name>=false`,
-    // so a renamed feature still parses and quietly does nothing. Codex checks the
-    // whole set at config-parse time, before the turn starts, and nothing this run
-    // reads a config.toml — `--ignore-user-config` already loads none.
+    // Every `-c` key below is a contract with Codex, and without this an unrecognized
+    // one is accepted in silence: measured on 0.147.0, `-c features.bogus=false` runs
+    // the turn without complaint. Flags do not need the help — an unknown flag is a
+    // clap error, and `--disable` refuses an unknown feature on its own. This closes
+    // the `-c` half, at config-parse time, before the turn starts. Nothing here reads
+    // a config.toml; `--ignore-user-config` already loads none.
     "--strict-config",
     "--disable",
     "hooks",
@@ -225,9 +229,19 @@ export function validateDelegateInput(raw, { cwd = process.cwd() } = {}) {
   const mode = raw.mode ?? "agent";
   if (!MODES.includes(mode)) throw bad("invalid_mode", `mode must be one of ${MODES.join(", ")}`);
 
-  // A missing workspace used to reach Codex and be created by its first write,
-  // so a typo produced a parallel empty tree that looked like success throughout.
-  const workspace = path.resolve(cwd, raw.workspace || cwd);
+  // Defaulting this meant the server's own directory, which under npx or a plugin is
+  // a cache folder or the user's home: the run completed, reported clean, and edited
+  // a tree nobody asked about. Resume already refused a defaulted workspace for that
+  // reason, and there was never one for the first turn to differ.
+  if (!raw.workspace || !String(raw.workspace).trim()) {
+    throw bad(
+      "invalid_workspace",
+      "workspace is required: name the directory Codex should work in"
+    );
+  }
+  // A workspace that does not exist used to reach Codex and be created by its first
+  // write, so a typo produced a parallel empty tree that looked like success throughout.
+  const workspace = path.resolve(cwd, String(raw.workspace).trim());
   let workspaceStat;
   try {
     workspaceStat = statSync(workspace);
@@ -245,15 +259,6 @@ export function validateDelegateInput(raw, { cwd = process.cwd() } = {}) {
   if (raw.resumeThreadId != null && String(raw.resumeThreadId).trim()) {
     resumeThreadId = String(raw.resumeThreadId).trim();
     if (mode === "review") throw bad("invalid_resume", "resumeThreadId is not allowed with review");
-    // `codex exec resume` has no --cd: the turn runs wherever the child is
-    // spawned. Defaulting would silently run a thread against this server's own
-    // directory, with the original workspace's context still loaded.
-    if (!raw.workspace) {
-      throw bad(
-        "invalid_workspace",
-        "workspace is required when resuming: resume has no --cd, so an omitted or empty workspace would run the thread in the server's directory rather than the one it started in"
-      );
-    }
   }
 
   let reviewTarget;
