@@ -135,6 +135,47 @@ test("runCodexProcess announces each item once, on the event that starts it", as
   assert.deepEqual(result.filesReportedByEditTools, [path.join(dir, "a.js")]);
 });
 
+test("a running command reaches progress on one line and uncut", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-runcmd-"));
+  const resultFile = path.join(dir, "last.txt");
+  // The shape that made the old 120-char cut useless: on Windows the interpreter
+  // path is the first ~50 characters of every command, so the part that says what
+  // is actually running landed past the cut on every run.
+  const payload = `npm run build -- --flag ${"y".repeat(300)}`;
+  const command = {
+    id: "i1",
+    type: "command_execution",
+    command: `"C:\\Program Files\\PowerShell\\7\\pwsh.exe" -Command "\n  ${payload}\n"`,
+    status: "in_progress",
+  };
+
+  const progress = [];
+  const result = await runCodexProcess({
+    command: "codex",
+    args: ["exec", "--json"],
+    cwd: dir,
+    resultFile,
+    spawnImpl: () =>
+      fakeChild({
+        lines: [
+          JSON.stringify({ type: "turn.started" }),
+          JSON.stringify({ type: "item.started", item: command }),
+          JSON.stringify({ type: "turn.completed", usage: {} }),
+        ],
+        writeResult: () => writeFile(resultFile, "ok", "utf8"),
+      }),
+    platform: "linux",
+    timeoutMs: 5000,
+    onProgress: (m) => progress.push(m),
+  });
+
+  assert.equal(result.status, "completed");
+  const running = progress.find((m) => m.startsWith("running: "));
+  assert.ok(running, "the command should be announced");
+  assert.ok(running.includes(payload), "the command must survive whole, not just its wrapper");
+  assert.ok(!running.includes("\n"), "a multi-line script is read as one line");
+});
+
 test("runCodexProcess trips the startup deadline when Codex never speaks", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-startup-"));
   const resultFile = path.join(dir, "last.txt");
@@ -715,7 +756,10 @@ test("describeNonSuccessfulItem collapses a multi-line command onto one line", (
   );
 });
 
-test("describeNonSuccessfulItem marks a command it had to cut", () => {
+test("describeNonSuccessfulItem reports a long command whole", () => {
+  // On Windows the interpreter path is the first ~50 characters of every command, so
+  // a cut spent the budget on the wrapper and dropped the flag that explains the
+  // rejection. A command is model output and bounded by the model's own limit.
   const long = `pwsh -Command '${"x".repeat(300)}'`;
   const out = describeNonSuccessfulItem({
     type: "command_execution",
@@ -723,10 +767,8 @@ test("describeNonSuccessfulItem marks a command it had to cut", () => {
     status: "declined",
     exit_code: -1,
   });
-  assert.ok(out.endsWith('" (truncated) declined exit -1'));
-  // The marker is the only claim of truncation: a command inside the cap keeps
-  // its exact text, so the reader can trust an unmarked command to be complete.
-  assert.ok(!describeNonSuccessfulItem({ type: "command_execution", command: "ls" }).includes("truncated"));
+  assert.equal(out, `command_execution "${long}" declined exit -1`);
+  assert.ok(!out.includes("truncated"));
 });
 
 test("readAgentError unwraps the nested Codex error envelope", () => {

@@ -423,7 +423,13 @@ function createEventReducer({ emit, onThreadId }) {
         state.nonSuccessfulItems.push(describeNonSuccessfulItem(item));
       }
       if (item.type === "command_execution") {
-        const cmd = String(item.command || item.command_line || "").slice(0, 120);
+        // Collapsed onto one line the way a reported command is — Codex sends a
+        // multi-line script verbatim and both channels are read as one line. Not
+        // cut: a command is model output, bounded by the model's own output limit,
+        // which is the reason the content caps came out.
+        const cmd = String(item.command || item.command_line || "")
+          .replace(/\s+/g, " ")
+          .trim();
         if (started) {
           state.lastCommand = cmd || null;
           emit(cmd ? `running: ${cmd}` : "running command");
@@ -588,7 +594,7 @@ export function readUsage(raw) {
   return Object.fromEntries(kept);
 }
 
-export function describeNonSuccessfulItem(item, maxChars = 200) {
+export function describeNonSuccessfulItem(item) {
   const kind = String(item?.type || "item");
   // Codex reports a multi-line script verbatim, and a warning is read as one line.
   const detail = String(item?.command || item?.command_line || "")
@@ -596,10 +602,10 @@ export function describeNonSuccessfulItem(item, maxChars = 200) {
     .trim();
   const status = item?.status ? ` ${item.status}` : "";
   const exit = Number.isInteger(item?.exit_code) ? ` exit ${item.exit_code}` : "";
-  // A cut lands mid-token and reads as a syntax error unless it says it was cut.
-  // The marker sits outside the quotes so it cannot be mistaken for the command.
-  const cut = detail.length > maxChars ? " (truncated)" : "";
-  const label = detail ? `${kind} "${detail.slice(0, maxChars)}"${cut}` : kind;
+  // Reported whole. A cut here landed mid-token and read as a syntax error, and the
+  // command that explains a rejection is the reason the warning exists at all — the
+  // same argument that took the caps off the result.
+  const label = detail ? `${kind} "${detail}"` : kind;
   return `${label}${status}${exit}`;
 }
 
