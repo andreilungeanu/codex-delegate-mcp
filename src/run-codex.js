@@ -623,7 +623,7 @@ export function meaningfulStderr(stderr) {
  * Codex nests the actionable reason as a JSON string inside error.message.
  * Unwrap one level so the caller reads prose, not a serialized envelope.
  */
-export function readAgentError(source, maxChars = 600) {
+export function readAgentError(source) {
   const raw = typeof source === "string" ? source : source?.message;
   const text = String(raw ?? "").trim();
   if (!text) return null;
@@ -633,7 +633,10 @@ export function readAgentError(source, maxChars = 600) {
     const nested = parsed?.error?.message ?? parsed?.message;
     if (typeof nested === "string" && nested.trim()) message = nested.trim();
   } catch {}
-  return message.length > maxChars ? `${message.slice(0, maxChars)}…` : message;
+  // Kept whole. This is the one string that says why a run failed — the model name
+  // that was rejected, the quota that ran out and when it resets, the limit that was
+  // exceeded — and the part that names it can sit anywhere in the message.
+  return message;
 }
 
 /**

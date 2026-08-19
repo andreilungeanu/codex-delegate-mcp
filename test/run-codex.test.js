@@ -781,7 +781,20 @@ test("readAgentError unwraps the nested Codex error envelope", () => {
   assert.equal(readAgentError("plain failure"), "plain failure");
   assert.equal(readAgentError({ message: "   " }), null);
   assert.equal(readAgentError(undefined), null);
-  assert.equal(readAgentError({ message: "x".repeat(50) }, 10), `${"x".repeat(10)}…`);
+});
+
+test("readAgentError keeps the whole reason a run failed", () => {
+  // The shape that made a cut expensive: the accepted set, the reset time, the
+  // thing the caller has to act on, all sit at the end of a long message. This is
+  // the only string that says why the run failed.
+  const tail = "try again at Aug 20th, 2026 10:02 AM.";
+  const message = `You've hit your usage limit. ${"detail ".repeat(120)}${tail}`;
+  const raw = JSON.stringify({ type: "error", error: { message }, status: 429 });
+
+  const out = readAgentError({ message: raw });
+  assert.equal(out, message);
+  assert.ok(out.endsWith(tail), "the actionable end of the message must survive");
+  assert.ok(!out.includes("…"));
 });
 
 test("meaningfulStderr drops the benign stdin notice and keeps the rest", () => {
