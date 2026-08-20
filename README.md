@@ -48,8 +48,6 @@ Delegated work runs on the **OpenAI Codex CLI** and its own usage — separate f
 - 🩺 **Self-diagnosing** — a `doctor` tool that tells you exactly what's missing if setup isn't right.
 - 🔌 **Works everywhere MCP does** — VS Code, JetBrains, Windsurf, Visual Studio, and more.
 
-The caveats are documented rather than buried: what an empty `warnings` does *not* prove, and that `result` is an answer only on `status: "completed"`, are in the [delegate reference](skills/delegate/reference.md).
-
 ## Install
 
 You need [Node.js 20+](https://nodejs.org/) and the [OpenAI Codex CLI](https://github.com/openai/codex), already logged in (`codex login`).
