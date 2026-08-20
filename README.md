@@ -40,13 +40,12 @@ Delegated work runs on the **OpenAI Codex CLI** and its own usage — separate f
 
 ## Features
 
-- 🤝 **Native plugins** — install into Claude Code, Cursor, or GitHub Copilot CLI and just say *"delegate this to Codex"*. The shared skill teaches your agent how to delegate well.
-- 📦 **Clean, typed results** — one compact JSON block: the final answer, `status`, the files Codex edited, and per-turn token counts. Fields that carry no signal are omitted, so anything present is worth reading.
-- 📋 **Four modes** — `agent` edits, `plan` requests a schema-validated plan for you to review and approve, `ask` answers questions, and `review` runs Codex's own reviewer over uncommitted work, a base branch, or a single commit.
-- 🧵 **Resume** — continue the same Codex thread with `resumeThreadId`, and get told if the context didn't actually carry over.
-- 🧑‍🤝‍🧑 **Parallel, and cancellable for real** — fan a question across models or put independent workers on independent directories; `cancel` waits for the exit and warns when a process outlives the kill deadline.
-- 🩺 **Self-diagnosing** — a `doctor` tool that tells you exactly what's missing if setup isn't right.
-- 🔌 **Works everywhere MCP does** — VS Code, JetBrains, Windsurf, Visual Studio, and more.
+- 📦 **One result you can review** — a compact JSON block: the final answer, `status`, the files Codex's edit tools reported changing, per-turn token counts, and the `threadId` to continue from. Fields that carry no signal are omitted.
+- 📋 **Plan first, then build it on the same thread** — `plan` returns schema-validated steps for you to approve, and `agent` implements them. `ask` answers questions. `review` runs Codex's own reviewer over uncommitted work, a base branch, or a single commit.
+- 🧵 **Resume** — continue a Codex thread with `resumeThreadId`. `resumed: false` tells you the context did not carry over.
+- 🧑‍🤝‍🧑 **Run several, cancel cleanly** — the same question across models, or independent workers on independent directories. `cancel` waits for the exit and warns when a process outlives the kill deadline.
+- 🤝 **One-command install** — Claude Code and GitHub Copilot CLI take it as a plugin, with a skill that teaches your agent how to delegate well. Cursor, VS Code, JetBrains, Windsurf and Visual Studio add the stdio server in settings.
+- 🩺 **`doctor`** — tells you exactly what's missing if setup isn't right.
 
 ## Install
 
