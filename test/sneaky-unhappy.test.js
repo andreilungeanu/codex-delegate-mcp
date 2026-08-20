@@ -5,7 +5,12 @@ import { Readable } from "node:stream";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { validateDelegateInput, buildCodexArgs } from "../src/command.js";
+import {
+  validateDelegateInput,
+  buildCodexArgs,
+  DEFAULT_MODEL,
+  DEFAULT_REASONING_EFFORT,
+} from "../src/command.js";
 import { createOperationRegistry } from "../src/ops.js";
 import { runCodexProcess, readFinalResult } from "../src/run-codex.js";
 import { executeDelegate } from "../src/delegate.js";
@@ -51,8 +56,8 @@ test("whitespace-only model is rejected; blank reasoningEffort falls back", () =
     spec: "x",
     reasoningEffort: "\t",
   });
-  assert.equal(req.model, "gpt-5.6-terra");
-  assert.equal(req.reasoningEffort, "high");
+  assert.equal(req.model, DEFAULT_MODEL);
+  assert.equal(req.reasoningEffort, DEFAULT_REASONING_EFFORT);
 });
 
 test("a spec that looks like CLI flags never reaches argv at all", () => {

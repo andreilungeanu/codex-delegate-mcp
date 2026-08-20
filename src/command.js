@@ -5,8 +5,13 @@ import { statSync } from "node:fs";
 /** @type {readonly [string, ...string[]]} */
 export const MODES = Object.freeze(["agent", "plan", "ask", "review"]);
 
-/** Default worker model — orchestrator overrides only when the user asks. */
-export const DEFAULT_MODEL = "gpt-5.6-terra";
+/**
+ * Default worker model — orchestrator overrides only when the user asks. Luna is the
+ * cheaper, faster half of the 5.6 line: terra scores a few points higher on published
+ * benchmarks, luna costs about a tenth as much per token and streams output faster.
+ * `xhigh` buys back the reasoning depth and is still the cheaper turn.
+ */
+export const DEFAULT_MODEL = "gpt-5.6-luna";
 
 /**
  * The models a caller can name, default first. `model` itself is not validated against
@@ -19,14 +24,17 @@ export const DEFAULT_MODEL = "gpt-5.6-terra";
 export const SELECTABLE_MODELS = Object.freeze([
   DEFAULT_MODEL,
   "gpt-5.6-sol",
-  "gpt-5.6-luna",
+  "gpt-5.6-terra",
   "gpt-5.5",
   "gpt-5.4",
   "gpt-5.4-mini",
 ]);
 
-/** Default reasoning effort — quality over speed unless the user asks otherwise. */
-export const DEFAULT_REASONING_EFFORT = "high";
+/**
+ * Default reasoning effort — quality over speed unless the user asks otherwise. Every
+ * model this bridge publishes accepts xhigh, so the default survives a model override.
+ */
+export const DEFAULT_REASONING_EFFORT = "xhigh";
 
 /**
  * Leave headroom under the Windows CreateProcess ~32k limit. Review only: every

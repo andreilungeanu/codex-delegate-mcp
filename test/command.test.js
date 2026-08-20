@@ -8,6 +8,8 @@ import {
   validateDelegateInput,
   PLAN_SCHEMA,
   MODES,
+  DEFAULT_MODEL,
+  DEFAULT_REASONING_EFFORT,
 } from "../src/command.js";
 
 function assertApprovalsBypassed(built) {
@@ -24,8 +26,8 @@ test("validateDelegateInput resolves workspace and fills the rest", () => {
   assert.equal(req.webSearch, true);
   assert.equal(req.fast, false);
   assert.equal(req.workspace, cwd);
-  assert.equal(req.model, "gpt-5.6-terra");
-  assert.equal(req.reasoningEffort, "high");
+  assert.equal(req.model, DEFAULT_MODEL);
+  assert.equal(req.reasoningEffort, DEFAULT_REASONING_EFFORT);
 });
 
 test("workspace must exist and be a directory", () => {
@@ -64,9 +66,9 @@ test("an omitted or empty workspace is refused, on a first turn and on a resume"
 });
 
 test("reasoningEffort accepts every level the model catalog names", () => {
-  // `codex debug models` lists ultra for gpt-5.6-sol and gpt-5.6-terra, the default
-  // model. It was unreachable here because an earlier test borrowed it as a stand-in
-  // for an invalid value, back when no model took it.
+  // `codex debug models` lists ultra for gpt-5.6-sol and gpt-5.6-terra. It was
+  // unreachable here because an earlier test borrowed it as a stand-in for an invalid
+  // value, back when no model took it.
   for (const effort of ["none", "max", "ultra"]) {
     assert.equal(
       validateDelegateInput({ workspace: process.cwd(), spec: "x", reasoningEffort: effort }).reasoningEffort,

@@ -7,8 +7,8 @@ negative value falls back to its default rather than breaking every call.
 
 | Setting | Default | Notes |
 |---|---|---|
-| `model` | `gpt-5.6-terra` | Per call. Override only when asked for. |
-| `reasoningEffort` | `high` | `gpt-5.6-*` reject `minimal`; older models reject `none`. |
+| `model` | `gpt-5.6-luna` | Per call. Override only when asked for. |
+| `reasoningEffort` | `xhigh` | `gpt-5.6-*` reject `minimal`; older models reject `none`. |
 | `webSearch` | `true` | Web search. Does not affect the worker's shell network. See below. |
 | `fast` | `false` | Codex Fast mode (`service_tier=fast`); higher credit use. |
 | `timeoutMs` | `3600000` | Hard cap for the whole run. |
