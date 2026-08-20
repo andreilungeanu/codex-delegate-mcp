@@ -35,7 +35,7 @@ No tool declares an MCP `outputSchema`, and no tool returns `structuredContent`.
 |---|---|---:|---|
 | `spec` | string | Yes | The task brief. |
 | `mode` | `agent` \| `plan` \| `ask` \| `review` | No | Defaults to `agent`. |
-| `workspace` | string | Yes | Must name an existing directory. A resumed thread takes the one it started in. |
+| `workspace` | string | Yes | Must name an existing directory. A resume runs in the workspace it is given, not the one the thread started in, so pass the original. |
 | `resumeThreadId` | string | No | Not valid with `review`. |
 | `model` | string | No | Must be non-empty when supplied. |
 | `reasoningEffort` | `none` \| `minimal` \| `low` \| `medium` \| `high` \| `xhigh` \| `max` \| `ultra` | No | Uses the configured default when omitted. |

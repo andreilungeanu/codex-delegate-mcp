@@ -51,7 +51,8 @@ To cancel one of several, pass its `delegationId`. See [reference.md](reference.
 
 Leave `model`, `reasoningEffort` and `fast` at their defaults unless the user asks. Other models
 (`gpt-5.6-sol`, `gpt-5.6-luna`) are available — pass `model` only on request. `workspace` is
-required on every call; a resumed thread takes the one it started in.
+required on every call, resumes included — pass the one the thread started in, or the
+resumed turn runs somewhere else.
 
 ## Plan mode
 
