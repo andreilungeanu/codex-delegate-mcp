@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { runDoctor } from "../src/doctor.js";
+import { DEFAULT_MODEL } from "../src/command.js";
 import { VERSION } from "../src/version.js";
 
 const resolved = {
@@ -215,4 +216,98 @@ test("doctor tolerates a client that cannot report itself", async () => {
 
   assert.equal(out.client.name, null);
   assert.deepEqual(out.client.capabilities, {});
+});
+
+/** `codex debug models`, reduced to the fields the catalog check reads. */
+function catalogJson(models) {
+  return JSON.stringify({
+    models: models.map((model) => ({
+      slug: model.slug,
+      visibility: model.visibility ?? "list",
+      supported_reasoning_levels: (model.efforts || []).map((effort) => ({ effort })),
+    })),
+  });
+}
+
+function deepExec({ catalog, onDebug } = {}) {
+  return async (_cmd, args) => {
+    const invocation = args.join(" ");
+    if (invocation !== "debug models") return { stdout: helpFor(invocation), stderr: "" };
+    if (onDebug) return onDebug();
+    return { stdout: catalog, stderr: "" };
+  };
+}
+
+test("doctor deep reports the catalog and the levels each model takes", async () => {
+  const out = await runDoctor(
+    options({
+      deep: true,
+      execFileImpl: deepExec({
+        catalog: catalogJson([
+          { slug: DEFAULT_MODEL, efforts: ["low", "high", "max", "ultra"] },
+          { slug: "gpt-5.4", efforts: ["low", "high"] },
+          { slug: "codex-auto-review", visibility: "hide", efforts: ["low"] },
+        ]),
+      }),
+    })
+  );
+
+  assert.equal(out.deep.models.ran, true);
+  assert.deepEqual(
+    out.deep.models.models.map((model) => model.slug),
+    [DEFAULT_MODEL, "gpt-5.4"],
+    "a model the CLI hides is not one a caller can ask for"
+  );
+  assert.deepEqual(out.deep.models.defaultModel, { slug: DEFAULT_MODEL, inCatalog: true });
+  // none and minimal are missing from the real catalog and the models still take them,
+  // so a level this bridge allows and the catalog omits is not drift.
+  assert.deepEqual(out.warnings, []);
+});
+
+test("doctor deep warns about a reasoning level the enum cannot request", async () => {
+  const out = await runDoctor(
+    options({
+      deep: true,
+      execFileImpl: deepExec({
+        catalog: catalogJson([{ slug: DEFAULT_MODEL, efforts: ["high", "hyper"] }]),
+      }),
+    })
+  );
+
+  assert.equal(out.warnings.length, 1);
+  assert.match(out.warnings[0], /rejects \(hyper\)/);
+});
+
+test("doctor deep warns when the default model is gone from the catalog", async () => {
+  const out = await runDoctor(
+    options({
+      deep: true,
+      execFileImpl: deepExec({ catalog: catalogJson([{ slug: "gpt-9-renamed", efforts: ["high"] }]) }),
+    })
+  );
+
+  assert.equal(out.deep.models.defaultModel.inCatalog, false);
+  assert.ok(
+    out.warnings.join(" ").includes(`The default model ${DEFAULT_MODEL} is not in the catalog`),
+    "a default nothing answers to fails every delegation that omits model"
+  );
+});
+
+test("a catalog probe that fails leaves the rest of doctor standing", async () => {
+  const out = await runDoctor(
+    options({
+      deep: true,
+      execFileImpl: deepExec({
+        onDebug: () => {
+          const err = new Error("unrecognized subcommand 'debug'");
+          err.code = 2;
+          throw err;
+        },
+      }),
+    })
+  );
+
+  assert.deepEqual(out.deep.models, { ran: false, reason: "probe_failed", exitCode: 2 });
+  assert.equal(out.deep.surfaces.exec.ok, true, "the help probes still ran");
+  assert.deepEqual(out.warnings, [], "a surface this cannot read reports nothing, it does not guess");
 });

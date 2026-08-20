@@ -3,6 +3,7 @@ import { execFile } from "node:child_process";
 import { statSync } from "node:fs";
 import { promisify } from "node:util";
 import { refreshCodex, clearCodexCache } from "./resolve-codex.js";
+import { REASONING_EFFORTS, DEFAULT_MODEL } from "./command.js";
 import { isGitRepo } from "./git-preflight.js";
 import { VERSION } from "./version.js";
 
@@ -166,7 +167,7 @@ const CD_EXPECTED = Object.freeze({
 /** The flag as clap prints it: `-C, --cd <DIR>`. */
 const CD_FLAG = /--cd\b/;
 
-/** Lightweight deep check: help surfaces exist. No model quota. */
+/** Lightweight deep check: help surfaces and the model catalog. No model quota. */
 async function runDeepSmoke({ codex, execFileImpl = execFileAsync, warnings = [] }) {
   if (!codex.found) {
     return { ran: false, reason: "codex_not_found" };
@@ -210,7 +211,74 @@ async function runDeepSmoke({ codex, execFileImpl = execFileAsync, warnings = []
       );
     }
   }
-  return { ran: true, surfaces: results, note: "Help-only smoke; no model calls." };
+  return {
+    ran: true,
+    surfaces: results,
+    models: await probeModelCatalog({ codex, execFileImpl, warnings }),
+    note: "Help and catalog only; no model calls.",
+  };
+}
+
+/**
+ * `codex debug models` prints the catalog without spending quota, so what this bridge
+ * accepts can be checked against what the models take rather than assumed. The lag it
+ * catches has shipped three times — xhigh, then max, then ultra — each unreachable
+ * through this bridge until someone compared the two lists by hand.
+ */
+async function probeModelCatalog({ codex, execFileImpl = execFileAsync, warnings = [] }) {
+  let stdout = "";
+  try {
+    ({ stdout } = await execFileImpl(codex.command, ["debug", "models"], {
+      encoding: "utf8",
+      timeout: 8000,
+      killSignal: "SIGKILL",
+      windowsHide: true,
+      shell: false,
+      // The catalog runs to ~280 KB and every model adds to it, so the 1 MB default
+      // would eventually fail this probe rather than the drift it exists to report.
+      maxBuffer: 8 * 1024 * 1024,
+    }));
+  } catch (err) {
+    // `debug` is a debugging surface and can move. A catalog this cannot read reports
+    // nothing; the rest of doctor is unaffected.
+    return { ran: false, reason: "probe_failed", exitCode: typeof err?.code === "number" ? err.code : null };
+  }
+
+  let catalog;
+  try {
+    catalog = JSON.parse(stdout);
+  } catch {
+    return { ran: false, reason: "unparseable" };
+  }
+
+  const all = Array.isArray(catalog?.models) ? catalog.models : [];
+  const models = all
+    .filter((model) => model?.visibility === "list")
+    .map((model) => ({
+      slug: model.slug,
+      reasoningEfforts: (model.supported_reasoning_levels || []).map((level) => level?.effort),
+    }));
+
+  // One direction only. The reverse would fire on none and minimal, which the catalog
+  // omits and the models still take — none on the gpt-5.6 models, minimal on the older
+  // ones — so warning on them would train the reader to skip this field.
+  const unreachable = [...new Set(models.flatMap((model) => model.reasoningEfforts))].filter(
+    (effort) => effort && !REASONING_EFFORTS.includes(effort)
+  );
+  if (unreachable.length) {
+    warnings.push(
+      `The model catalog lists reasoning levels this bridge rejects (${unreachable.join(", ")}). reasoningEffort is validated against a fixed enum, so a level missing from it cannot be requested at all. REASONING_EFFORTS in src/command.js is where it goes.`
+    );
+  }
+
+  const inCatalog = all.some((model) => model?.slug === DEFAULT_MODEL);
+  if (!inCatalog) {
+    warnings.push(
+      `The default model ${DEFAULT_MODEL} is not in the catalog this CLI prints. Every delegation that does not name its own model asks for it, so all of them would fail at the API. DEFAULT_MODEL in src/command.js is where it goes.`
+    );
+  }
+
+  return { ran: true, models, defaultModel: { slug: DEFAULT_MODEL, inCatalog } };
 }
 
 export { clearCodexCache };
