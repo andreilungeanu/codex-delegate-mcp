@@ -14,7 +14,7 @@ concurrency and timeouts behave. [SKILL.md](SKILL.md) carries the workflow itsel
 | `fast` | `false` | Codex Fast mode (`service_tier=fast`). Higher credit use — only when the user asks. |
 | `webSearch` | `true` | Web search. `false` disables it and nothing else — the worker's shell reaches the network either way. |
 | `workspace` | required | Working directory for Codex. Smallest directory holding the task's files; with no such directory the project root is the floor. Must already exist; never create one for the call. |
-| `resumeThreadId` | — | Resume an existing Codex thread. Pass the same `workspace`: `codex exec resume` has no `--cd`, so an omitted one runs the thread in the server's directory rather than the one it started in. |
+| `resumeThreadId` | — | Resume an existing Codex thread. Pass the workspace the thread started in: `codex exec resume` has no `--cd`, so the turn runs wherever the child is spawned. |
 | `timeoutMs` | `3600000` | Hard cap for the whole run. |
 | `reviewTarget` | — | Required in `review` mode, rejected elsewhere. Exactly one of the three forms below. |
 
