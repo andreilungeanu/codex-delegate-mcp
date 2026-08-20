@@ -155,9 +155,9 @@ async function probeLogin(command, execFileImpl = execFileAsync) {
  * What this bridge assumes about `--cd` on each surface, and why the assumption is
  * load-bearing: an initial run passes the workspace as `--cd`, while resume and
  * review have no such flag, so their directory comes only from the spawn — which is
- * in turn why resume refuses a defaulted workspace. Either shape changing upstream
- * changes what this bridge has to do, so it is worth being told rather than
- * discovering it from a run that used the wrong tree.
+ * in turn why delegate.js spawns the child in the requested workspace. Either shape
+ * changing upstream changes what this bridge has to do, so it is worth being told
+ * rather than discovering it from a run that used the wrong tree.
  */
 const CD_EXPECTED = Object.freeze({
   exec: true,
@@ -207,7 +207,7 @@ async function runDeepSmoke({ codex, execFileImpl = execFileAsync, warnings = []
     if (exitCode === 0 && hasCd !== CD_EXPECTED[surface]) {
       warnings.push(
         hasCd
-          ? `\`codex ${surface}\` now accepts --cd. This bridge assumes it does not: resume and review take their working directory only from the spawn, which is why resume refuses a defaulted workspace. Recheck the argument builders against the new surface.`
+          ? `\`codex ${surface}\` now accepts --cd. This bridge assumes it does not: resume and review take their working directory only from the spawn. Recheck the argument builders against the new surface.`
           : `\`codex ${surface}\` no longer accepts --cd, which this bridge passes on every initial run. An unknown flag is a hard argument error, so every delegation would fail before it started. The child is spawned in the workspace either way, so dropping the flag is the fix.`
       );
     }
