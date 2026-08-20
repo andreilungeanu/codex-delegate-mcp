@@ -15,6 +15,7 @@ import {
 import {
   DEFAULT_MODEL,
   DEFAULT_REASONING_EFFORT,
+  SELECTABLE_MODELS,
 } from "../src/command.js";
 import { createOperationRegistry } from "../src/ops.js";
 import { executeDelegate } from "../src/delegate.js";
@@ -686,4 +687,15 @@ test("a real server kills its worker and exits when its stdin closes", { timeout
       } catch {}
     }
   }
+});
+
+test("the model description is the published list, not a list typed beside it", () => {
+  const delegate = buildServer()._registeredTools.delegate;
+
+  // The whole point of generating it: a model added to SELECTABLE_MODELS reaches the
+  // caller, and one dropped stops being advertised, without a second edit somewhere else.
+  assert.equal(
+    delegate.inputSchema.shape.model.description,
+    `Codex model id: ${SELECTABLE_MODELS.join(", ")}.`
+  );
 });

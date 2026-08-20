@@ -413,14 +413,19 @@ test("an onProgress throwing on the announce still releases the lease", async ()
   assert.equal(cancel.status, "nothing-active");
 });
 
-test("an unadvertised model is checked before anything is spawned", async () => {
+test("an unadvertised model is checked before the worker is spawned", async () => {
   let spawned = false;
+  let seenOptions = null;
   await assert.rejects(
     () =>
       executeDelegate(
         { spec: "x", workspace: process.cwd(), model: "luma" },
         {
           ...delegateOptions("thread-1"),
+          readCatalog: async (opts) => {
+            seenOptions = opts;
+            return CATALOG;
+          },
           runProcess: async () => {
             spawned = true;
             throw new Error("must not spawn");
@@ -437,6 +442,9 @@ test("an unadvertised model is checked before anything is spawned", async () => 
     }
   );
   assert.equal(spawned, false, "the point of the check is that no run starts");
+  // Without the bound the reader's own 8s default applies, which is longer than the API
+  // rejection this exists to beat — and nothing else would notice it was dropped.
+  assert.equal(seenOptions?.timeoutMs, 1000);
 });
 
 test("a hidden model the CLI still serves is not refused", async () => {
@@ -474,4 +482,25 @@ test("a catalog that cannot be read refuses nothing", async () => {
 
   // Fail open: a moved debug surface must not become a bridge that refuses every model.
   assert.equal(out.status, "completed");
+});
+
+test("a catalog with nothing published names no models at all", async () => {
+  const hiddenOnly = [
+    { slug: "codex-auto-review", visibility: "hide" },
+    { slug: "secret-internal", visibility: "hide" },
+  ];
+
+  await assert.rejects(
+    () =>
+      executeDelegate(
+        { spec: "x", workspace: process.cwd(), model: "luma" },
+        { ...delegateOptions("thread-1"), readCatalog: async () => hiddenOnly }
+      ),
+    (err) => {
+      // Refused either way; the suggestion is what goes, not the refusal.
+      assert.equal(err.code, "invalid_model");
+      assert.equal(err.message, 'Unknown model "luma".');
+      return true;
+    }
+  );
 });
