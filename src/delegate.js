@@ -2,7 +2,13 @@ import process from "node:process";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { buildCodexArgs, validateDelegateInput, PLAN_SCHEMA } from "./command.js";
+import {
+  buildCodexArgs,
+  validateDelegateInput,
+  PLAN_SCHEMA,
+  SELECTABLE_MODELS,
+} from "./command.js";
+import { readModelCatalog, catalogSlugs, listedSlugs } from "./model-catalog.js";
 import { resolveCodex } from "./resolve-codex.js";
 import {
   runCodexProcess,
@@ -14,6 +20,9 @@ import { normalizeEditToolFiles } from "./edit-tool-files.js";
 import { createOperationRegistry } from "./ops.js";
 import { preflightReviewTarget } from "./git-preflight.js";
 
+/** Deadline for the model preflight. An unknown model costs ~2.5s at the API; this cannot. */
+const MODEL_CHECK_MS = 1000;
+
 export async function executeDelegate(rawArgs, options = {}) {
   const {
     cwd = process.cwd(),
@@ -24,6 +33,7 @@ export async function executeDelegate(rawArgs, options = {}) {
     onProgress,
     signal: outerSignal,
     preflight = preflightReviewTarget,
+    readCatalog = readModelCatalog,
   } = options;
 
   if (env.CODEX_DELEGATE_DEPTH && String(env.CODEX_DELEGATE_DEPTH).trim() !== "") {
@@ -43,6 +53,7 @@ export async function executeDelegate(rawArgs, options = {}) {
   // Resolver notes describe the setup, not this run. Emitting them on every
   // result makes a non-empty `warnings` mean nothing; doctor reports them.
   const codex = resolve({ env });
+  await assertKnownModel(request.model, { command: codex.command, readCatalog });
   const warnings = [];
 
   // Created before the work that can throw, so every exit path has to clean it up.
@@ -201,4 +212,32 @@ function isValidPlanShape(value) {
       typeof step.title === "string" &&
       typeof step.detail === "string"
   );
+}
+
+/**
+ * A slug this bridge advertises is not worth a process to confirm — `doctor deep` is what
+ * reports SELECTABLE_MODELS going stale. Anything else is either a typo or a model that
+ * shipped after this release, and only the CLI can tell those apart, so ask it.
+ *
+ * Hidden models pass: `visibility` decides what a caller is offered, not what the API
+ * serves, and refusing one the CLI would have run is worse than the error this replaces.
+ * The message names only the advertised set, so nobody is pointed at an internal model.
+ *
+ * A catalog that cannot be read objects to nothing. The deadline is well under the ~2.5s
+ * an unknown model costs at the API: a probe that hung longer than the failure it
+ * prevents would be a regression on every call that names an unadvertised model.
+ */
+async function assertKnownModel(model, { command, readCatalog }) {
+  if (SELECTABLE_MODELS.includes(model)) return;
+  const models = await readCatalog({ command, timeoutMs: MODEL_CHECK_MS });
+  const slugs = catalogSlugs(models);
+  if (slugs.length === 0 || slugs.includes(model)) return;
+  const offered = listedSlugs(models);
+  const err = /** @type {Error & { code?: string }} */ (
+    new Error(
+      `Unknown model ${JSON.stringify(model)}. This Codex CLI offers: ${(offered.length ? offered : slugs).join(", ")}.`
+    )
+  );
+  err.code = "invalid_model";
+  throw err;
 }

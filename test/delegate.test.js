@@ -2,12 +2,20 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { executeDelegate, envMs } from "../src/delegate.js";
 import { createOperationRegistry } from "../src/ops.js";
+import { SELECTABLE_MODELS } from "../src/command.js";
 import { readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
+
+/** What `codex debug models` reports on 0.147.0, reduced to what the preflight reads. */
+const CATALOG = [
+  ...SELECTABLE_MODELS.map((slug) => ({ slug, visibility: "list" })),
+  { slug: "codex-auto-review", visibility: "hide" },
+];
 
 function delegateOptions(threadId) {
   return {
     env: {},
+    readCatalog: async () => CATALOG,
     operationRegistry: createOperationRegistry(),
     resolve: () => ({
       command: "/bin/codex",
@@ -403,4 +411,67 @@ test("an onProgress throwing on the announce still releases the lease", async ()
 
   const cancel = await registry.cancel({ cause: "user" });
   assert.equal(cancel.status, "nothing-active");
+});
+
+test("an unadvertised model is checked before anything is spawned", async () => {
+  let spawned = false;
+  await assert.rejects(
+    () =>
+      executeDelegate(
+        { spec: "x", workspace: process.cwd(), model: "luma" },
+        {
+          ...delegateOptions("thread-1"),
+          runProcess: async () => {
+            spawned = true;
+            throw new Error("must not spawn");
+          },
+        }
+      ),
+    (err) => {
+      assert.equal(err.code, "invalid_model");
+      assert.match(err.message, /Unknown model "luma"/);
+      // The advertised set, so nobody is pointed at an internal model.
+      assert.match(err.message, /gpt-5.6-terra/);
+      assert.ok(!err.message.includes("codex-auto-review"));
+      return true;
+    }
+  );
+  assert.equal(spawned, false, "the point of the check is that no run starts");
+});
+
+test("a hidden model the CLI still serves is not refused", async () => {
+  const out = await executeDelegate(
+    { spec: "x", workspace: process.cwd(), model: "codex-auto-review" },
+    delegateOptions("thread-1")
+  );
+
+  // visibility decides what a caller is offered, not what the API will serve.
+  assert.equal(out.status, "completed");
+});
+
+test("an advertised model is taken on trust, with no catalog read at all", async () => {
+  let reads = 0;
+  const out = await executeDelegate(
+    { spec: "x", workspace: process.cwd(), model: SELECTABLE_MODELS[2] },
+    {
+      ...delegateOptions("thread-1"),
+      readCatalog: async () => {
+        reads++;
+        return CATALOG;
+      },
+    }
+  );
+
+  assert.equal(out.status, "completed");
+  assert.equal(reads, 0, "an advertised slug is not worth a process to confirm");
+});
+
+test("a catalog that cannot be read refuses nothing", async () => {
+  const out = await executeDelegate(
+    { spec: "x", workspace: process.cwd(), model: "gpt-9-shipped-after-this-release" },
+    { ...delegateOptions("thread-1"), readCatalog: async () => null }
+  );
+
+  // Fail open: a moved debug surface must not become a bridge that refuses every model.
+  assert.equal(out.status, "completed");
 });

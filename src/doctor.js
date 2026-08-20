@@ -3,7 +3,8 @@ import { execFile } from "node:child_process";
 import { statSync } from "node:fs";
 import { promisify } from "node:util";
 import { refreshCodex, clearCodexCache } from "./resolve-codex.js";
-import { REASONING_EFFORTS, DEFAULT_MODEL } from "./command.js";
+import { REASONING_EFFORTS, DEFAULT_MODEL, SELECTABLE_MODELS } from "./command.js";
+import { readModelCatalog } from "./model-catalog.js";
 import { isGitRepo } from "./git-preflight.js";
 import { VERSION } from "./version.js";
 
@@ -226,32 +227,10 @@ async function runDeepSmoke({ codex, execFileImpl = execFileAsync, warnings = []
  * through this bridge until someone compared the two lists by hand.
  */
 async function probeModelCatalog({ codex, execFileImpl = execFileAsync, warnings = [] }) {
-  let stdout = "";
-  try {
-    ({ stdout } = await execFileImpl(codex.command, ["debug", "models"], {
-      encoding: "utf8",
-      timeout: 8000,
-      killSignal: "SIGKILL",
-      windowsHide: true,
-      shell: false,
-      // The catalog runs to ~280 KB and every model adds to it, so the 1 MB default
-      // would eventually fail this probe rather than the drift it exists to report.
-      maxBuffer: 8 * 1024 * 1024,
-    }));
-  } catch (err) {
-    // `debug` is a debugging surface and can move. A catalog this cannot read reports
-    // nothing; the rest of doctor is unaffected.
-    return { ran: false, reason: "probe_failed", exitCode: typeof err?.code === "number" ? err.code : null };
-  }
-
-  let catalog;
-  try {
-    catalog = JSON.parse(stdout);
-  } catch {
-    return { ran: false, reason: "unparseable" };
-  }
-
-  const all = Array.isArray(catalog?.models) ? catalog.models : [];
+  // Diagnostics can wait longer than a delegation: this is the only place the catalog is
+  // read for its own sake, so a slow CLI is worth reporting rather than skipping.
+  const all = await readModelCatalog({ command: codex.command, execFileImpl, timeoutMs: 8000 });
+  if (!all) return { ran: false, reason: "unreadable" };
   const models = all
     .filter((model) => model?.visibility === "list")
     .map((model) => ({
@@ -271,7 +250,28 @@ async function probeModelCatalog({ codex, execFileImpl = execFileAsync, warnings
     );
   }
 
+  // Both directions here, unlike the levels above: SELECTABLE_MODELS is what the tool
+  // description publishes, so a slug it misses is one no caller is told about, and one
+  // it names that the catalog dropped is a call that fails at the API.
+  const slugs = models.map((model) => model.slug);
+  const unpublished = slugs.filter((slug) => !SELECTABLE_MODELS.includes(slug));
+  if (unpublished.length) {
+    warnings.push(
+      `The model catalog lists models this bridge does not publish (${unpublished.join(", ")}). SELECTABLE_MODELS in src/command.js is what the model field's description names, so a caller is never told these exist.`
+    );
+  }
+
   const inCatalog = all.some((model) => model?.slug === DEFAULT_MODEL);
+  // The default gets its own message below, which says more than this one can.
+  const retired = SELECTABLE_MODELS.filter(
+    (slug) => slug !== DEFAULT_MODEL && !all.some((model) => model?.slug === slug)
+  );
+  if (retired.length) {
+    warnings.push(
+      `This bridge publishes models the catalog no longer has (${retired.join(", ")}). A caller that takes one of these from the model field's description gets a run that fails at the API.`
+    );
+  }
+
   if (!inCatalog) {
     warnings.push(
       `The default model ${DEFAULT_MODEL} is not in the catalog this CLI prints. Every delegation that does not name its own model asks for it, so all of them would fail at the API. DEFAULT_MODEL in src/command.js is where it goes.`

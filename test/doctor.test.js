@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { runDoctor } from "../src/doctor.js";
-import { DEFAULT_MODEL } from "../src/command.js";
+import { DEFAULT_MODEL, SELECTABLE_MODELS } from "../src/command.js";
 import { VERSION } from "../src/version.js";
 
 const resolved = {
@@ -244,8 +244,7 @@ test("doctor deep reports the catalog and the levels each model takes", async ()
       deep: true,
       execFileImpl: deepExec({
         catalog: catalogJson([
-          { slug: DEFAULT_MODEL, efforts: ["low", "high", "max", "ultra"] },
-          { slug: "gpt-5.4", efforts: ["low", "high"] },
+          ...SELECTABLE_MODELS.map((slug) => ({ slug, efforts: ["low", "high", "max", "ultra"] })),
           { slug: "codex-auto-review", visibility: "hide", efforts: ["low"] },
         ]),
       }),
@@ -255,7 +254,7 @@ test("doctor deep reports the catalog and the levels each model takes", async ()
   assert.equal(out.deep.models.ran, true);
   assert.deepEqual(
     out.deep.models.models.map((model) => model.slug),
-    [DEFAULT_MODEL, "gpt-5.4"],
+    [...SELECTABLE_MODELS],
     "a model the CLI hides is not one a caller can ask for"
   );
   assert.deepEqual(out.deep.models.defaultModel, { slug: DEFAULT_MODEL, inCatalog: true });
@@ -269,7 +268,12 @@ test("doctor deep warns about a reasoning level the enum cannot request", async 
     options({
       deep: true,
       execFileImpl: deepExec({
-        catalog: catalogJson([{ slug: DEFAULT_MODEL, efforts: ["high", "hyper"] }]),
+        catalog: catalogJson(
+          SELECTABLE_MODELS.map((slug) => ({
+            slug,
+            efforts: slug === DEFAULT_MODEL ? ["high", "hyper"] : ["high"],
+          }))
+        ),
       }),
     })
   );
@@ -282,7 +286,14 @@ test("doctor deep warns when the default model is gone from the catalog", async 
   const out = await runDoctor(
     options({
       deep: true,
-      execFileImpl: deepExec({ catalog: catalogJson([{ slug: "gpt-9-renamed", efforts: ["high"] }]) }),
+      execFileImpl: deepExec({
+        catalog: catalogJson(
+          SELECTABLE_MODELS.filter((slug) => slug !== DEFAULT_MODEL).map((slug) => ({
+            slug,
+            efforts: ["high"],
+          }))
+        ),
+      }),
     })
   );
 
@@ -307,7 +318,58 @@ test("a catalog probe that fails leaves the rest of doctor standing", async () =
     })
   );
 
-  assert.deepEqual(out.deep.models, { ran: false, reason: "probe_failed", exitCode: 2 });
+  // One shape for a probe that died and one that printed nonsense: neither is readable,
+  // and no warning is worth raising off a catalog nobody got.
+  assert.deepEqual(out.deep.models, { ran: false, reason: "unreadable" });
   assert.equal(out.deep.surfaces.exec.ok, true, "the help probes still ran");
   assert.deepEqual(out.warnings, [], "a surface this cannot read reports nothing, it does not guess");
+});
+
+test("doctor deep warns about a model the catalog has and the bridge never names", async () => {
+  const out = await runDoctor(
+    options({
+      deep: true,
+      execFileImpl: deepExec({
+        catalog: catalogJson([
+          ...SELECTABLE_MODELS.map((slug) => ({ slug, efforts: ["high"] })),
+          { slug: "gpt-7-unannounced", efforts: ["high"] },
+        ]),
+      }),
+    })
+  );
+
+  assert.equal(out.warnings.length, 1);
+  assert.match(out.warnings[0], /does not publish \(gpt-7-unannounced\)/);
+});
+
+test("doctor deep warns about a published model the catalog has dropped", async () => {
+  const survivors = SELECTABLE_MODELS.filter((slug) => slug !== SELECTABLE_MODELS[1]);
+  const out = await runDoctor(
+    options({
+      deep: true,
+      execFileImpl: deepExec({
+        catalog: catalogJson(survivors.map((slug) => ({ slug, efforts: ["high"] }))),
+      }),
+    })
+  );
+
+  assert.equal(out.warnings.length, 1);
+  assert.ok(out.warnings[0].includes(`no longer has (${SELECTABLE_MODELS[1]})`));
+});
+
+test("a retired default is reported once, by the message that says what it costs", async () => {
+  const out = await runDoctor(
+    options({
+      deep: true,
+      execFileImpl: deepExec({
+        catalog: catalogJson(
+          SELECTABLE_MODELS.filter((slug) => slug !== DEFAULT_MODEL).map((slug) => ({ slug, efforts: ["high"] }))
+        ),
+      }),
+    })
+  );
+
+  // Not twice: the default is the one case where the generic message would say less.
+  assert.equal(out.warnings.length, 1);
+  assert.ok(out.warnings[0].includes(`The default model ${DEFAULT_MODEL} is not in the catalog`));
 });
