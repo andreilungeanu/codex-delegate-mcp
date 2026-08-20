@@ -17,7 +17,7 @@ export const DEFAULT_MODEL = "gpt-5.6-terra";
  */
 /** @type {readonly [string, ...string[]]} */
 export const SELECTABLE_MODELS = Object.freeze([
-  "gpt-5.6-terra",
+  DEFAULT_MODEL,
   "gpt-5.6-sol",
   "gpt-5.6-luna",
   "gpt-5.5",
