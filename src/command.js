@@ -8,6 +8,23 @@ export const MODES = Object.freeze(["agent", "plan", "ask", "review"]);
 /** Default worker model — orchestrator overrides only when the user asks. */
 export const DEFAULT_MODEL = "gpt-5.6-terra";
 
+/**
+ * The models a caller can name, default first. `model` itself is not validated against
+ * this — a slug that ships between releases has to remain callable — so this is what the
+ * tool description publishes, and what `doctor deep` checks against the catalog the CLI
+ * prints. Kept here rather than in the description string so the check has something to
+ * compare.
+ */
+/** @type {readonly [string, ...string[]]} */
+export const SELECTABLE_MODELS = Object.freeze([
+  "gpt-5.6-terra",
+  "gpt-5.6-sol",
+  "gpt-5.6-luna",
+  "gpt-5.5",
+  "gpt-5.4",
+  "gpt-5.4-mini",
+]);
+
 /** Default reasoning effort — quality over speed unless the user asks otherwise. */
 export const DEFAULT_REASONING_EFFORT = "high";
 

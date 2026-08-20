@@ -8,6 +8,8 @@ import {
   validateDelegateInput,
   PLAN_SCHEMA,
   MODES,
+  DEFAULT_MODEL,
+  SELECTABLE_MODELS,
 } from "../src/command.js";
 
 function assertApprovalsBypassed(built) {
@@ -488,4 +490,11 @@ test("a spec far past the CreateProcess limit is fine once it leaves argv", () =
   const built = buildCodexArgs(req, { resultFile: "/tmp/o.txt" });
   assert.equal(built.stdin.length, 200_000);
   assert.ok(estimateArgvChars(built.args) < 2_000);
+});
+
+test("the published model list contains the default the tool applies", () => {
+  // The description names these and validation does not, so a default missing from the
+  // list is a default no caller is ever shown.
+  assert.ok(SELECTABLE_MODELS.includes(DEFAULT_MODEL));
+  assert.equal(SELECTABLE_MODELS[0], DEFAULT_MODEL, "default first: it is what an omitted model gets");
 });

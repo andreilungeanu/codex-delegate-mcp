@@ -11,6 +11,7 @@ import {
   DEFAULT_REASONING_EFFORT,
   MODES,
   REASONING_EFFORTS,
+  SELECTABLE_MODELS,
 } from "./command.js";
 import { executeDelegate as executeDelegateDefault } from "./delegate.js";
 import { runDoctor as runDoctorDefault } from "./doctor.js";
@@ -204,9 +205,7 @@ export function buildServer({
         model: z
           .string()
           .default(DEFAULT_MODEL)
-          .describe(
-            "Codex model id: gpt-5.6-terra, gpt-5.6-sol, gpt-5.6-luna, gpt-5.5, gpt-5.4, gpt-5.4-mini and more."
-          ),
+          .describe(`Codex model id: ${SELECTABLE_MODELS.join(", ")}.`),
         reasoningEffort: z
           .enum([...REASONING_EFFORTS])
           .default(DEFAULT_REASONING_EFFORT)
