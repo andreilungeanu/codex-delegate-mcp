@@ -235,7 +235,12 @@ async function assertKnownModel(model, { command, readCatalog }) {
   const offered = listedSlugs(models);
   const err = /** @type {Error & { code?: string }} */ (
     new Error(
-      `Unknown model ${JSON.stringify(model)}. This Codex CLI offers: ${(offered.length ? offered : slugs).join(", ")}.`
+      // No fallback to every slug: a catalog with nothing listed would name the hidden
+      // ones, which is the one thing this message promises not to do. Refusing without a
+      // suggestion is still an answer; naming an internal model is not.
+      offered.length
+        ? `Unknown model ${JSON.stringify(model)}. This Codex CLI offers: ${offered.join(", ")}.`
+        : `Unknown model ${JSON.stringify(model)}.`
     )
   );
   err.code = "invalid_model";
