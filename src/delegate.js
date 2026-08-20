@@ -20,7 +20,13 @@ import { normalizeEditToolFiles } from "./edit-tool-files.js";
 import { createOperationRegistry } from "./ops.js";
 import { preflightReviewTarget } from "./git-preflight.js";
 
-/** Deadline for the model preflight. An unknown model costs ~2.5s at the API; this cannot. */
+/**
+ * Deadline for the model preflight. An unknown model costs ~2.5s at the API; this cannot.
+ * Not lower: measured on Windows against four never-run Codex builds, the first catalog
+ * read of a session costs 779-855ms while the binary is cold, and only ~78ms once it is
+ * warm. A deadline under that fails open on exactly the first call of a session, which is
+ * when an unusual model name is most likely to be tried.
+ */
 const MODEL_CHECK_MS = 1000;
 
 export async function executeDelegate(rawArgs, options = {}) {
