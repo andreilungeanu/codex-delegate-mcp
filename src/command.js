@@ -56,10 +56,10 @@ const STDIN_PROMPT = "-";
  * per-model list: gpt-5.5 and gpt-5.4 stop at xhigh, luna adds max, sol and terra add
  * ultra. Ultra is the CLI's own level — it sends max on the wire and delegates tasks
  * itself, so asking for it on a model without max fails naming max, not ultra. None
- * works on the gpt-5.6 models even though the catalog omits it; minimal is for the
- * older models and gpt-5.6 rejects it. This enum is the union — an allowlist, not a
- * promise. Config parsing takes any string, even under --strict-config, so a value
- * the model refuses arrives as the model's own error.
+ * works on every model here even though the catalog omits it; minimal is in no model's
+ * list — measured 2026-08-20, both families answer that it is unsupported. This enum is
+ * the union — an allowlist, not a promise. Config parsing takes any string, even under
+ * --strict-config, so a value the model refuses arrives as the model's own error.
  */
 /** @type {readonly [string, ...string[]]} */
 export const REASONING_EFFORTS = Object.freeze([
