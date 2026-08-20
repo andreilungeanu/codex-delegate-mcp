@@ -10,7 +10,7 @@ concurrency and timeouts behave. [SKILL.md](SKILL.md) carries the workflow itsel
 | `spec` | — | The task brief: goal, scope, decisions already made (quote the user's exact values verbatim), acceptance criteria. Point at files to read or mimic rather than pasting code. |
 | `mode` | `agent` | `agent` edits, `plan` returns a structured plan, `ask` answers questions, `review` runs Codex's native review. An instruction to Codex, not a limit the bridge enforces — every mode can write. |
 | `model` | `gpt-5.6-terra` | Codex model id. Other families (`gpt-5.6-sol`, `gpt-5.6-luna`) are available; pass one only when the user asks. |
-| `reasoningEffort` | `high` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. `gpt-5.6-*` reject `minimal`; older models reject `none`. A rejected value fails the turn, and the model's own message names what it takes. |
+| `reasoningEffort` | `high` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, `ultra`. `ultra` is `gpt-5.6-sol` and `gpt-5.6-terra` only; `gpt-5.6-*` reject `minimal`; older models reject `none`. A rejected value fails the turn, and the model's own message names what it takes. |
 | `fast` | `false` | Codex Fast mode (`service_tier=fast`). Higher credit use — only when the user asks. |
 | `webSearch` | `true` | Web search. `false` disables it and nothing else — the worker's shell reaches the network either way. |
 | `workspace` | required | Working directory for Codex. Smallest directory holding the task's files; with no such directory the project root is the floor. Must already exist; never create one for the call. |

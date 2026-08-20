@@ -27,9 +27,14 @@ export const MAX_REVIEW_ARGV_CHARS = 28_000;
 const STDIN_PROMPT = "-";
 
 /**
- * Which values a model accepts is not discoverable up front and differs by model:
- * gpt-5.6-* take none|low|medium|high|xhigh|max and reject minimal, which older
- * models take. A rejected value comes back as the model's own error.
+ * Which values a model accepts differs by model, and `codex debug models` prints the
+ * per-model list: gpt-5.5 and gpt-5.4 stop at xhigh, luna adds max, sol and terra add
+ * ultra. Ultra is the CLI's own level — it sends max on the wire and delegates tasks
+ * itself, so asking for it on a model without max fails naming max, not ultra. None
+ * works on the gpt-5.6 models even though the catalog omits it; minimal is for the
+ * older models and gpt-5.6 rejects it. This enum is the union — an allowlist, not a
+ * promise. Config parsing takes any string, even under --strict-config, so a value
+ * the model refuses arrives as the model's own error.
  */
 /** @type {readonly [string, ...string[]]} */
 export const REASONING_EFFORTS = Object.freeze([
@@ -40,6 +45,7 @@ export const REASONING_EFFORTS = Object.freeze([
   "high",
   "xhigh",
   "max",
+  "ultra",
 ]);
 
 export const PLAN_SCHEMA = Object.freeze({

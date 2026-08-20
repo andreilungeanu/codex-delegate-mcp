@@ -37,7 +37,7 @@ No tool declares an MCP `outputSchema`, and no tool returns `structuredContent`.
 | `workspace` | string | No | Must name an existing directory. It is required when `resumeThreadId` is provided. |
 | `resumeThreadId` | string | No | Not valid with `review`. |
 | `model` | string | No | Must be non-empty when supplied. |
-| `reasoningEffort` | `none` \| `minimal` \| `low` \| `medium` \| `high` \| `xhigh` \| `max` | No | Uses the configured default when omitted. |
+| `reasoningEffort` | `none` \| `minimal` \| `low` \| `medium` \| `high` \| `xhigh` \| `max` \| `ultra` | No | Uses the configured default when omitted. |
 | `fast` | boolean | No | Defaults to `false`. |
 | `webSearch` | boolean | No | Defaults to `true`. See [CONFIGURATION.md](CONFIGURATION.md). |
 | `timeoutMs` | integer | No | Must be from 1,000 through 86,400,000. See [CONFIGURATION.md](CONFIGURATION.md). |

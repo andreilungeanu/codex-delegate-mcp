@@ -63,11 +63,18 @@ test("an omitted or empty workspace is refused, on a first turn and on a resume"
   assert.equal(ok.resumeThreadId, "tid-1");
 });
 
-test("reasoningEffort accepts none and max, which gpt-5.6 models take", () => {
-  assert.equal(validateDelegateInput({ workspace: process.cwd(), spec: "x", reasoningEffort: "none" }).reasoningEffort, "none");
-  assert.equal(validateDelegateInput({ workspace: process.cwd(), spec: "x", reasoningEffort: "max" }).reasoningEffort, "max");
+test("reasoningEffort accepts every level the model catalog names", () => {
+  // `codex debug models` lists ultra for gpt-5.6-sol and gpt-5.6-terra, the default
+  // model. It was unreachable here because an earlier test borrowed it as a stand-in
+  // for an invalid value, back when no model took it.
+  for (const effort of ["none", "max", "ultra"]) {
+    assert.equal(
+      validateDelegateInput({ workspace: process.cwd(), spec: "x", reasoningEffort: effort }).reasoningEffort,
+      effort
+    );
+  }
   assert.throws(
-    () => validateDelegateInput({ workspace: process.cwd(), spec: "x", reasoningEffort: "ultra" }),
+    () => validateDelegateInput({ workspace: process.cwd(), spec: "x", reasoningEffort: "banana" }),
     /reasoningEffort must be one of/
   );
 });
