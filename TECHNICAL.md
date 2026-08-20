@@ -91,7 +91,7 @@ If cancellation itself fails, the tool returns an error payload with `error: "ca
 
 | Field | Type | Required | Meaning |
 |---|---|---:|---|
-| `deep` | boolean | No | Defaults to `false`. When true, runs help-only checks for `exec`, `exec review`, and `exec resume`. |
+| `deep` | boolean | No | Defaults to `false`. When true, reads the help surfaces for `exec`, `exec review`, and `exec resume`, plus the Codex model catalog. |
 | `workspace` | string | No | Workspace to inspect; defaults to the server process working directory. |
 
 Its result fields are:
@@ -106,7 +106,7 @@ Its result fields are:
 | `workspace` | `{ path, exists, isDirectory }` and, when determinable for a directory, `isGitRepo`. |
 | `runtime` | `{ node, platform, arch, cwd, transport }`; `transport` is `"stdio"`. |
 | `warnings` | Diagnostic warnings. |
-| `deep` | Present only when requested. It reports whether checks ran and, when they do, the `exec`, `exec review`, and `exec resume` surfaces with `ok`, `exitCode`, `hasJson`, and `hasOutputLastMessage`. |
+| `deep` | Present only when requested. `ran` says whether the checks happened; when they do, `surfaces` carries `exec`, `exec review` and `exec resume` with `ok`, `exitCode`, `hasJson`, `hasOutputLastMessage` and `hasCd`, and `models` carries the catalog slugs with their reasoning levels and whether the default model is among them. Drift in either is reported in `warnings`. |
 
 ## Local development
 
