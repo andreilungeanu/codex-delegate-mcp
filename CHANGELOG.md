@@ -4,6 +4,73 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [2.0.0] - 2026-08-20
+
+The contract settles here: one `result` field with one meaning, no content caps, and a
+workspace you name. Three things change on upgrade — pass `workspace` on every call, read
+`result` only on `status: "completed"`, and name `model` and `reasoningEffort` if you want the
+previous worker back.
+
+### Changed
+
+- **Breaking:** the default worker is `gpt-5.6-luna` at `xhigh` reasoning effort, replacing
+  `gpt-5.6-terra` at `high`. Luna's list price is about a tenth of terra's per token, and
+  `xhigh` spends some of that back on reasoning depth. Every model this bridge publishes
+  accepts `xhigh`, so the default holds when a caller overrides the model. For the previous
+  pair, pass `model: "gpt-5.6-terra"` and `reasoningEffort: "high"`.
+- **Breaking:** `workspace` is required on every call — `agent`, `plan`, `ask`, `review`, and
+  every resume. It names the directory Codex works in, and a resume runs where you point it, so
+  pass the one the thread started in. Previously an omitted `workspace` meant the server's own
+  directory, which under `npx` or a plugin install is a cache folder or your home directory.
+- **Breaking:** `result` is the final Codex message when `status` is `"completed"`, and an
+  empty string on every other status. Check `status` before reading it. `resultSource` is gone,
+  and a missing final-message file is no longer backfilled from the stream.
+- **Breaking:** plan mode fails on a plan it cannot parse. Text that is not a valid plan returns
+  `failed` and `result-unavailable`, where it used to complete and carry the raw message beside
+  a warning.
+- **Breaking:** the result, the plan steps, the reported command, the error text, the thread id
+  and the edited-path list come back at full length, along with the warnings that used to
+  announce each cut and the `(truncated)` marker 1.20.0 added. A long thread id is kept, so the
+  run it belongs to stays resumable. The rolling 64 KiB `stderr` tail stays, and its warning
+  quotes the last 2000 characters of it.
+- **Breaking:** an unrecognized `-c` config key fails the call. Codex runs with
+  `--strict-config`, so a key a future CLI renames is reported on the first call instead of
+  being ignored for the rest of the turn.
+- **Breaking:** `cancel` answers `cancelled`, `nothing-active`, or `not-found`. The fourth
+  status, `not-running`, is gone: a run that has already finished answers `not-found`, the same
+  as an id that never existed.
+- `exitCode` carries the code the process returned, and is omitted when there was none. A run
+  that died on a signal no longer reports `1` as if the process had chosen it.
+
+### Added
+
+- `ultra` reasoning effort, the level `gpt-5.6-sol` and `gpt-5.6-terra` take.
+- A wrong model name is refused before Codex spawns, and the message lists the models this CLI
+  offers. The check reads the model catalog on a 1s deadline; an advertised slug skips it, and a
+  catalog it cannot read objects to nothing.
+- `doctor deep` reports where the Codex model catalog and this bridge's published list disagree,
+  in both directions, and reports the `--cd` surface the workspace rules rest on for `exec`,
+  `exec review` and `exec resume`.
+- The server shuts down when the host closes stdin, cancelling in-flight work on the way out.
+
+### Fixed
+
+- `cancel` waits for every selected run to settle, so its answer describes processes that have
+  actually exited.
+- `SIGINT` and `SIGTERM` dispatch the kills and give them time to land before the server exits,
+  so closing the host stops the work it started.
+- The kill deadline is disarmed the moment the exit arrives.
+- On Windows the kill runs only while the child is alive, so a reused pid stays untouched.
+- Only a parsed JSONL line disarms the startup deadline; launcher output no longer does.
+- A thread id is deindexed when Codex replaces it, so `cancel` by thread reaches the run.
+- A progress sink that throws releases its operation lease, instead of leaving a record whose
+  cancel waits forever.
+- `filesReportedByEditTools` lists each path once.
+- The delegate reference names the reasoning levels the models take: `none`, `low`, `medium`,
+  `high` and `xhigh` run on every model listed, `max` and `ultra` need a `gpt-5.6-*` model, and
+  `ultra` sends `max` with the CLI's own task delegation on top.
+- The Claude Code plugin checks every dependency before it skips the bootstrap install.
+
 ## [1.21.1] - 2026-08-14
 
 ### Added

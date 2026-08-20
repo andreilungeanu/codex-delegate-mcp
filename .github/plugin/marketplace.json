@@ -6,13 +6,13 @@
   },
   "metadata": {
     "description": "Plugins for delegating coding work to the OpenAI Codex CLI through MCP.",
-    "version": "1.21.1"
+    "version": "2.0.0"
   },
   "plugins": [
     {
       "name": "codex-delegate",
       "description": "Delegate local coding work to the OpenAI Codex CLI through MCP.",
-      "version": "1.21.1",
+      "version": "2.0.0",
       "source": "./"
     }
   ]
