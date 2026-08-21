@@ -491,3 +491,24 @@ test("a spec far past the CreateProcess limit is fine once it leaves argv", () =
   assert.equal(built.stdin.length, 200_000);
   assert.ok(estimateArgvChars(built.args) < 2_000);
 });
+
+test("the argv estimate follows the Windows quoting rule for backslashes around quotes", () => {
+  // The rule Node applies when it joins argv into a win32 command line, and the
+  // rule CommandLineToArgvW applies reading it back: backslashes double only when
+  // they precede a quote or terminate a quoted argument. Escaping only the quote
+  // undercounts exactly the tokens whose length is hardest to eyeball — Windows
+  // paths beside quoted values in a review brief.
+  const cases = [
+    // plain quote: a\"b wrapped            -> 4 + 2 quotes + 1 separator
+    ['a"b', 7],
+    // one backslash before the quote doubles: a + \\ + \" + b -> 6 + 2 + 1
+    ['a\\"b', 9],
+    // two backslashes before the quote: \\\\ + \" -> 6 + 2 + 1
+    ['\\\\"', 9],
+    // a trailing backslash on a quoted arg doubles: x y\\ -> 5 + 2 + 1
+    ["x y\\", 8],
+  ];
+  for (const [token, expected] of cases) {
+    assert.equal(estimateArgvChars([token]), expected, JSON.stringify(token));
+  }
+});

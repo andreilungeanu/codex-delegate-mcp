@@ -126,15 +126,37 @@ export function buildCodexArgs(request, { resultFile, outputSchemaFile } = {}) {
   return built;
 }
 
-/** Approximate CreateProcess command-line length (quoted tokens + spaces). */
+/**
+ * Length of the win32 command line Node builds from this argv, plus one
+ * separator per token. The rule is the one CommandLineToArgvW reads back:
+ * a token is quoted when it is empty or holds whitespace or a quote, and
+ * inside quotes backslashes double only when they precede a quote or run
+ * to the end of the token. This gates review mode's hard argv refusal, so an
+ * undercount here passes a command line the OS refuses with ENAMETOOLONG; the
+ * gate leaves 4,767 chars of headroom under the 32,767 limit.
+ */
 export function estimateArgvChars(args) {
   let total = 0;
   for (const raw of args) {
     const token = String(raw);
-    const needsQuotes = /[\s"]/.test(token);
-    const escaped = token.replace(/"/g, '\\"');
-    total += needsQuotes ? escaped.length + 2 : escaped.length;
-    total += 1; // separator
+    if (token !== "" && !/[\s"]/.test(token)) {
+      total += token.length + 1;
+      continue;
+    }
+    let inside = 0;
+    let slashes = 0;
+    for (const ch of token) {
+      if (ch === "\\") {
+        slashes += 1;
+      } else if (ch === '"') {
+        inside += slashes * 2 + 2; // doubled run + \"
+        slashes = 0;
+      } else {
+        inside += slashes + 1;
+        slashes = 0;
+      }
+    }
+    total += inside + slashes * 2 + 2 + 1; // trailing run doubles before the closing quote
   }
   return total;
 }
