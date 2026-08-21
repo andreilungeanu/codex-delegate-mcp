@@ -54,7 +54,7 @@ Pass exactly one `reviewTarget`:
 - `{ "kind": "base", "branch": "main" }`
 - `{ "kind": "commit", "sha": "..." }`
 
-Review cannot be resumed, and it reports all-zero `usage`. Put focus instructions in `spec`.
+Review cannot be resumed. Put focus instructions in `spec`.
 A review whose repo or target does not resolve is refused before anything spawns.
 
 ### ask
