@@ -90,6 +90,24 @@ test("Codex plugin manifest pins the package and points at assets that exist", (
   }
 });
 
+test("Cursor plugin launches the published package and points at a committed logo", () => {
+  // Cursor runs no SessionStart hook, so a plugin cache it clones never gets the
+  // dependency install the Claude manifest relies on: `node src/server.js` there dies
+  // on `Cannot find package '@modelcontextprotocol/sdk'`. npx carries its own tree.
+  const manifest = read(".cursor-plugin/plugin.json");
+  assert.equal(manifest.name, pluginName);
+  const server = manifest.mcpServers[serverName];
+  assert.equal(server.command, "npx");
+  assert.deepEqual(server.args, ["-y", pin]);
+  assert.ok(existsSync(resolve(ROOT, manifest.skills)));
+  assert.ok(existsSync(resolve(ROOT, manifest.commands)));
+
+  // A relative logo resolves against raw.githubusercontent.com, so the file has to be
+  // committed under that path or the listing falls back to a generic icon.
+  assert.ok(!manifest.logo.startsWith("./"), "a raw.githubusercontent path takes no ./ prefix");
+  assert.ok(existsSync(resolve(ROOT, manifest.logo)), `${manifest.logo} must exist`);
+});
+
 test("no host auto-discovery leak configs at conventional paths", () => {
   assert.ok(!existsSync(resolve(ROOT, ".mcp.json")), ".mcp.json at the repo root leaks into Copilot installs");
   assert.ok(!existsSync(resolve(ROOT, "hooks/hooks.json")), "hooks/hooks.json is auto-discovered by some hosts");

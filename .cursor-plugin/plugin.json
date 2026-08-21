@@ -1,0 +1,23 @@
+{
+  "name": "codex-delegate",
+  "displayName": "Codex Delegate",
+  "version": "2.0.0",
+  "description": "Delegate coding tasks to the OpenAI Codex CLI with structured results, plan/ask/review modes, and cancel support.",
+  "author": {
+    "name": "Andrei Lungeanu",
+    "email": "andrei@lungeanu.ro"
+  },
+  "homepage": "https://github.com/andreilungeanu/codex-delegate-mcp",
+  "repository": "https://github.com/andreilungeanu/codex-delegate-mcp",
+  "license": "MIT",
+  "logo": "assets/logo-light.png",
+  "keywords": ["mcp", "codex", "openai", "cursor", "delegation", "coding-agent"],
+  "skills": "./skills/",
+  "commands": "./commands/",
+  "mcpServers": {
+    "codex-delegate": {
+      "command": "npx",
+      "args": ["-y", "codex-delegate-mcp@2.0.0"]
+    }
+  }
+}

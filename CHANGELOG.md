@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- A Cursor plugin manifest, `.cursor-plugin/plugin.json`. Cursor reads it ahead of the other
+  manifests in the repository: it puts the project logo on the marketplace listing and starts the
+  server through the pinned `npx` package, which carries its own dependencies.
+
 ## [2.0.0] - 2026-08-20
 
 The contract settles here: one `result` field with one meaning, no content caps, and a
