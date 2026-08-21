@@ -20,6 +20,8 @@ Codex Delegate is the MCP bridge that lets Claude Code, Cursor, Copilot — or a
 
 <br clear="left">
 
+![A terminal recording of Claude Code delegating to Codex: a health check confirms the Codex CLI, auth and model catalog; an ask-mode run diagnoses why the demo repo prints "today 0", naming commitDay() bucketing by UTC while cellDay() labels by local time, with line numbers; one sentence then fans out to two Codex models at once — one editing the repo, one researching in a separate directory — and the fix lands with tests passing and the footer reading today 4, current streak 23, longest streak 23; finally Codex reviews its own diff and reports three findings](assets/demo.gif)
+
 ## 🧠 Frontier quality, kept
 
 Your assistant does what frontier models are actually for: understands the task, writes a precise brief, reviews the finished diff. Codex holds its own as the implementer — guided and checked by a smarter orchestrator. The result reads like frontier work, because a frontier model planned it and signed off on it.
