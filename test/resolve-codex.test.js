@@ -85,6 +85,49 @@ test("resolveCodexUncached not_found when no candidates", () => {
   );
 });
 
+test("a failed resolution keeps the resolver's notes", () => {
+  clearCodexCache();
+  // The shape of an npm-only Windows install: the only codex on PATH is a .cmd
+  // shim, nothing else resolves, and the resolver refuses. The note that says
+  // why is written at the same moment it used to be thrown away.
+  try {
+    resolveCodexUncached({
+      env: { PATH: "", Path: "" },
+      platform: "win32",
+      homeDir: "D:\\nonexistent-home-no-codex",
+      lookupOnPath: () => ({ command: null, unusable: true }),
+      runVersion: () => "codex-cli 0.144.4",
+    });
+    assert.fail("expected not_found");
+  } catch (err) {
+    assert.equal(err.code, "not_found");
+    assert.deepEqual(err.details.warnings, [
+      "Codex on PATH is a .cmd shim that cannot be spawned directly; install the standalone Codex or set CODEX_DELEGATE_COMMAND to codex.exe.",
+    ]);
+  }
+});
+
+test("a version-probe failure still carries the resolver's notes", () => {
+  clearCodexCache();
+  try {
+    resolveCodexUncached({
+      env: { CODEX_DELEGATE_COMMAND: process.execPath },
+      platform: "win32",
+      homeDir: "D:\\nonexistent-home-no-codex",
+      lookupOnPath: () => ({ command: null, unusable: true }),
+      runVersion: () => {
+        throw new Error("probe exploded");
+      },
+    });
+    assert.fail("expected a throw");
+  } catch (err) {
+    assert.match(err.message, /probe exploded/);
+    assert.deepEqual(err.details.warnings, [
+      "Codex on PATH is a .cmd shim that cannot be spawned directly; install the standalone Codex or set CODEX_DELEGATE_COMMAND to codex.exe.",
+    ]);
+  }
+});
+
 test("whichOnPath on Windows skips a .cmd shim in favor of codex.exe", () => {
   const command = whichOnPath("codex", "win32", {}, () => ({
     status: 0,

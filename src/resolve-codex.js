@@ -87,9 +87,11 @@ export function resolveCodexUncached({
   }
 
   if (!candidates.length) {
+    // The warnings are the diagnosis: the shim note is written for exactly this
+    // machine, and "not found" alone gives it nothing to act on.
     throw new CodexResolveError(
       "Codex CLI not found. Install Codex, or set CODEX_DELEGATE_COMMAND to an absolute binary path.",
-      { code: "not_found" }
+      { code: "not_found", details: warnings.length ? { warnings } : {} }
     );
   }
 
@@ -111,7 +113,16 @@ export function resolveCodexUncached({
     }
   }
 
-  throw lastError || new CodexResolveError("Failed to resolve a usable Codex CLI.");
+  if (lastError) {
+    // Re-wrap only to carry the notes: the message and code stay the caller's
+    // contract, and a plain error from a probe keeps its shape when there is
+    // nothing to add.
+    if (!warnings.length) throw lastError;
+    throw new CodexResolveError(lastError.message || "Failed to resolve a usable Codex CLI.", {
+      code: lastError.code ?? "codex_resolve_failed",
+      details: { ...lastError.details, warnings },
+    });
+  }
 }
 
 function findNewestStandalone(homeDir, platform) {

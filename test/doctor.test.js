@@ -65,6 +65,27 @@ test("doctor surfaces a resolution failure instead of throwing", async () => {
   assert.equal(out.login.reason, "codex_not_found");
 });
 
+test("doctor keeps the resolver's notes even when resolution failed", async () => {
+  // The notes are the diagnosis: on the machine that fails to resolve, the shim
+  // warning is the one line that says what to fix. Dropping them because the
+  // resolution itself failed reports "not found" with nothing to act on.
+  const out = await runDoctor(
+    options({
+      resolve: () => {
+        const err = new Error("Codex CLI not found.");
+        err.code = "not_found";
+        err.details = { warnings: ["Codex on PATH is a .cmd shim that cannot be spawned directly."] };
+        throw err;
+      },
+    })
+  );
+
+  assert.equal(out.codex.found, false);
+  assert.deepEqual(out.codex.notes, [
+    "Codex on PATH is a .cmd shim that cannot be spawned directly.",
+  ]);
+});
+
 test("doctor reports a failed login probe without failing the call", async () => {
   const out = await runDoctor(
     options({

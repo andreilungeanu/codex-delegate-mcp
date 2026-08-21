@@ -50,6 +50,11 @@ export async function runDoctor({
       error: err?.message || String(err),
       code: err?.code,
     };
+    // A failed resolution is where the resolver's notes matter most: they name
+    // what this machine actually tried and why each path was refused.
+    if (Array.isArray(err?.details?.warnings) && err.details.warnings.length) {
+      codex.notes = [...err.details.warnings];
+    }
   }
 
   const client = (() => {
