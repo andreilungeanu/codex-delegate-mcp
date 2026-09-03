@@ -243,9 +243,11 @@ async function probeModelCatalog({ codex, execFileImpl = execFileAsync, warnings
       reasoningEfforts: (model.supported_reasoning_levels || []).map((level) => level?.effort),
     }));
 
-  // One direction only. The reverse would fire on none and minimal, which the catalog
-  // omits and the models still take — none on the gpt-5.6 models, minimal on the older
-  // ones — so warning on them would train the reader to skip this field.
+  // One direction only. The reverse would fire on none, which the catalog omits but
+  // the models accept (measured on luna and gpt-5.4, CLI 0.147.0) — warning on it
+  // would train the reader to skip this field. minimal is omitted by the catalog
+  // and rejected by every published model, so it stays in the enum only as an
+  // allowlist entry the models arbitrate, not as a working option.
   const unreachable = [...new Set(models.flatMap((model) => model.reasoningEfforts))].filter(
     (effort) => effort && !REASONING_EFFORTS.includes(effort)
   );
