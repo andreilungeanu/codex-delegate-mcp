@@ -242,6 +242,40 @@ test("an unknowable exit code does not cost the caller the whole result", async 
   assert.equal(payload.exitCode, undefined);
 });
 
+test("an unreadable CLI version does not cost the caller the whole result", async () => {
+  // resolveCodex reports version: null when `codex --version` has no x.y.z.
+  // The documented shape is a string or an omitted field; sending null is the
+  // same class of failure as an unknowable exitCode — a client validating the
+  // shape throws away the thread id and the files over one unparsed string.
+  const payload = await executeDelegate(
+    { spec: "x", mode: "agent", workspace: process.cwd() },
+    {
+      env: {},
+      operationRegistry: createOperationRegistry(),
+      resolve: () => ({ command: "/bin/codex", version: null, warnings: [] }),
+      runProcess: async () => ({
+        status: "completed",
+        exitCode: 0,
+        threadId: "thr_keep_me",
+        result: "ok",
+        warnings: [],
+        filesReportedByEditTools: ["important.ts"],
+      }),
+    }
+  );
+
+  const validated = z.object(delegateOutputShape).strict().safeParse(payload);
+  assert.equal(
+    validated.success,
+    true,
+    `payload rejected by the documented shape: ${JSON.stringify(validated.error?.issues)}`
+  );
+  assert.equal(payload.threadId, "thr_keep_me");
+  assert.deepEqual(payload.filesReportedByEditTools, ["important.ts"]);
+  // The version could not be parsed; the payload omits it rather than sending null.
+  assert.equal(payload.cliVersion, undefined);
+});
+
 test("the output shape accepts result-unavailable and rejects an unknown reason", () => {
   const base = { result: "", status: "failed", workspace: "/w" };
 

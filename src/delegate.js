@@ -178,7 +178,7 @@ export async function executeDelegate(rawArgs, options = {}) {
     delegationId,
     resumed: request.resumeThreadId ? resumed : undefined,
     workspace: request.workspace,
-    cliVersion: codex.version,
+    cliVersion: codex.version || undefined,
     usage: processResult.usage ?? undefined,
     filesReportedByEditTools: files.length ? files : undefined,
     plan,
