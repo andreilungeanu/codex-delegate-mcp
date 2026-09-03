@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-09-03
+
+### Fixed
+
+- The reasoning claims live probes disproved: `minimal` is rejected by every published
+  model, `none` is accepted though the catalog omits it, `max` needs any `gpt-5.6-*`
+  model and `ultra` needs sol or terra. The tool description, config table, skill
+  reference, and doctor notes say so now.
+- Luna lists at roughly two-fifths of terra's per-token price (about a fifth of sol's),
+  not a tenth.
+- The limits section notes the Codex side still bills its own usage.
+
 ## [2.1.1] - 2026-09-03
 
 ### Fixed
