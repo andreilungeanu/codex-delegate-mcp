@@ -157,7 +157,85 @@ Requires 17.14+. Note the top-level key is `servers`, not `mcpServers`.
 
 </details>
 
-### Kiro, Kilo Code, and any other MCP client
+<details>
+<summary><strong>OpenCode</strong> — <code>~/.config/opencode/opencode.json</code> or project <code>opencode.json</code></summary>
+
+OpenCode does **not** use `mcpServers`. Local servers go under `mcp`, with `type: "local"` and `command` as one array:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "codex-delegate": {
+      "type": "local",
+      "command": ["npx", "-y", "codex-delegate-mcp"],
+      "enabled": true
+    }
+  }
+}
+```
+
+</details>
+
+<details>
+<summary><strong>Google Antigravity</strong> — <code>~/.gemini/config/mcp_config.json</code> or workspace <code>.agents/mcp_config.json</code></summary>
+
+```json
+{
+  "mcpServers": {
+    "codex-delegate": {
+      "command": "npx",
+      "args": ["-y", "codex-delegate-mcp"]
+    }
+  }
+}
+```
+
+In the IDE: **…** on the agent panel → **MCP Servers** → **Manage MCP Servers** → **View raw config**. Antigravity 2.0, IDE, and CLI share the Gemini config file. You may need to approve the server's tools on first run.
+
+</details>
+
+<details>
+<summary><strong>Kilo Code</strong> — <code>kilo.jsonc</code> (<code>mcp</code> key, not <code>mcpServers</code>)</summary>
+
+Same shape as OpenCode: `type: "local"` and `command` as one array.
+
+```json
+{
+  "mcp": {
+    "codex-delegate": {
+      "type": "local",
+      "command": ["npx", "-y", "codex-delegate-mcp"],
+      "enabled": true
+    }
+  }
+}
+```
+
+In the VS Code extension: **Settings → MCP → Add Server → Local (stdio)**. On Windows, if `npx` is not found, use command `cmd` with arguments `/c`, `npx`, `-y`, `codex-delegate-mcp`.
+
+</details>
+
+<details>
+<summary><strong>Zed</strong> — Settings → AI → MCP Servers, or <code>context_servers</code> in Zed settings</summary>
+
+```json
+{
+  "context_servers": {
+    "codex-delegate": {
+      "command": "npx",
+      "args": ["-y", "codex-delegate-mcp"],
+      "env": {}
+    }
+  }
+}
+```
+
+Zed's native agent uses this. External ACP agents in Zed read their own MCP config unless you forward Zed's servers.
+
+</details>
+
+### Kiro and any other MCP client
 
 Add the following server to the client's MCP config:
 
