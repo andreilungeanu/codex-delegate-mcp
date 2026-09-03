@@ -8,7 +8,8 @@ export const MODES = Object.freeze(["agent", "plan", "ask", "review"]);
 /**
  * Default worker model — orchestrator overrides only when the user asks. Luna is the
  * cheaper, faster half of the 5.6 line: terra scores a few points higher on published
- * benchmarks, luna costs about a tenth as much per token and streams output faster.
+ * benchmarks, luna lists at roughly two-fifths of terra's per-token price (about a
+ * fifth of sol's) and streams output faster.
  * `xhigh` buys back the reasoning depth and is still the cheaper turn.
  */
 export const DEFAULT_MODEL = "gpt-5.6-luna";
