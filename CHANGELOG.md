@@ -6,11 +6,26 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-09-03
+
 ### Added
 
 - A Cursor plugin manifest, `.cursor-plugin/plugin.json`. Cursor reads it ahead of the other
   manifests in the repository: it puts the project logo on the marketplace listing and starts the
   server through the pinned `npx` package, which carries its own dependencies.
+
+### Fixed
+
+- An unreadable `codex --version` no longer puts `cliVersion: null` on a finished result. The
+  documented shape is a string or an omitted field; a client validating it threw away the thread
+  id and the files. The field is omitted when the version cannot be parsed.
+- A standalone `releases` path that exists but cannot be listed — a file, a broken symlink, a
+  permission change — no longer throws `ENOTDIR` out of resolve. The lookup treats that path as
+  missing, so the override and PATH still get a turn.
+- A failed Codex resolution keeps the resolver's notes (the Windows `.cmd` shim diagnosis among
+  them) on the error and on `doctor`, so "not found" is not the only line a caller has to act on.
+- Review mode's argv-length gate measures the command line the way Windows quotes it. An
+  undercount used to pass a line the OS then refused with `ENAMETOOLONG`.
 
 ## [2.0.0] - 2026-08-20
 
