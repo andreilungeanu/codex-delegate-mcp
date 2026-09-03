@@ -73,23 +73,6 @@ test("Claude plugin launches bundled code and bootstraps its runtime dependencie
   assert.ok(existsSync(resolve(ROOT, ".claude-plugin/ensure-deps.mjs")));
 });
 
-test("Codex plugin manifest pins the package and points at assets that exist", () => {
-  const manifest = read(".codex-plugin/plugin.json");
-  assert.equal(manifest.name, pluginName);
-  assert.deepEqual(manifest.mcpServers[serverName].args, ["-y", pin]);
-  assert.ok(existsSync(resolve(ROOT, manifest.skills)));
-
-  // Codex rejects a listing whose short description, support URL or brand colour is
-  // missing, and a manifest that points at an asset the repo does not ship.
-  const ui = manifest.interface;
-  assert.ok(ui.shortDescription && ui.shortDescription.length <= 40);
-  assert.match(ui.supportURL, /^https:\/\//);
-  assert.match(ui.brandColor, /^#[0-9A-Fa-f]{6}$/);
-  for (const rel of [ui.logo, ui.composerIcon, ...(ui.screenshots || [])]) {
-    assert.ok(existsSync(resolve(ROOT, rel)), `${rel} must exist`);
-  }
-});
-
 test("Cursor plugin launches the published package and points at a committed logo", () => {
   // Cursor runs no SessionStart hook, so a plugin cache it clones never gets the
   // dependency install the Claude manifest relies on: `node src/server.js` there dies

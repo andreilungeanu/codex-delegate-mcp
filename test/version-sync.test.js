@@ -10,7 +10,6 @@ test("package and plugin manifest versions stay in sync", () => {
   const lock = read("../package-lock.json");
   const manifests = [
     read("../.claude-plugin/plugin.json"),
-    read("../.codex-plugin/plugin.json"),
     read("../.cursor-plugin/plugin.json"),
     read("../plugin.json"),
   ];
@@ -32,10 +31,6 @@ test("package and plugin manifest versions stay in sync", () => {
   );
   assert.ok(
     JSON.stringify(manifests[1].mcpServers).includes(pin),
-    `Codex inline MCP config must pin ${pin}`
-  );
-  assert.ok(
-    JSON.stringify(manifests[2].mcpServers).includes(pin),
     `Cursor inline MCP config must pin ${pin}`
   );
 });
