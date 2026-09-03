@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-09-03
+
+### Fixed
+
+- The lockfile resolves `fast-uri` 3.1.7 and `qs` 6.16.0, past the advisories that reach us
+  through the MCP SDK. Neither is reachable from a stdio server.
+
 ## [2.1.0] - 2026-09-03
 
 ### Added

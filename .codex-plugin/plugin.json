@@ -1,6 +1,6 @@
 {
   "name": "codex-delegate",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Delegate local coding work to the OpenAI Codex CLI through MCP.",
   "author": {
     "name": "Andrei Lungeanu",
@@ -15,7 +15,7 @@
   "mcpServers": {
     "codex-delegate": {
       "command": "npx",
-      "args": ["-y", "codex-delegate-mcp@2.1.0"]
+      "args": ["-y", "codex-delegate-mcp@2.1.1"]
     }
   },
   "interface": {
