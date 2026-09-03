@@ -32,7 +32,7 @@ Codex tears through multi-file edits while a frontier chat model would still be 
 
 ## 🔋 Your limits stop being the bottleneck
 
-Delegated work runs on the **OpenAI Codex CLI** and its own usage — separate from your orchestrator's chat quota. Your Claude, Cursor, or Copilot subscription spends tokens on the brief and the review; Codex does the grinding. On API? That's the per-token grind moved off your main bill.
+Delegated work runs on the **OpenAI Codex CLI** and its own usage — separate from your orchestrator's chat quota, though the Codex side still bills its own way. Your Claude, Cursor, or Copilot subscription spends tokens on the brief and the review; Codex does the grinding. On API? That's the per-token grind moved off your main bill.
 
 # 
 
