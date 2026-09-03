@@ -18,6 +18,13 @@ import { runDoctor as runDoctorDefault } from "./doctor.js";
 import { createOperationRegistry } from "./ops.js";
 import { VERSION } from "./version.js";
 
+const ICON_BASE = `https://raw.githubusercontent.com/andreilungeanu/codex-delegate-mcp/v${VERSION}/assets`;
+/** @type {Array<{ src: string, mimeType: string, sizes: string[], theme: "light" | "dark" }>} */
+const SERVER_ICONS = [
+  { src: `${ICON_BASE}/logo-light.png`, mimeType: "image/png", sizes: ["1024x1024"], theme: "light" },
+  { src: `${ICON_BASE}/logo-dark.png`, mimeType: "image/png", sizes: ["1024x1024"], theme: "dark" },
+];
+
 const nodeMajor = Number(process.versions.node.split(".")[0]);
 if (nodeMajor < 20) {
   console.error(`codex-delegate-mcp requires Node 20+ (found ${process.versions.node})`);
@@ -170,7 +177,7 @@ export function buildServer({
   operationRegistry = createOperationRegistry(),
 } = {}) {
   const server = new McpServer(
-    { name: "codex-delegate-mcp", version: VERSION },
+    { name: "codex-delegate-mcp", version: VERSION, icons: SERVER_ICONS },
     { instructions: SERVER_INSTRUCTIONS }
   );
 

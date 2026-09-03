@@ -24,6 +24,16 @@ test("package and plugin manifest versions stay in sync", () => {
   assert.equal(registry.version, pkg.version);
   assert.equal(registry.packages[0].version, pkg.version);
 
+  const iconTag = `/v${pkg.version}/assets/`;
+  for (const icon of registry.icons) {
+    assert.match(icon.src, new RegExp(`^https://raw\\.githubusercontent\\.com/andreilungeanu/codex-delegate-mcp${iconTag}`));
+    assert.ok(icon.src.length <= 255, "registry Icon.src maxLength is 255");
+  }
+  assert.deepEqual(
+    registry.icons.map((icon) => icon.theme),
+    ["light", "dark"]
+  );
+
   const pin = `codex-delegate-mcp@${pkg.version}`;
   assert.ok(
     JSON.stringify(read("../.mcp.copilot.json")).includes(pin),

@@ -1,9 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { z } from "zod";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import {
   buildServer,
   runDelegateTool,
@@ -26,6 +29,25 @@ test("buildServer registers delegate, cancel, doctor", () => {
     doctorRunner: async () => ({ ok: true }),
   });
   assert.ok(server);
+});
+
+test("server advertises SEP-973 icons on initialize", async () => {
+  const server = buildServer();
+  const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "icons-test-client", version: "1.0" });
+
+  await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+  try {
+    // SEP-973 icons on initialize must match the registry listing — HTTPS URLs, not file://.
+    const registry = JSON.parse(readFileSync(new URL("../server.json", import.meta.url), "utf8"));
+    assert.deepEqual(client.getServerVersion(), {
+      name: "codex-delegate-mcp",
+      version: registry.version,
+      icons: registry.icons,
+    });
+  } finally {
+    await client.close();
+  }
 });
 
 test("delegate tool derives defaults and descriptions from command constants", () => {
