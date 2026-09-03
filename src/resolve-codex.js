@@ -128,9 +128,17 @@ export function resolveCodexUncached({
 function findNewestStandalone(homeDir, platform) {
   const releases = path.join(homeDir, ".codex", "packages", "standalone", "releases");
   if (!existsSync(releases)) return null;
+  let names;
+  try {
+    names = readdirSync(releases);
+  } catch {
+    // A file, a broken symlink, or a directory we cannot list: same answer as
+    // a missing tree, so the override and PATH still get a turn.
+    return null;
+  }
   let best = null;
   let bestVer = null;
-  for (const name of readdirSync(releases)) {
+  for (const name of names) {
     const ver = parseVersion(name);
     if (!ver) continue;
     const bin = path.join(

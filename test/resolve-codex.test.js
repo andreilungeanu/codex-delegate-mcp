@@ -11,7 +11,7 @@ import {
   clearCodexCache,
   whichOnPath,
 } from "../src/resolve-codex.js";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -83,6 +83,45 @@ test("resolveCodexUncached not_found when no candidates", () => {
       }),
     (err) => err.code === "not_found"
   );
+});
+
+test("a standalone releases path that cannot be listed is skipped", async () => {
+  const home = await mkdtemp(path.join(tmpdir(), "cdm-releases-"));
+  const standalone = path.join(home, ".codex", "packages", "standalone");
+  await mkdir(standalone, { recursive: true });
+  // existsSync is true for a file; readdirSync throws ENOTDIR. The lookup's
+  // answer is "no standalone", the same as a missing directory, so the override
+  // and PATH still get a turn.
+  await writeFile(path.join(standalone, "releases"), "not a directory\n", "utf8");
+
+  try {
+    clearCodexCache();
+    const resolved = resolveCodexUncached({
+      env: { CODEX_DELEGATE_COMMAND: process.execPath },
+      platform: "linux",
+      homeDir: home,
+      runVersion: () => "codex-cli 0.144.4",
+      lookupOnPath: () => null,
+    });
+    assert.equal(resolved.source, "override");
+    assert.equal(resolved.command, process.execPath);
+
+    clearCodexCache();
+    assert.throws(
+      () =>
+        resolveCodexUncached({
+          env: { PATH: "", Path: "" },
+          platform: "linux",
+          homeDir: home,
+          lookupOnPath: () => null,
+          runVersion: () => "codex-cli 0.144.4",
+        }),
+      (err) => err.code === "not_found"
+    );
+  } finally {
+    await rm(home, { recursive: true, force: true });
+    clearCodexCache();
+  }
 });
 
 test("a failed resolution keeps the resolver's notes", () => {
