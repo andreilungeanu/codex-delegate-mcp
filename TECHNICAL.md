@@ -27,86 +27,9 @@ No tool declares an MCP `outputSchema`, and no tool returns `structuredContent`.
 
 `src/server.js` exports `delegateOutputShape` as the in-repository contract for a successful delegate result. `test/server.test.js` enforces a strict copy of that shape, so a field added in `src/delegate.js` must also be added to the contract.
 
-### `delegate`
+Caller-facing input, result, cancel, and mode semantics live in [skills/delegate/reference.md](skills/delegate/reference.md). Environment knobs, timeouts, and Codex resolution live in [CONFIGURATION.md](CONFIGURATION.md).
 
-`delegate` runs one Codex task. Its inputs are:
-
-| Field | Type | Required | Notes |
-|---|---|---:|---|
-| `spec` | string | Yes | The task brief. |
-| `mode` | `agent` \| `plan` \| `ask` \| `review` | No | Defaults to `agent`. |
-| `workspace` | string | Yes | Must name an existing directory. A resume runs in the workspace it is given, not the one the thread started in, so pass the original. |
-| `resumeThreadId` | string | No | Not valid with `review`. |
-| `model` | string | No | Must be non-empty when supplied. |
-| `reasoningEffort` | `none` \| `minimal` \| `low` \| `medium` \| `high` \| `xhigh` \| `max` \| `ultra` | No | Uses the configured default when omitted. |
-| `fast` | boolean | No | Defaults to `false`. |
-| `webSearch` | boolean | No | Defaults to `true`. See [CONFIGURATION.md](CONFIGURATION.md). |
-| `timeoutMs` | integer | No | Must be from 1,000 through 86,400,000. See [CONFIGURATION.md](CONFIGURATION.md). |
-| `reviewTarget` | object | In `review` mode | `{ kind: "uncommitted" }`, `{ kind: "base", branch }`, or `{ kind: "commit", sha }`. It is not valid in other modes. |
-
-A successful result contains these fields. Optional fields are omitted when they carry no signal.
-
-| Field | Type | Meaning |
-|---|---|---|
-| `result` | string | The authoritative final Codex message, present whole on `completed` only; every other status returns an empty string rather than a partial or streamed substitute. For a valid plan, this is the plan overview rather than a second copy of the plan JSON. |
-| `status` | `"completed"` \| `"failed"` \| `"interrupted"` | Final run status. `completed` guarantees the final-message file was read. |
-| `reason` | `"cancelled"` \| `"startup-timeout"` \| `"hard-cap"` \| `"agent-error"` \| `"died-mid-turn"` \| `"exit-nonzero"` \| `"result-unavailable"` | Present for an applicable non-completed result. `result-unavailable` means an otherwise finished run produced no readable final message — or, in plan mode, a final message that was not a valid plan. |
-| `threadId` | string | Codex thread ID, when reported. |
-| `delegationId` | string | Server-created ID for this delegation. It is announced in progress before the process starts and is returned for every result. |
-| `resumed` | boolean | Present when a resume was requested; true only when Codex reported the requested thread ID. |
-| `workspace` | string | Resolved workspace used for the run. |
-| `cliVersion` | string | Resolved Codex CLI version, when available. |
-| `usage` | object | Reported token counts: optional `inputTokens`, `cachedInputTokens`, `cacheWriteInputTokens`, `outputTokens`, and `reasoningOutputTokens`. |
-| `filesReportedByEditTools` | string[] | Paths reported by native Codex edit-tool `file_change` events, normalized relative to the workspace where possible. It does not include files written by shell commands. |
-| `plan` | object | Present for valid plan-mode output: `{ overview: string, steps: Array<{ title: string, detail: string }> }`. |
-| `warnings` | string[] | Non-fatal warnings collected during the run. |
-| `exitCode` | integer | Present only for a non-completed result when a usable exit code is available. |
-
-If delegation throws before returning a result, the tool returns an error payload with `error` and `message`, and includes `details` when the error supplies it. The MCP response is marked as an error.
-
-### `cancel`
-
-`cancel` stops delegations owned by this server and waits for their processes to settle. Its inputs are optional:
-
-| Field | Type | Meaning |
-|---|---|---|
-| `delegationId` | string | Cancels one delegation. This is the only handle available before Codex reports a thread ID. |
-| `threadId` | string | Cancels every active delegation using that Codex thread. |
-
-With neither field, it cancels every active delegation. If both are supplied, `delegationId` is used.
-
-The normal result has one of the following forms:
-
-| `status` | Additional fields |
-|---|---|
-| `"nothing-active"` | None. |
-| `"not-found"` | `id`, an identifier with no active run — already finished or never seen; either way there is nothing to cancel. |
-| `"cancelled"` | `cause: "user"`; `id` when a specific identifier was requested; and `cancelled`, an array of `{ delegationId, threadId }` records. |
-
-If cancellation itself fails, the tool returns an error payload with `error: "cancel_failed"` and `message`, and marks the MCP response as an error.
-
-### `doctor`
-
-`doctor` reports diagnostics without running a model turn. Its inputs are:
-
-| Field | Type | Required | Meaning |
-|---|---|---:|---|
-| `deep` | boolean | No | Defaults to `false`. When true, reads the help surfaces for `exec`, `exec review`, and `exec resume`, plus the Codex model catalog. |
-| `workspace` | string | No | Workspace to inspect; defaults to the server process working directory. |
-
-Its result fields are:
-
-| Field | Contents |
-|---|---|
-| `plugin` | `{ name, version }`. |
-| `client` | `{ name, version, capabilities }` from the connected MCP client; name and version can be `null`. |
-| `codex` | On success, `{ found: true, command, source, version }` and optional `notes`; otherwise `{ found: false, error, code }`. |
-| `login` | `status` is `ok`, `failed`, or `skipped`; it also reports applicable `exitCode`, `detail`, or `reason`. |
-| `recursionGuard` | `{ depth, active }`. |
-| `workspace` | `{ path, exists, isDirectory }` and, when determinable for a directory, `isGitRepo`. |
-| `runtime` | `{ node, platform, arch, cwd, transport }`; `transport` is `"stdio"`. |
-| `warnings` | Diagnostic warnings. |
-| `deep` | Present only when requested. `ran` says whether the checks happened; when they do, `surfaces` carries `exec`, `exec review` and `exec resume` with `ok`, `exitCode`, `hasJson`, `hasOutputLastMessage` and `hasCd`, and `models` carries the catalog slugs with their reasoning levels and whether the default model is among them. Drift in either is reported in `warnings`. |
+`doctor` reports diagnostics without a model turn (`deep` adds help-surface and catalog checks). Its payload is the tool result itself.
 
 ## Local development
 
@@ -132,8 +55,4 @@ npm run test:pack
 
 `test:pack` creates a tarball, installs it into a temporary project, verifies the package contents, starts the installed MCP server through a symlinked package location, and confirms that it lists `delegate`, `cancel`, and `doctor`.
 
-`.github/workflows/test.yml` runs these CI gates:
-
-- The `test` job runs on Ubuntu, Windows, and macOS with Node 20 and 22, plus Ubuntu with Node 24. Each matrix entry runs `npm ci`, `npm test`, `npm pack --dry-run`, and `npm run test:pack`.
-- The Ubuntu Node 22 `checks` job runs `npm run typecheck`, requires source coverage of at least 95% lines, 87% branches, and 90% functions, and runs `npm audit --omit=dev --audit-level=high`.
-- The Ubuntu Node 22 `min-deps` job installs `@modelcontextprotocol/sdk@1.22.0` without saving it and runs `npm test`, ensuring the declared minimum SDK remains supported.
+CI is [`.github/workflows/test.yml`](.github/workflows/test.yml): matrix `npm test` / `test:pack`, plus Ubuntu Node 22 typecheck, coverage floors, audit, and a min-deps job against `@modelcontextprotocol/sdk@1.22.0`.

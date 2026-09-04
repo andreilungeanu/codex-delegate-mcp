@@ -65,13 +65,7 @@ after an `ask` run too.
 
 ## Running several at once
 
-Delegations run concurrently, each cancellable by its own `delegationId`. Worth doing for:
-
-- **the same question to different models** — one call per `model`, then compare;
-- **independent work in independent directories** — one worker per `workspace`.
-
-Not worth doing when the tasks touch the same files. Two agents writing one tree overwrite each
-other and the diff cannot say which did what. Split by directory, or serialize.
+Delegations run concurrently, each cancellable by its own `delegationId`. When that is worth doing is in [SKILL.md](SKILL.md#running-several-at-once).
 
 To cancel: `delegationId` cancels one run, `threadId` cancels every delegation on that thread,
 and passing neither cancels all of them. `cancel` waits for the processes to end rather than
