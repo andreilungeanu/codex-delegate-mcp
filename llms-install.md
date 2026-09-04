@@ -13,7 +13,7 @@ The server itself needs no install step; `npx` fetches it on first run.
 
 ## Configuration
 
-Add a local stdio server. Many hosts use a top-level `mcpServers` object (Claude Desktop, Cline — `cline_mcp_settings.json`, Windsurf, Kiro, Antigravity, …):
+Add a local stdio server. Many hosts use a top-level `mcpServers` object:
 
 ```json
 {
@@ -28,22 +28,10 @@ Add a local stdio server. Many hosts use a top-level `mcpServers` object (Claude
 
 Host-specific files and shapes — including OpenCode and Kilo Code (`mcp` + `type: "local"` + `command` as one array) and Zed (`context_servers`) — are in the README. Do not paste `mcpServers` into those three.
 
-No API keys and no environment variables are required. Auth is the Codex CLI's own session.
+No API keys and no environment variables are required. Auth is the Codex CLI's own session. Optional knobs: [CONFIGURATION.md](CONFIGURATION.md).
 
 ## Verify
 
 Call the `doctor` tool. It reports the Node version, how the Codex CLI was resolved, whether the
 CLI session is logged in, and whether the workspace is a git repository, naming whatever is
 missing. A clean `doctor` means `delegate` is ready.
-
-## Optional environment variables
-
-| Variable | Purpose |
-| --- | --- |
-| `CODEX_DELEGATE_COMMAND` | Absolute path to a Codex binary, skipping resolution. |
-| `CODEX_DELEGATE_STARTUP_MS` | Spawn-to-first-output deadline; `0` disables. |
-| `CODEX_DELEGATE_HARD_CAP_MS` | Absolute cap on a single delegation (default 1 h). |
-| `CODEX_DELEGATE_HEARTBEAT_MS` | Progress heartbeat while the run is quiet; `0` disables. |
-
-Defaults are documented in [CONFIGURATION.md](CONFIGURATION.md); leave them unset unless the
-user asks.
