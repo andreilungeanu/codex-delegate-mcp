@@ -860,6 +860,118 @@ test("runCodexProcess non-zero exit yields failed without final message", async 
   assert.deepEqual(result.warnings, []);
 });
 
+test("exit 0 while turn still in_progress is not completed", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-inprog-"));
+  const resultFile = path.join(dir, "last.txt");
+  await writeFile(resultFile, "STALE_OR_PARTIAL", "utf8");
+
+  const result = await runCodexProcess({
+    command: "codex",
+    args: ["exec"],
+    cwd: dir,
+    resultFile,
+    spawnImpl: () =>
+      fakeChild({
+        lines: [
+          JSON.stringify({ type: "thread.started", thread_id: "t-inprog" }),
+          JSON.stringify({ type: "turn.started" }),
+        ],
+        writeResult: () => writeFile(resultFile, "SHOULD_NOT_COUNT", "utf8"),
+      }),
+    platform: "linux",
+    heartbeatMs: 0,
+    timeoutMs: 5000,
+  });
+
+  assert.notEqual(result.status, "completed");
+  assert.equal(result.result, "");
+});
+
+test("turn.completed with non-zero exit refuses final file contents", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-exitnz-"));
+  const resultFile = path.join(dir, "last.txt");
+
+  const result = await runCodexProcess({
+    command: "codex",
+    args: ["exec"],
+    cwd: dir,
+    resultFile,
+    spawnImpl: () =>
+      fakeChild({
+        lines: [
+          JSON.stringify({ type: "thread.started", thread_id: "t-nz" }),
+          JSON.stringify({ type: "turn.completed", usage: {} }),
+        ],
+        exitCode: 3,
+        writeResult: () => writeFile(resultFile, "LOOKS_FINAL_BUT_EXIT_BAD", "utf8"),
+      }),
+    platform: "linux",
+    heartbeatMs: 0,
+    timeoutMs: 5000,
+  });
+
+  assert.equal(result.status, "failed");
+  assert.equal(result.result, "");
+});
+
+test("malformed JSONL lines are ignored; later valid events still apply", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-junk-"));
+  const resultFile = path.join(dir, "last.txt");
+
+  const result = await runCodexProcess({
+    command: "codex",
+    args: ["exec"],
+    cwd: dir,
+    resultFile,
+    spawnImpl: () =>
+      fakeChild({
+        lines: [
+          "this is not json",
+          "{broken",
+          JSON.stringify({ type: "thread.started", thread_id: "t-junk" }),
+          JSON.stringify({ type: "turn.completed", usage: {} }),
+        ],
+        writeResult: () => writeFile(resultFile, "ok", "utf8"),
+      }),
+    platform: "linux",
+    heartbeatMs: 0,
+    timeoutMs: 5000,
+  });
+
+  assert.equal(result.threadId, "t-junk");
+  assert.equal(result.status, "completed");
+  assert.equal(result.result, "ok");
+});
+
+test("onProgress throwing must not crash the run", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-prog-"));
+  const resultFile = path.join(dir, "last.txt");
+
+  const result = await runCodexProcess({
+    command: "codex",
+    args: ["exec"],
+    cwd: dir,
+    resultFile,
+    onProgress: () => {
+      throw new Error("progress sink exploded");
+    },
+    spawnImpl: () =>
+      fakeChild({
+        lines: [
+          JSON.stringify({ type: "thread.started", thread_id: "t-prog" }),
+          JSON.stringify({ type: "turn.completed", usage: {} }),
+        ],
+        writeResult: () => writeFile(resultFile, "survived", "utf8"),
+      }),
+    platform: "linux",
+    heartbeatMs: 0,
+    timeoutMs: 5000,
+  });
+
+  assert.equal(result.status, "completed");
+  assert.equal(result.result, "survived");
+});
+
 test("runCodexProcess turn.failed yields failed status", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-tf-"));
   const resultFile = path.join(dir, "last.txt");

@@ -1,10 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
+import { Readable } from "node:stream";
+import { readdir, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { executeDelegate, envMs } from "../src/delegate.js";
 import { createOperationRegistry } from "../src/ops.js";
 import { SELECTABLE_MODELS } from "../src/command.js";
-import { readdir } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { runCodexProcess } from "../src/run-codex.js";
 
 /** What `codex debug models` reports on 0.147.0, reduced to what the preflight reads. */
 const CATALOG = [
@@ -47,6 +50,20 @@ test("executeDelegate refuses nested recursion", async () => {
   );
 });
 
+test("CODEX_DELEGATE_DEPTH=0 still refuses nesting", async () => {
+  await assert.rejects(
+    () =>
+      executeDelegate(
+        { spec: "x" },
+        {
+          env: { CODEX_DELEGATE_DEPTH: "0" },
+          resolve: () => ({ command: "x", version: "0.144.4", warnings: [] }),
+        }
+      ),
+    (err) => err.code === "recursion_refused"
+  );
+});
+
 test("executeDelegate wires resolve + process + edit-tool files", async () => {
   const registry = createOperationRegistry();
   const result = await executeDelegate(
@@ -82,6 +99,109 @@ test("executeDelegate wires resolve + process + edit-tool files", async () => {
   assert.equal(result.result, "looks fine");
   assert.equal(result.filesReportedByEditTools, undefined);
   assert.equal(result.warnings, undefined);
+});
+
+test("spawn ENOENT rejects and does not leave registry leased", async () => {
+  const registry = createOperationRegistry();
+  await assert.rejects(
+    () =>
+      executeDelegate(
+        { spec: "x", mode: "ask", workspace: process.cwd() },
+        {
+          env: {},
+          operationRegistry: registry,
+          resolve: () => ({
+            command: "/nonexistent/codex-binary",
+            version: "0.144.4",
+            source: "test",
+            warnings: [],
+          }),
+          runProcess: async () => {
+            const err = new Error("spawn ENOENT");
+            err.code = "ENOENT";
+            throw err;
+          },
+        }
+      ),
+    /ENOENT/
+  );
+  assert.equal((await registry.cancel({})).status, "nothing-active");
+});
+
+test("an orphan holding stdout does not prevent the next delegation", async () => {
+  const registry = createOperationRegistry();
+  const options = () => ({
+    env: {},
+    operationRegistry: registry,
+    resolve: () => ({ command: "/bin/codex", version: "0.144.4", warnings: [] }),
+    runProcess: (opts) =>
+      runCodexProcess({
+        ...opts,
+        platform: "linux",
+        heartbeatMs: 0,
+        drainMs: 60,
+        spawnImpl: () => {
+          const child = new EventEmitter();
+          child.pid = 4242;
+          child.stdout = new Readable({ read() {} });
+          child.stderr = new Readable({ read() {} });
+          child.exitCode = null;
+          child.signalCode = null;
+          child.stdout.push(JSON.stringify({ type: "turn.completed", usage: {} }) + "\n");
+          writeFile(opts.resultFile, "done", "utf8").then(() => {
+            child.exitCode = 0;
+            child.emit("exit", 0, null);
+          });
+          return child;
+        },
+      }),
+  });
+
+  const first = await executeDelegate(
+    { spec: "one", mode: "ask", workspace: process.cwd() },
+    options()
+  );
+  const second = await executeDelegate(
+    { spec: "two", mode: "ask", workspace: process.cwd() },
+    options()
+  );
+
+  assert.equal(first.status, "completed");
+  assert.equal(second.status, "completed");
+  assert.equal((await registry.cancel({})).status, "nothing-active");
+});
+
+test("a pre-aborted outer signal interrupts before the run", async () => {
+  const controller = new AbortController();
+  controller.abort(new Error("already done"));
+  const result = await executeDelegate(
+    { spec: "x", mode: "ask", workspace: process.cwd() },
+    {
+      env: {},
+      signal: controller.signal,
+      operationRegistry: createOperationRegistry(),
+      resolve: () => ({
+        command: "/bin/codex",
+        version: "0.144.4",
+        source: "test",
+        warnings: [],
+      }),
+      runProcess: async ({ signal }) => {
+        assert.equal(signal.aborted, true);
+        return {
+          status: "interrupted",
+          exitCode: 1,
+          threadId: null,
+          timedOut: false,
+          cancelled: true,
+          result: "",
+          warnings: ["interrupted"],
+          filesReportedByEditTools: [],
+        };
+      },
+    }
+  );
+  assert.equal(result.status, "interrupted");
 });
 
 test("executeDelegate reports a resume only when the observed thread matches", async () => {
@@ -315,6 +435,57 @@ test("an unparseable plan fails with result-unavailable and no raw text", async 
   assert.equal(result.reason, "result-unavailable");
   assert.equal(result.plan, undefined);
   assert.equal(result.result, "");
+});
+
+test("plan mode with invalid shape fails with result-unavailable", async () => {
+  const result = await executeDelegate(
+    { spec: "plan", mode: "plan", workspace: process.cwd() },
+    {
+      ...delegateOptions("t-plan-shape"),
+      runProcess: async ({ onThreadId }) => {
+        onThreadId?.("t-plan-shape");
+        return {
+          status: "completed",
+          exitCode: 0,
+          threadId: "t-plan-shape",
+          timedOut: false,
+          cancelled: false,
+          result: JSON.stringify({ nope: true, steps: "not-array" }),
+          warnings: [],
+          filesReportedByEditTools: [],
+        };
+      },
+    }
+  );
+  assert.equal(result.status, "failed");
+  assert.equal(result.reason, "result-unavailable");
+  assert.equal(result.plan, undefined);
+  assert.equal(result.result, "");
+});
+
+test("a plan over the former step limit is returned in full", async () => {
+  const steps = Array.from({ length: 201 }, (_, i) => ({
+    title: `step ${i}`,
+    detail: "d".repeat(200),
+  }));
+  const result = await executeDelegate(
+    { spec: "plan", mode: "plan", workspace: process.cwd() },
+    {
+      ...delegateOptions("t-plan-big"),
+      runProcess: async () => ({
+        status: "completed",
+        exitCode: 0,
+        threadId: "t-plan-big",
+        result: JSON.stringify({ overview: "big", steps }),
+        warnings: [],
+        filesReportedByEditTools: [],
+      }),
+    }
+  );
+  assert.equal(result.status, "completed");
+  assert.equal(result.plan.steps.length, 201);
+  assert.equal(result.plan.overview, "big");
+  assert.equal(result.result, "big");
 });
 
 test("cancel resolves only after the delegation has actually settled", async () => {

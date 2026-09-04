@@ -111,6 +111,20 @@ test("model and reasoningEffort overrides are preserved when user-provided", () 
   assert.equal(req.reasoningEffort, "xhigh");
 });
 
+test("whitespace-only model is rejected; blank reasoningEffort falls back", () => {
+  assert.throws(
+    () => validateDelegateInput({ workspace: process.cwd(), spec: "x", model: "   " }),
+    (err) => err.code === "invalid_model"
+  );
+  const req = validateDelegateInput({
+    workspace: process.cwd(),
+    spec: "x",
+    reasoningEffort: "\t",
+  });
+  assert.equal(req.model, DEFAULT_MODEL);
+  assert.equal(req.reasoningEffort, DEFAULT_REASONING_EFFORT);
+});
+
 test("validateDelegateInput rejects empty spec", () => {
   assert.throws(
     () => validateDelegateInput({ workspace: process.cwd(), spec: "" }),
@@ -294,6 +308,15 @@ test("mode matrix: approvals, schema, review subcommand, resume", () => {
   assert.ok(!review.args.includes("--output-schema"));
   assert.ok(!review.args.includes("resume"));
 
+  assert.throws(
+    () =>
+      buildCodexArgs(
+        { spec: "q", mode: "ask", workspace: "/r", webSearch: false },
+        { resultFile: "/tmp/o.txt", outputSchemaFile: "/tmp/schema.json" }
+      ),
+    /output schema is not supported in ask mode/i
+  );
+
   const resume = buildCodexArgs(
     {
       spec: "continue",
@@ -455,6 +478,21 @@ test("build resume args", () => {
   assert.ok(args.includes("resume"));
   assert.ok(args.includes("019f64c2-4592-7213-ab3c-253dd1a1c42c"));
   assert.ok(args.includes("--skip-git-repo-check"));
+  assert.ok(!args.includes("--cd"));
+  assert.ok(!args.includes("/tmp/repo"));
+});
+
+test("a spec that looks like CLI flags never reaches argv", () => {
+  const spec = "--json --help; rm -rf /";
+  const { args, stdin } = buildCodexArgs(
+    { spec, mode: "ask", workspace: "/tmp/r", webSearch: false },
+    { resultFile: "/tmp/o.txt" }
+  );
+  assert.equal(stdin, spec);
+  assert.ok(!args.includes(spec));
+  const sep = args.indexOf("--");
+  assert.ok(sep > 0);
+  assert.equal(args[sep + 1], "-");
 });
 
 test("an oversized spec rides stdin instead of being refused", () => {

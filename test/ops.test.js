@@ -212,10 +212,23 @@ test("an inactive id is not-found, whether it just finished or never ran", async
   const lease = reg.acquire({ threadId: "done", cancel: async () => {} });
   lease.release();
 
-  // Inactive is inactive: whether the id finished a moment ago or was never
-  // seen does not change what cancel can do about it now.
   assert.equal((await reg.cancel({ id: "done" })).status, "not-found");
   assert.equal((await reg.cancel({ id: "never-existed" })).status, "not-found");
+});
+
+test("a stale threadId cancels nothing while the active thread is still unknown", async () => {
+  const reg = createOperationRegistry();
+  let hits = 0;
+  const lease = reg.acquire({
+    threadId: null,
+    cancel: async () => {
+      hits += 1;
+    },
+  });
+  const result = await reg.cancel({ threadId: "stale-from-previous-turn" });
+  assert.equal(result.status, "not-found");
+  assert.equal(hits, 0);
+  lease.release();
 });
 
 test("a thread id learned mid-run becomes cancellable", async () => {
