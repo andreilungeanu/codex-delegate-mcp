@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-09-04
+
+### Changed
+
+- Field semantics live once, in the skill reference. SKILL.md keeps the workflow.
+- Unhappy-path cases live in the module suites, not a grab-bag file.
+
+### Removed
+
+- Unused SVG logos.
+
 ## [2.2.0] - 2026-09-03
 
 ### Fixed
