@@ -91,7 +91,7 @@ function gitRunner(workspace, execFileImpl) {
   return async (args) => {
     try {
       // GIT_TERMINAL_PROMPT=0 refuses a prompt on stdin that is not there.
-      // killSignal SIGKILL because SIGTERM is catchable and would outlive the timeout.
+      // SIGKILL: SIGTERM is catchable and would outlive the timeout.
       // Paging needs no flag — git only pages to a terminal, and execFile gives it a pipe.
       const { stdout } = await execFileImpl("git", args, {
         cwd: workspace,

@@ -40,9 +40,8 @@ export async function runDoctor({
       source: resolved.source,
       version: resolved.version,
     };
-    // Resolution notes describe the resolver working, and the loudest of them fires
-    // on every correctly-configured Windows machine. Left in `warnings` they make
-    // the field never-empty, which is exactly what teaches you to stop reading it.
+    // Resolution notes describe the resolver working. On Windows the loudest fires
+    // on every correct machine, so they live on `codex.notes`, not `warnings`.
     if (resolved.warnings?.length) codex.notes = [...resolved.warnings];
   } catch (err) {
     codex = {
@@ -101,9 +100,8 @@ export async function runDoctor({
 }
 
 /**
- * The workspace argument used to be echoed back and otherwise ignored, so a typo
- * looked healthy here and failed on the next delegate call. `review` additionally
- * needs a repository, which is worth saying before a review is attempted.
+ * Inspects the workspace path and, for a directory, whether git sees a repo
+ * (review needs one). A typo used to echo back as healthy.
  */
 async function describeWorkspace(workspace, warnings, execFileImpl) {
   const out = { path: workspace };
@@ -134,8 +132,7 @@ async function probeLogin(command, execFileImpl = execFileAsync) {
     const { stdout, stderr } = await execFileImpl(command, ["login", "status"], {
       encoding: "utf8",
       timeout: 8000,
-      // A timeout that sends the default SIGTERM bounds nothing against a child that
-      // catches it: the probe then hangs past its own deadline, and doctor with it.
+      // SIGKILL: SIGTERM is catchable and would outlive the timeout.
       killSignal: "SIGKILL",
       windowsHide: true,
       shell: false,

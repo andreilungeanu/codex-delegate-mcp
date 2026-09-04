@@ -6,11 +6,7 @@ import { statSync } from "node:fs";
 export const MODES = Object.freeze(["agent", "plan", "ask", "review"]);
 
 /**
- * Default worker model — orchestrator overrides only when the user asks. Luna is the
- * cheaper, faster half of the 5.6 line: terra scores a few points higher on published
- * benchmarks, luna lists at roughly two-fifths of terra's per-token price (about a
- * fifth of sol's) and streams output faster.
- * `xhigh` buys back the reasoning depth and is still the cheaper turn.
+ * Default worker — orchestrator overrides only when the user asks.
  */
 export const DEFAULT_MODEL = "gpt-5.6-luna";
 
@@ -46,21 +42,17 @@ export const MAX_REVIEW_ARGV_CHARS = 28_000;
 /**
  * Codex reads the prompt from stdin when the positional is `-`. The brief goes that
  * way so it never lands in a command line, which any local process can read
- * (`/proc/*​/cmdline`, or WMI on Windows) — and briefs are told to quote the user's
+ * (`/proc/<pid>/cmdline`, or WMI on Windows) — and briefs are told to quote the user's
  * exact values. It also lifts the argv length limit off the brief, since only the
  * flags are left in argv. Review mode cannot use it; see buildReviewArgs.
  */
 const STDIN_PROMPT = "-";
 
 /**
- * Which values a model accepts differs by model, and `codex debug models` prints the
- * per-model list: gpt-5.5 and gpt-5.4 stop at xhigh, luna adds max, sol and terra add
- * ultra. Ultra is the CLI's own level — it sends max on the wire and delegates tasks
- * itself, so asking for it on a model without max fails naming max, not ultra. None
- * works on every model here even though the catalog omits it; minimal is in no model's
- * list — measured 2026-08-20, both families answer that it is unsupported. This enum is
- * the union — an allowlist, not a promise. Config parsing takes any string, even under
- * --strict-config, so a value the model refuses arrives as the model's own error.
+ * Union of levels models accept, not a promise each one takes every value.
+ * gpt-5.5 and gpt-5.4 stop at xhigh; luna adds max; sol and terra add ultra
+ * (CLI-only: sends max and delegates). none works though the catalog omits it;
+ * minimal is in no model's list. A refused value arrives as the model's own error.
  */
 /** @type {readonly [string, ...string[]]} */
 export const REASONING_EFFORTS = Object.freeze([
@@ -98,8 +90,7 @@ export const PLAN_SCHEMA = Object.freeze({
 /**
  * Build argv for one `codex exec` invocation.
  * Codex binary is resolved separately; this only returns args after the executable.
- */
-/**
+ *
  * @param {any} request
  * @param {{
  *   resultFile?: string,
@@ -231,12 +222,9 @@ function commonFlags(request, resultFile, outputSchemaFile) {
     // ~/.codex config is merged in and can change model, effort or anything else
     // under a run the caller believes it fully specified.
     "--ignore-user-config",
-    // Every `-c` key below is a contract with Codex, and without this an unrecognized
-    // one is accepted in silence: measured on 0.147.0, `-c features.bogus=false` runs
-    // the turn without complaint. Flags do not need the help — an unknown flag is a
-    // clap error, and `--disable` refuses an unknown feature on its own. This closes
-    // the `-c` half, at config-parse time, before the turn starts. Nothing here reads
-    // a config.toml; `--ignore-user-config` already loads none.
+    // Without this an unknown `-c` key is accepted in silence. Flags already
+    // error; `--disable` already refuses an unknown feature. This closes the `-c`
+    // half at config-parse time. `--ignore-user-config` already loads no toml.
     "--strict-config",
     "--disable",
     "hooks",
@@ -245,7 +233,7 @@ function commonFlags(request, resultFile, outputSchemaFile) {
     `web_search=${tomlString(webSearch ? "live" : "disabled")}`,
   ];
 
-  // Codex Fast mode (/fast): leave unset by default; enable only when request.fast === true.
+  // Fast mode is opt-in.
   if (request.fast === true) {
     args.push("-c", 'service_tier="fast"', "-c", "features.fast_mode=true");
   }
@@ -283,18 +271,15 @@ export function validateDelegateInput(raw, { cwd = process.cwd() } = {}) {
   const mode = raw.mode ?? "agent";
   if (!MODES.includes(mode)) throw bad("invalid_mode", `mode must be one of ${MODES.join(", ")}`);
 
-  // Defaulting this meant the server's own directory, which under npx or a plugin is
-  // a cache folder or the user's home: the run completed, reported clean, and edited
-  // a tree nobody asked about. Resume already refused a defaulted workspace for that
-  // reason, and there was never one for the first turn to differ.
+  // Required: an omitted workspace used to mean this server's directory (npx cache
+  // or $HOME), and the run completed against a tree nobody asked about.
   if (!raw.workspace || !String(raw.workspace).trim()) {
     throw bad(
       "invalid_workspace",
       "workspace is required: name the directory Codex should work in"
     );
   }
-  // A workspace that does not exist used to reach Codex and be created by its first
-  // write, so a typo produced a parallel empty tree that looked like success throughout.
+  // A missing path used to be created by Codex's first write, so a typo looked like success.
   const workspace = path.resolve(cwd, String(raw.workspace).trim());
   let workspaceStat;
   try {

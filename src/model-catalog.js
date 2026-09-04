@@ -16,9 +16,8 @@ const MAX_CATALOG_BYTES = 8 * 1024 * 1024;
  * that objects to nothing: `debug` is a debugging surface and can move, and neither
  * diagnostics nor a delegation should fail because it did.
  *
- * Not `--bundled`, which skips the refresh and answers differently — measured on 0.147.0,
- * the bundled dump hides gpt-5.4 and lists a gpt-5.2 the live one does not have. Refusing
- * a model on the strength of that would refuse one the CLI would have run.
+ * Not `--bundled`, which skips the refresh and answers a different catalog.
+ * Refusing a model on that dump would refuse one the live CLI would have run.
  *
  * @param {{ command?: string | null, execFileImpl?: any, timeoutMs?: number }} options
  * @returns {Promise<any[] | null>}
@@ -30,8 +29,7 @@ export async function readModelCatalog({ command, execFileImpl = execFileAsync, 
     ({ stdout } = await execFileImpl(command, ["debug", "models"], {
       encoding: "utf8",
       timeout: timeoutMs,
-      // A timeout that sends the default SIGTERM bounds nothing against a child that
-      // catches it: the probe then hangs past its own deadline, and its caller with it.
+      // SIGKILL: SIGTERM is catchable and would outlive the timeout.
       killSignal: "SIGKILL",
       windowsHide: true,
       shell: false,

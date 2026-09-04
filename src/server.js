@@ -187,7 +187,7 @@ export function buildServer({
       description:
         "Delegate a coding task to OpenAI Codex. Never run codex from the shell — use this tool. Check status before trusting result — a run that spawns then fails returns normally. Keep model, reasoningEffort and fast at their defaults unless the user asks. See the delegate skill.",
       // Strict: an unknown key is almost always a typo, and a silently dropped
-      // `resumeThredId` loses the thread with nothing to show for it.
+      // `resumeThreadId` loses the thread with nothing to show for it.
       inputSchema: z.object({
         spec: z
           .string()
@@ -358,17 +358,10 @@ export function installSignalCleanup(
     // dies with the right code if the scheduled exit below never gets to run.
     setExitCode(code);
     armExitBelt();
-    // Dispatch, do not await from here. `cancel` starts every kill synchronously —
-    // before its first await — so the tree kill is under way by the time this
-    // handler returns. Its settlement then carries the exit, for two reasons:
-    // - On Windows the kill is a separate taskkill process, and a process.exit
-    //   before it has walked the tree orphans everything below the wrapper
-    //   (measured in the sibling cursor bridge: launcher and agent survived the
-    //   server's exit). cancel settles only after every run has settled, bounded
-    //   by the kill deadline, so taskkill is done first.
-    // - The exit should not run inside the signal handler's stack; a promise
-    //   continuation runs on a clean loop turn.
-    // The rejections are observed — an unhandled one exits by itself.
+    // Dispatch, do not await. cancel starts every kill before its first await, so
+    // the tree kill is under way when this handler returns; settlement then carries
+    // the exit (Windows taskkill must finish first; see the JSDoc). Rejections are
+    // observed — an unhandled one exits by itself.
     try {
       Promise.resolve(operationRegistry.cancel({ cause: "shutdown" }))
         .catch(() => {})

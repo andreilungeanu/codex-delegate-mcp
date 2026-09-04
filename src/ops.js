@@ -71,8 +71,6 @@ class OperationRegistry {
 
     const targets = this.#resolveTargets(wanted);
     if (targets.length === 0) {
-      // Inactive is inactive: an id with no active run is not-found, whether it
-      // finished a moment ago or never ran. Nothing can cancel it either way.
       return { status: "not-found", id: wanted };
     }
     await this.#cancelSelected(targets, cause);

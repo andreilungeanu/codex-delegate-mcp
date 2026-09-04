@@ -73,16 +73,9 @@ export async function runCodexProcess({
     } catch {}
   };
 
-  // Everything the JSONL stream reports, and the rolling stderr tail, keep their
-  // own state. What is left in this scope is the child and the flags that say how
-  // the run ended — the things the lifecycle below actually manipulates.
   const { state: events, handleLine } = createEventReducer({ emit, onThreadId });
   const stderrBuffer = createStderrTail(DEFAULT_STDERR_BYTES);
 
-  // Nothing has been spawned, so there is nothing to report and nothing to read:
-  // the final-message file is only ever accepted after a clean exit, and this run
-  // never had one. Asking readFinalResult would return the same empty answer by way
-  // of its own status guard.
   const interruptedBeforeSpawn = () => ({
     status: "interrupted",
     reason: "cancelled",
@@ -117,9 +110,8 @@ export async function runCodexProcess({
   child = spawnImpl(command, args, spawnOpts);
   const childPid = child.pid;
 
-  // readline attaches no error listener of its own, so an EPIPE on either pipe
-  // lands on a stream nobody is watching and takes the server down — the same way
-  // stdin used to before it got the listener below.
+  // Unhandled EPIPE/ERR_STREAM_DESTROYED on stdout, stderr, stdin, or the
+  // readline re-emit takes the whole server down.
   child.stdout?.on("error", () => {});
   child.stderr?.on("error", () => {});
 
@@ -127,8 +119,6 @@ export async function runCodexProcess({
   // open pipe would also hold back the 'close' this run waits on — so a stdin left
   // dangling wedges the delegation as surely as an escaped child does.
   if (sendsStdin && child.stdin) {
-    // A child that dies mid-write raises EPIPE/ERR_STREAM_DESTROYED on a stream
-    // nobody is listening to, which takes down the whole server.
     child.stdin.on("error", () => {});
     try {
       child.stdin.end(stdin);
@@ -237,8 +227,6 @@ export async function runCodexProcess({
   };
 
   const rl = createInterface({ input: child.stdout, crlfDelay: Infinity });
-  // readline forwards an input error onto the interface, so listening on stdout
-  // alone still leaves the re-emitted copy unhandled here.
   rl.on("error", () => {});
   rl.on("line", (line) => {
     if (handleLine(line)) noteEvent();
@@ -406,9 +394,8 @@ function createEventReducer({ emit, onThreadId }) {
     } else if (event?.type === "item.started" || event?.type === "item.completed") {
       const item = event.item;
       if (!item) return;
-      // Codex announces each item twice. The two events carry the same description,
-      // so only the first is worth a notification — the second used to repeat it,
-      // and announced a finished command with the word "running".
+      // Codex announces each item twice. Notify on the first; the second used to
+      // announce a finished command as "running".
       const started = event.type === "item.started";
       // A failed or declined tool call leaves the turn "completed"; without this
       // a run where nothing worked is indistinguishable from one that did.
@@ -531,10 +518,8 @@ function buildRunWarnings({
   } else if (timedOut && timeoutReason === "hard-cap") {
     warnings.push(`Hard-cap timeout after ${hardCapMs}ms. Raise timeoutMs for longer tasks.`);
   }
-  // Only on a run that broke. Routing around a failed command is the agent doing its
-  // job, and it reports the ones it cannot route around; surfacing every discarded
-  // attempt fired on most healthy runs and taught the caller to skim this array —
-  // which also carries the capacity errors.
+  // Only on a run that broke. Recovered failures fired on most healthy runs, so
+  // the caller stopped reading the array that also carries capacity errors.
   if (nonSuccessfulItems.length && status !== "completed") {
     const shown = nonSuccessfulItems.slice(0, 3).join("; ");
     const more =

@@ -56,8 +56,7 @@ export async function executeDelegate(rawArgs, options = {}) {
   if (request.mode === "review") {
     await preflight({ workspace: request.workspace, reviewTarget: request.reviewTarget });
   }
-  // Resolver notes describe the setup, not this run. Emitting them on every
-  // result makes a non-empty `warnings` mean nothing; doctor reports them.
+  // Resolver notes describe the setup, not this run — doctor reports them.
   const codex = resolve({ env });
   await assertKnownModel(request.model, { command: codex.command, readCatalog });
   const warnings = [];
@@ -165,8 +164,7 @@ export async function executeDelegate(rawArgs, options = {}) {
     processResult.filesReportedByEditTools || [],
     request.workspace
   );
-  // Everything below is omitted when it carries no signal: a field that is
-  // present on every call teaches the caller to stop reading it.
+  // Omit empty optional fields: a field present on every call stops being read.
   return {
     result: planResult ?? result,
     status,
