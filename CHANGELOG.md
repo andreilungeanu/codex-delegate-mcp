@@ -9,6 +9,7 @@ All notable changes to this project are documented here. The format follows
 ### Fixed
 
 - Token usage is explicitly labeled `scope: "thread"`; resumed totals include earlier turns and are no longer described as per-turn counts.
+- Resume thread IDs cannot be CLI options, and the argument builder places the ID after the option separator.
 
 ## [2.2.1] - 2026-09-04
 

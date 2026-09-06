@@ -187,8 +187,9 @@ function buildResumeArgs(request, { resultFile, outputSchemaFile }) {
     "resume",
     ...commonFlags(request, resultFile, outputSchemaFile),
     "--skip-git-repo-check",
-    request.resumeThreadId,
+    // The thread id is positional too: --last here must never select another thread.
     "--",
+    request.resumeThreadId,
     STDIN_PROMPT,
   ];
   return { kind: "resume", args, stdin: request.spec };
@@ -298,6 +299,9 @@ export function validateDelegateInput(raw, { cwd = process.cwd() } = {}) {
   if (raw.resumeThreadId != null && String(raw.resumeThreadId).trim()) {
     resumeThreadId = String(raw.resumeThreadId).trim();
     if (mode === "review") throw bad("invalid_resume", "resumeThreadId is not allowed with review");
+    if (resumeThreadId.startsWith("-")) {
+      throw bad("invalid_resume", "resumeThreadId must be a thread identifier, not a CLI option");
+    }
   }
 
   let reviewTarget;

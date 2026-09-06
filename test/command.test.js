@@ -480,6 +480,28 @@ test("build resume args", () => {
   assert.ok(args.includes("--skip-git-repo-check"));
   assert.ok(!args.includes("--cd"));
   assert.ok(!args.includes("/tmp/repo"));
+  assert.deepEqual(args.slice(args.indexOf("--") + 1), [
+    "019f64c2-4592-7213-ab3c-253dd1a1c42c",
+    "-",
+  ]);
+});
+
+test("resume rejects option-like thread ids before starting Codex", () => {
+  for (const resumeThreadId of ["--help", "--last", "--all", " -h ", "--", "-"]) {
+    assert.throws(
+      () => validateDelegateInput({ spec: "continue", workspace: process.cwd(), resumeThreadId }),
+      (err) => err.code === "invalid_resume",
+      resumeThreadId
+    );
+  }
+});
+
+test("the resume argument builder keeps even an unvalidated id positional", () => {
+  const { args } = buildCodexArgs(
+    { spec: "continue", mode: "agent", workspace: "/tmp/repo", resumeThreadId: "--last" },
+    { resultFile: "/tmp/out.txt" }
+  );
+  assert.deepEqual(args.slice(args.indexOf("--") + 1), ["--last", "-"]);
 });
 
 test("a spec that looks like CLI flags never reaches argv", () => {
