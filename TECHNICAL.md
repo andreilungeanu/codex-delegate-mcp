@@ -56,3 +56,6 @@ npm run test:pack
 `test:pack` creates a tarball, installs it into a temporary project, verifies the package contents, starts the installed MCP server through a symlinked package location, and confirms that it lists `delegate`, `cancel`, and `doctor`.
 
 CI is [`.github/workflows/test.yml`](.github/workflows/test.yml): matrix `npm test` / `test:pack`, plus Ubuntu Node 22 typecheck, coverage floors, audit, and a min-deps job against `@modelcontextprotocol/sdk@1.22.0`.
+
+Tag releases call that same workflow before publishing to npm. GitHub release creation waits
+for npm publication to succeed. Manual release-note backfills remain available without publishing.
