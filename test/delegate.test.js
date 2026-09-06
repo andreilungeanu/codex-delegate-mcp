@@ -463,6 +463,29 @@ test("plan mode with invalid shape fails with result-unavailable", async () => {
   assert.equal(result.result, "");
 });
 
+test("plan output rejects extra properties at both object levels", async () => {
+  const step = { title: "Inspect", detail: "Read the parser" };
+  for (const plan of [
+    { overview: "Plan", steps: [step], extra: true },
+    { overview: "Plan", steps: [{ ...step, extra: true }] },
+  ]) {
+    const result = await executeDelegate(
+      { spec: "plan", mode: "plan", workspace: process.cwd() },
+      {
+        ...delegateOptions("t-plan-extra"),
+        runProcess: async () => ({
+          status: "completed", exitCode: 0, threadId: "t-plan-extra",
+          result: JSON.stringify(plan), warnings: [], filesReportedByEditTools: [],
+        }),
+      }
+    );
+    assert.equal(result.status, "failed");
+    assert.equal(result.reason, "result-unavailable");
+    assert.equal(result.plan, undefined);
+    assert.equal(result.result, "");
+  }
+});
+
 test("a plan over the former step limit is returned in full", async () => {
   const steps = Array.from({ length: 201 }, (_, i) => ({
     title: `step ${i}`,

@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Plan results with extra properties are rejected according to the output schema.
 - Environment timer values above Node's maximum delay fall back to their defaults instead of firing after 1 ms.
 - Token usage is explicitly labeled `scope: "thread"`; resumed totals include earlier turns and are no longer described as per-turn counts.
 - Resume thread IDs cannot be CLI options, and the argument builder places the ID after the option separator.

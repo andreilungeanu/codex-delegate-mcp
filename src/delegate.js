@@ -208,12 +208,15 @@ export function envMs(raw, fallback) {
 
 function isValidPlanShape(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  if (Object.keys(value).some((key) => !Object.hasOwn(PLAN_SCHEMA.properties, key))) return false;
   if (typeof value.overview !== "string") return false;
   if (!Array.isArray(value.steps)) return false;
   return value.steps.every(
     (step) =>
       step &&
       typeof step === "object" &&
+      !Array.isArray(step) &&
+      Object.keys(step).every((key) => Object.hasOwn(PLAN_SCHEMA.properties.steps.items.properties, key)) &&
       typeof step.title === "string" &&
       typeof step.detail === "string"
   );
