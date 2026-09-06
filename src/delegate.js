@@ -195,13 +195,14 @@ function toExitCode(value) {
 }
 
 /**
- * A malformed or negative knob falls back to its default rather than arming a
+ * An invalid or overflowing knob falls back to its default rather than arming a
  * deadline that fails every call. Explicit 0 disables the guard it belongs to.
  */
 export function envMs(raw, fallback) {
   if (raw == null || String(raw).trim() === "") return fallback;
   const value = Number(raw);
-  if (!Number.isInteger(value) || value < 0) return fallback;
+  // Node turns larger delays into 1ms timers.
+  if (!Number.isInteger(value) || value < 0 || value > 2_147_483_647) return fallback;
   return value;
 }
 

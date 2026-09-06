@@ -1,7 +1,7 @@
 # Configuration
 
-Everything here is optional. The defaults are what the project runs on, and a malformed or
-negative value falls back to its default rather than breaking every call.
+Everything here is optional. Environment timer values must be integers from `0` through
+`2147483647` milliseconds. Malformed, negative, or larger values fall back to their defaults.
 
 ## Defaults
 

@@ -542,6 +542,11 @@ test("a malformed timeout knob falls back instead of arming a broken deadline", 
   assert.equal(envMs("soon", 5000), 5000);
   assert.equal(envMs("12.5", 5000), 5000);
   assert.equal(envMs("-1", 5000), 5000);
+  // Node clamps overflowing delays to 1ms instead of waiting longer.
+  assert.equal(envMs("2147483647", 5000), 2147483647);
+  for (const raw of ["2147483648", "2592000000", "1e100", "Infinity"]) {
+    assert.equal(envMs(raw, 5000), 5000);
+  }
   // A real value wins, and an explicit 0 disables its guard rather than defaulting.
   assert.equal(envMs("250", 5000), 250);
   assert.equal(envMs("0", 5000), 0);
