@@ -8,10 +8,10 @@ the supported distribution surface.
 
 ## Before you submit changes
 
-1. Keep the package, lockfile, Claude/Codex/Copilot manifests, marketplaces, `server.json`, and
+1. Keep the package, lockfile, Claude/Cursor/Copilot manifests, marketplaces, `server.json`, and
    npm pins synchronized — `test/version-sync.test.js` fails if any drifts.
-2. Run the Codex plugin validator and `claude plugin validate .`.
-3. Run `npm test` and `npm run test:pack`.
+2. Run `claude plugin validate .claude-plugin/plugin.json` and `claude plugin validate .`.
+3. Run `npm test`, `npm run typecheck`, and `npm run test:pack`.
 4. Update [CHANGELOG.md](CHANGELOG.md) for user-visible changes.
 
 ## Commit conventions

@@ -24,6 +24,7 @@ All notable changes to this project are documented here. The format follows
 ### Removed
 
 - Unused SVG logos.
+- The Codex plugin manifest (`.codex-plugin/plugin.json`). Use the stdio MCP server installation described in README.md for MCP clients.
 
 ## [2.2.0] - 2026-09-03
 
