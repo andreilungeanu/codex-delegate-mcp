@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
+import { mkdtemp } from "./fixtures/temp-dir.mjs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { z } from "zod";

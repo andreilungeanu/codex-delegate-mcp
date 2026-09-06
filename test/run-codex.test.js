@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
+import { mkdtemp } from "./fixtures/temp-dir.mjs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Readable, Writable } from "node:stream";
@@ -724,9 +725,8 @@ test("readUsage keeps only the counts Codex actually reported", () => {
   });
 });
 
-test("resumed CLI totals retain their thread scope in the process result", async (t) => {
+test("resumed CLI totals retain their thread scope in the process result", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-usage-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
   const resultFile = path.join(dir, "last.txt");
   // Captured from an initial turn and its resume: the second turn itself used
   // 12602 input / 52 output, but Codex emitted the thread's cumulative totals.

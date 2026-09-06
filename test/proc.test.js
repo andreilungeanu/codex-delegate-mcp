@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import process from "node:process";
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp } from "./fixtures/temp-dir.mjs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";

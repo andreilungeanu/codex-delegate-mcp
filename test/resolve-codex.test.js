@@ -11,7 +11,8 @@ import {
   clearCodexCache,
   whichOnPath,
 } from "../src/resolve-codex.js";
-import { mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp } from "./fixtures/temp-dir.mjs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
