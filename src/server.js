@@ -69,6 +69,7 @@ export const delegateOutputShape = {
   cliVersion: z.string().optional(),
   usage: z
     .object({
+      scope: z.literal("thread"),
       inputTokens: z.number().optional(),
       cachedInputTokens: z.number().optional(),
       cacheWriteInputTokens: z.number().optional(),

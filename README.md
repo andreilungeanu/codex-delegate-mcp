@@ -38,11 +38,11 @@ Delegated work runs on the **OpenAI Codex CLI** and its own usage — separate f
 
 ![You and your agent understand the task, write the brief and review the diff; the MCP delegate tool hands that brief to the OpenAI Codex CLI, which implements it and edits your workspace; one compact JSON result comes back with what changed, which files, and the thread id](assets/flow.png)
 
-![A delegate result: one compact JSON block with the final answer, status, thread and delegation ids, workspace, Codex CLI version, per-turn token usage, and the files the edit tools reported changing](assets/result-json.png)
+![A delegate result: one compact JSON block with the final answer, status, thread and delegation ids, workspace, Codex CLI version, cumulative thread token usage, and the files the edit tools reported changing](assets/result-json.png)
 
 ## Features
 
-- 📦 **One result you can review** — a compact JSON block: the final answer, `status`, the files Codex's edit tools reported changing, per-turn token counts, and the `threadId` to continue from. Fields that carry no signal are omitted.
+- 📦 **One result you can review** — a compact JSON block: the final answer, `status`, the files Codex's edit tools reported changing, cumulative thread token counts, and the `threadId` to continue from. Fields that carry no signal are omitted.
 - 📋 **Plan first, then build it on the same thread** — `plan` returns schema-validated steps for you to approve, and `agent` implements them. `ask` answers questions. `review` runs Codex's own reviewer over uncommitted work, a base branch, or a single commit.
 - 🧵 **Resume** — continue a Codex thread with `resumeThreadId`. `resumed: false` tells you the context did not carry over.
 - 🧑‍🤝‍🧑 **Run several, cancel cleanly** — the same question across models, or independent workers on independent directories. `cancel` waits for the exit and warns when a process outlives the kill deadline.

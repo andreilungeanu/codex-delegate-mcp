@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Readable, Writable } from "node:stream";
@@ -701,7 +701,7 @@ test("a final result file above the former 10 MiB cap is returned verbatim", asy
 test("readUsage keeps only the counts Codex actually reported", () => {
   assert.deepEqual(
     readUsage({ input_tokens: 10, cached_input_tokens: 2, output_tokens: 3 }),
-    { inputTokens: 10, cachedInputTokens: 2, outputTokens: 3 }
+    { scope: "thread", inputTokens: 10, cachedInputTokens: 2, outputTokens: 3 }
   );
   assert.equal(readUsage({}), null);
   assert.equal(readUsage(null), null);
@@ -718,9 +718,34 @@ test("readUsage keeps only the counts Codex actually reported", () => {
     null
   );
   assert.deepEqual(readUsage({ input_tokens: 0, output_tokens: 5 }), {
+    scope: "thread",
     inputTokens: 0,
     outputTokens: 5,
   });
+});
+
+test("resumed CLI totals retain their thread scope in the process result", async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-usage-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const resultFile = path.join(dir, "last.txt");
+  // Captured from an initial turn and its resume: the second turn itself used
+  // 12602 input / 52 output, but Codex emitted the thread's cumulative totals.
+  for (const [input, output] of [[44007, 944], [56609, 996]]) {
+    const result = await runCodexProcess({
+      command: "codex",
+      args: [],
+      resultFile,
+      spawnImpl: () => fakeChild({
+        lines: [
+          JSON.stringify({ type: "thread.started", thread_id: "same-thread" }),
+          JSON.stringify({ type: "turn.completed", usage: { input_tokens: input, output_tokens: output } }),
+        ],
+        writeResult: () => writeFile(resultFile, "done"),
+      }),
+    });
+    assert.equal(result.status, "completed");
+    assert.deepEqual(result.usage, { scope: "thread", inputTokens: input, outputTokens: output });
+  }
 });
 
 test("describeNonSuccessfulItem names the tool, its status and its exit code", () => {

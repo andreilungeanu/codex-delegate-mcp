@@ -34,7 +34,7 @@ anything present is worth reading.
 | `warnings` | non-empty only | Real diagnostics; read them first. Absence is **not** a clean bill of health: the bridge sees failures Codex reports as failed or declined tool calls, not ones it narrates in prose. Such a warning reports what Codex reported, not a verdict; it carries its own reading of that status. |
 | `filesReportedByEditTools` | non-empty only | Only what Codex's edit tool reported. Files written by a shell command it ran are **not** listed. Paths inside the workspace are relative to it; anything the edit tool touched outside it is listed as an absolute path. Read the git diff; it is the better record, not a complete one. |
 | `resumed` | resume requested | `false` means Codex minted a fresh thread and prior context did not carry over. |
-| `usage` | when reported | Per-turn token counts. Absent in `review`, which reports all zeros. |
+| `usage` | when reported | Cumulative token counts for the Codex thread, explicitly labeled `scope: "thread"`. A resumed result includes earlier turns; do not sum usage across results for the same thread or treat it as the cost of this call. Absent in `review`, which reports all zeros. |
 | `exitCode` | not `completed` | Process exit code. |
 | `delegationId` | always | This run's cancel handle. Also announced in progress before the run spawns, which makes it the only handle for a run that wedges during startup. |
 | `threadId` | when Codex reported one | Pass as `resumeThreadId` to continue this thread. |

@@ -560,7 +560,7 @@ function withDeadline(promise, ms) {
   });
 }
 
-/** Codex reports per-turn token counts; nothing else in the pipeline does. */
+/** Codex reports cumulative thread totals, including earlier turns on a resume. */
 export function readUsage(raw) {
   if (!raw || typeof raw !== "object") return null;
   const pick = (key) => (Number.isFinite(raw[key]) ? raw[key] : undefined);
@@ -576,7 +576,7 @@ export function readUsage(raw) {
   // `codex exec review` reports every count as 0 on turns that plainly spent
   // tokens. A field that is present and always meaningless is worse than absent.
   if (kept.every(([, v]) => v === 0)) return null;
-  return Object.fromEntries(kept);
+  return { scope: "thread", ...Object.fromEntries(kept) };
 }
 
 export function describeNonSuccessfulItem(item) {

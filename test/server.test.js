@@ -109,6 +109,7 @@ test("a result is returned once, as one compact JSON block", async () => {
     result: "done",
     status: "completed",
     workspace: "/tmp",
+    usage: { scope: "thread", inputTokens: 56609, outputTokens: 996 },
     filesReportedByEditTools: ["a.ts", "b.ts"],
   };
   const response = await runDelegateTool({
@@ -125,6 +126,7 @@ test("a result is returned once, as one compact JSON block", async () => {
   assert.equal(response.content[0].text, JSON.stringify(payload));
   assert.ok(!response.content[0].text.includes("\n"));
   assert.deepEqual(JSON.parse(response.content[0].text), payload);
+  assert.deepEqual(z.object(delegateOutputShape).strict().parse(payload), payload);
 });
 
 test("runDelegateTool returns isError payload on failure", async () => {

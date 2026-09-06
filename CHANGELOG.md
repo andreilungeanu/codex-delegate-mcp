@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Token usage is explicitly labeled `scope: "thread"`; resumed totals include earlier turns and are no longer described as per-turn counts.
+
 ## [2.2.1] - 2026-09-04
 
 ### Changed
