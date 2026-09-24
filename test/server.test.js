@@ -37,11 +37,21 @@ test("server advertises SEP-973 icons on initialize", async () => {
   const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "icons-test-client", version: "1.0" });
 
+  // Assert on the initialize result as sent. What the client hands back is its own SDK's
+  // parse of it, and the 1.22.0 icon schema keeps src, mimeType and sizes only.
+  const sent = [];
+  const send = serverTransport.send.bind(serverTransport);
+  serverTransport.send = (message, options) => {
+    sent.push(message);
+    return send(message, options);
+  };
+
   await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
   try {
     // SEP-973 icons on initialize must match the registry listing — HTTPS URLs, not file://.
     const registry = JSON.parse(readFileSync(new URL("../server.json", import.meta.url), "utf8"));
-    assert.deepEqual(client.getServerVersion(), {
+    const initialize = sent.find((message) => message.result?.serverInfo);
+    assert.deepEqual(initialize.result.serverInfo, {
       name: "codex-delegate-mcp",
       version: registry.version,
       icons: registry.icons,
