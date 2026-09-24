@@ -246,6 +246,8 @@ function catalogJson(models) {
       slug: model.slug,
       visibility: model.visibility ?? "list",
       supported_reasoning_levels: (model.efforts || []).map((effort) => ({ effort })),
+      // The real catalog carries null until a retirement is scheduled.
+      upgrade: model.upgrade ?? null,
     })),
   });
 }
@@ -377,6 +379,58 @@ test("doctor deep warns about a published model the catalog has dropped", async 
 
   assert.equal(out.warnings.length, 1);
   assert.ok(out.warnings[0].includes(`no longer has (${SELECTABLE_MODELS[1]})`));
+});
+
+test("doctor deep warns about a published model the catalog has dated for retirement", async () => {
+  const retiring = SELECTABLE_MODELS[1];
+  const out = await runDoctor(
+    options({
+      deep: true,
+      execFileImpl: deepExec({
+        catalog: catalogJson(
+          SELECTABLE_MODELS.map((slug) => ({
+            slug,
+            efforts: ["high"],
+            upgrade:
+              slug === retiring
+                ? { model: "gpt-7-next", retirement_at: "2026-10-14T19:00:00Z", migration_markdown: "…" }
+                : null,
+          }))
+        ),
+      }),
+    })
+  );
+
+  // Still in the catalog, so the "no longer has" check stays quiet; the date is the
+  // only thing that says this entry is on its way out.
+  assert.equal(out.warnings.length, 1);
+  assert.ok(out.warnings[0].includes(`publishes ${retiring}, which retires on 2026-10-14T19:00:00Z`));
+  assert.ok(out.warnings[0].includes("gpt-7-next"));
+  assert.equal(
+    out.deep.models.models.find((model) => model.slug === retiring).retiresAt,
+    "2026-10-14T19:00:00Z"
+  );
+  assert.equal("retiresAt" in out.deep.models.models.find((model) => model.slug === DEFAULT_MODEL), false);
+});
+
+test("a retiring default is named as the default", async () => {
+  const out = await runDoctor(
+    options({
+      deep: true,
+      execFileImpl: deepExec({
+        catalog: catalogJson(
+          SELECTABLE_MODELS.map((slug) => ({
+            slug,
+            efforts: ["high"],
+            upgrade: slug === DEFAULT_MODEL ? { model: null, retirement_at: "2027-01-01T00:00:00Z" } : null,
+          }))
+        ),
+      }),
+    })
+  );
+
+  assert.equal(out.warnings.length, 1);
+  assert.ok(out.warnings[0].includes(`The default model ${DEFAULT_MODEL} retires on 2027-01-01T00:00:00Z`));
 });
 
 test("a retired default is reported once, by the message that says what it costs", async () => {

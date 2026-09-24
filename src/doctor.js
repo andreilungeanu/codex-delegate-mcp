@@ -238,6 +238,9 @@ async function probeModelCatalog({ codex, execFileImpl = execFileAsync, warnings
     .map((model) => ({
       slug: model.slug,
       reasoningEfforts: (model.supported_reasoning_levels || []).map((level) => level?.effort),
+      // Only while a retirement is scheduled: a field present on every entry stops
+      // being read.
+      ...(model.upgrade?.retirement_at ? { retiresAt: model.upgrade.retirement_at } : {}),
     }));
 
   // One direction only. The reverse would fire on none, which the catalog omits but
@@ -279,6 +282,23 @@ async function probeModelCatalog({ codex, execFileImpl = execFileAsync, warnings
   if (!inCatalog) {
     warnings.push(
       `The default model ${DEFAULT_MODEL} is not in the catalog this CLI prints. Every delegation that does not name its own model asks for it, so all of them would fail at the API. DEFAULT_MODEL in src/command.js is where it goes.`
+    );
+  }
+
+  // The catalog dates a retirement before it lands, in `upgrade.retirement_at`, with the
+  // replacement it names. Said while the list can still change: the "no longer has"
+  // check above only fires once the entry is gone, when every caller reading the
+  // description has already been pointed at a model the API refuses.
+  for (const model of all) {
+    const retiresAt = model?.upgrade?.retirement_at;
+    if (!retiresAt || !SELECTABLE_MODELS.includes(model.slug)) continue;
+    const replacement = model.upgrade.model
+      ? `; the catalog names ${model.upgrade.model} as its replacement`
+      : "";
+    warnings.push(
+      model.slug === DEFAULT_MODEL
+        ? `The default model ${DEFAULT_MODEL} retires on ${retiresAt}${replacement}. DEFAULT_MODEL in src/command.js is where it changes.`
+        : `This bridge publishes ${model.slug}, which retires on ${retiresAt}${replacement}. SELECTABLE_MODELS in src/command.js is where it comes out.`
     );
   }
 
