@@ -320,6 +320,7 @@ export async function runCodexProcess({
     startupMs,
     hardCapMs,
     nonSuccessfulItems: events.nonSuccessfulItems,
+    notices: events.notices,
     killEscaped,
     killDeadlineMs,
     drainEscaped,
@@ -352,6 +353,7 @@ function createEventReducer({ emit, onThreadId }) {
     agentError: null,
     usage: null,
     nonSuccessfulItems: [],
+    notices: [],
     reportedPaths: new Set(),
     lastCommand: null,
   };
@@ -444,6 +446,15 @@ function createEventReducer({ emit, onThreadId }) {
         }
       } else if (item.type === "web_search") {
         emit("web search");
+      } else if (item.type === "error") {
+        // Codex's own notices — a rerouted model, a deprecated setting, metadata it
+        // could not find — arrive as items, on healthy runs too. A reroute means the
+        // model that ran is not the one asked for; a deprecation names the next
+        // breaking CLI. Kept by text, once each: an item is announced twice.
+        const text = String(item.message || "")
+          .replace(/\s+/g, " ")
+          .trim();
+        if (text && !state.notices.includes(text)) state.notices.push(text);
       }
     }
   };
@@ -511,6 +522,7 @@ function buildRunWarnings({
   startupMs,
   hardCapMs,
   nonSuccessfulItems,
+  notices = [],
   killEscaped,
   killDeadlineMs,
   drainEscaped,
@@ -537,6 +549,9 @@ function buildRunWarnings({
       `${nonSuccessfulItems.length} Codex tool call(s) reported failed or declined during this turn: ${shown}${more}. declined: the command never ran, so its effect is absent. failed: it ran and exited non-zero — normal for a red suite, and the status does not identify a cause.`
     );
   }
+  // On every run, unlike the tool failures above: Codex raises these sparingly, and
+  // the two that matter most — a reroute, a deprecation — land on runs that completed.
+  for (const notice of notices) warnings.push(`Codex notice: ${notice}`);
   if (killEscaped) {
     warnings.push(
       `Codex did not exit within ${killDeadlineMs}ms of being killed; a process may still be running. Check for stray codex processes.`

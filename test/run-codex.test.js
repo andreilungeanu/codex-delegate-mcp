@@ -951,6 +951,41 @@ test("without a turn verdict, the last error event is the one reported", async (
   assert.ok(!result.warnings.some((w) => /Reconnecting/.test(w)));
 });
 
+test("a notice Codex raised reaches warnings once, on a completed turn too", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-notice-"));
+  const resultFile = path.join(dir, "last.txt");
+  const notice = { id: "item_0", type: "error", message: "model rerouted: gpt-6-sol -> gpt-6-luna (capacity)" };
+
+  const result = await runCodexProcess({
+    command: "codex",
+    args: ["exec"],
+    cwd: dir,
+    resultFile,
+    spawnImpl: () =>
+      fakeChild({
+        lines: [
+          JSON.stringify({ type: "thread.started", thread_id: "tid-notice" }),
+          // Announced twice like every item, and once more under a second id: the
+          // text is what the caller acts on, so the text is what is kept once.
+          JSON.stringify({ type: "item.started", item: notice }),
+          JSON.stringify({ type: "item.completed", item: notice }),
+          JSON.stringify({ type: "item.completed", item: { ...notice, id: "item_1" } }),
+          JSON.stringify({ type: "turn.started" }),
+          JSON.stringify({ type: "turn.completed", usage: {} }),
+        ],
+        writeResult: () => writeFile(resultFile, "done", "utf8"),
+      }),
+    platform: "linux",
+    heartbeatMs: 0,
+    timeoutMs: 5000,
+  });
+
+  assert.equal(result.status, "completed");
+  assert.deepEqual(result.warnings, [
+    "Codex notice: model rerouted: gpt-6-sol -> gpt-6-luna (capacity)",
+  ]);
+});
+
 test("runCodexProcess non-zero exit yields failed without final message", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-nz-"));
   const resultFile = path.join(dir, "last.txt");
