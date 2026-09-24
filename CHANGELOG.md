@@ -6,8 +6,28 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-09-24
+
+### Added
+
+- `warnings` carries Codex's own notices — a rerouted model, a deprecated setting — on every status.
+- Progress announces an MCP call by server and tool, and a failed call names both with its error.
+- `doctor deep` warns when a published model has a scheduled retirement date and names the catalog's replacement.
+
+### Changed
+
+- The published model list adds `gpt-6-luna`, `gpt-6-sol` and `gpt-6-astra` and drops `gpt-5.4` and
+  `gpt-5.4-mini`, retired from Codex on 2026-08-31. The default stays `gpt-5.6-luna`.
+- The reasoning-level notes follow the GPT-6 catalog: `none` is rejected by `gpt-6-astra`, `ultra` lowers to
+  `max` on a luna model, and subagent work under `ultra` is absent from `usage` and `filesReportedByEditTools`.
+
 ### Fixed
 
+- A turn's own failure reason is reported over the retry notices before it, and a turn that completed after
+  a reconnect no longer carries `Codex error: Reconnecting…`.
+- SECURITY.md states that a run into a git repository records the repository root as a trusted project in
+  `~/.codex/config.toml`.
+- The lockfile resolves `hono` 4.13.9, past the advisory that reaches us through the MCP SDK.
 - Tag publication requires the full CI workflow, and GitHub releases wait for successful npm publication.
 - Plan results with extra properties are rejected according to the output schema.
 - Environment timer values above Node's maximum delay fall back to their defaults instead of firing after 1 ms.
