@@ -12,6 +12,13 @@ shell has network access regardless. Codex's sandbox modes are not used: on Wind
 commands under a restricted token that cannot start child processes, so tests and build tools
 fail under them.
 
+Every run into a git repository records that repository's root as a trusted project in
+`~/.codex/config.toml`. That is Codex's own bookkeeping for a session with full access, and it
+outlives the run: your later interactive Codex sessions in that repository skip the trust prompt
+and load its `.codex/config.toml`, hooks and rules. The delegated run itself takes its settings
+from this bridge's flags alone — `--ignore-user-config` skips the workspace's project config
+along with your user config.
+
 Treat every `delegate` call like handing an engineer a shell on your machine.
 Your MCP host (Claude Code, etc.) is the orchestrator: it should scope the brief, then review
 `filesReportedByEditTools` and the git diff. That field lists only what Codex's edit tool
