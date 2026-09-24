@@ -769,6 +769,58 @@ test("describeNonSuccessfulItem names the tool, its status and its exit code", (
   assert.equal(describeNonSuccessfulItem({ type: "file_change" }), "file_change");
 });
 
+test("describeNonSuccessfulItem names the server, tool and error of an MCP call", () => {
+  // No command to quote: the server and tool are what the caller can act on, and
+  // the error is the one line that says why.
+  assert.equal(
+    describeNonSuccessfulItem({
+      type: "mcp_tool_call",
+      server: "exa",
+      tool: "web_search_exa",
+      status: "failed",
+      error: { message: "timed out\n  after 60s" },
+    }),
+    'mcp_tool_call "exa/web_search_exa" failed: timed out after 60s'
+  );
+});
+
+test("an MCP call is announced once, by server and tool", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-mcp-progress-"));
+  const resultFile = path.join(dir, "last.txt");
+  const call = {
+    id: "m1",
+    type: "mcp_tool_call",
+    server: "exa",
+    tool: "web_search_exa",
+    arguments: {},
+    status: "in_progress",
+  };
+
+  const progress = [];
+  const result = await runCodexProcess({
+    command: "codex",
+    args: ["exec", "--json"],
+    cwd: dir,
+    resultFile,
+    spawnImpl: () =>
+      fakeChild({
+        lines: [
+          JSON.stringify({ type: "turn.started" }),
+          JSON.stringify({ type: "item.started", item: call }),
+          JSON.stringify({ type: "item.completed", item: { ...call, status: "completed" } }),
+          JSON.stringify({ type: "turn.completed", usage: {} }),
+        ],
+        writeResult: () => writeFile(resultFile, "ok", "utf8"),
+      }),
+    platform: "linux",
+    timeoutMs: 5000,
+    onProgress: (m) => progress.push(m),
+  });
+
+  assert.equal(result.status, "completed");
+  assert.equal(progress.filter((m) => m === "mcp: exa/web_search_exa").length, 1);
+});
+
 test("describeNonSuccessfulItem collapses a multi-line command onto one line", () => {
   assert.equal(
     describeNonSuccessfulItem({

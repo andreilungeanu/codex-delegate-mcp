@@ -446,6 +446,10 @@ function createEventReducer({ emit, onThreadId }) {
         }
       } else if (item.type === "web_search") {
         emit("web search");
+      } else if (item.type === "mcp_tool_call") {
+        if (started) {
+          emit(item.server && item.tool ? `mcp: ${item.server}/${item.tool}` : "mcp tool call");
+        }
       } else if (item.type === "error") {
         // Codex's own notices — a rerouted model, a deprecated setting, metadata it
         // could not find — arrive as items, on healthy runs too. A reroute means the
@@ -606,16 +610,20 @@ export function readUsage(raw) {
 export function describeNonSuccessfulItem(item) {
   const kind = String(item?.type || "item");
   // Codex reports a multi-line script verbatim, and a warning is read as one line.
-  const detail = String(item?.command || item?.command_line || "")
-    .replace(/\s+/g, " ")
-    .trim();
+  const oneLine = (value) => String(value ?? "").replace(/\s+/g, " ").trim();
+  // An MCP call has no command to quote; its server and tool are what the caller can
+  // act on, and its error is the one line that says why.
+  const detail =
+    oneLine(item?.command || item?.command_line) ||
+    (item?.server && item?.tool ? `${item.server}/${item.tool}` : "");
   const status = item?.status ? ` ${item.status}` : "";
   const exit = Number.isInteger(item?.exit_code) ? ` exit ${item.exit_code}` : "";
+  const error = oneLine(item?.error?.message);
   // Reported whole. A cut here landed mid-token and read as a syntax error, and the
   // command that explains a rejection is the reason the warning exists at all — the
   // same argument that took the caps off the result.
   const label = detail ? `${kind} "${detail}"` : kind;
-  return `${label}${status}${exit}`;
+  return `${label}${status}${exit}${error ? `: ${error}` : ""}`;
 }
 
 /** Codex has printed this while reading a piped prompt; it is not a diagnosis. */
