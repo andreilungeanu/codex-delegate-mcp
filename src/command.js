@@ -51,9 +51,10 @@ const STDIN_PROMPT = "-";
 
 /**
  * Union of levels models accept, not a promise each one takes every value.
- * gpt-5.5 and gpt-5.4 stop at xhigh; luna adds max; sol and terra add ultra
- * (CLI-only: sends max and delegates). none works though the catalog omits it;
- * minimal is in no model's list. A refused value arrives as the model's own error.
+ * gpt-5.5 stops at xhigh; the luna models add max; astra, sol and terra add ultra
+ * (CLI-only: sends max and delegates; a luna model lowers it to plain max). none works
+ * on every model but gpt-6-astra, though the catalog omits it everywhere; minimal is
+ * in no model's list. A refused value arrives as the model's own error.
  */
 /** @type {readonly [string, ...string[]]} */
 export const REASONING_EFFORTS = Object.freeze([

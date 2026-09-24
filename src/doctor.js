@@ -241,8 +241,8 @@ async function probeModelCatalog({ codex, execFileImpl = execFileAsync, warnings
     }));
 
   // One direction only. The reverse would fire on none, which the catalog omits but
-  // the models accept (measured on luna and gpt-5.4, CLI 0.147.0) — warning on it
-  // would train the reader to skip this field. minimal is omitted by the catalog
+  // most models accept (measured on gpt-6-luna and gpt-6-sol, CLI 0.156.1; gpt-6-astra
+  // refuses it) — warning on it would train the reader to skip this field. minimal is omitted by the catalog
   // and rejected by every published model, so it stays in the enum only as an
   // allowlist entry the models arbitrate, not as a working option.
   const unreachable = [...new Set(models.flatMap((model) => model.reasoningEfforts))].filter(

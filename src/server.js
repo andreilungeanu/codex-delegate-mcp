@@ -217,7 +217,7 @@ export function buildServer({
         reasoningEffort: z
           .enum([...REASONING_EFFORTS])
           .default(DEFAULT_REASONING_EFFORT)
-          .describe("minimal is rejected by every published model; none is accepted though the catalog omits it."),
+          .describe("minimal is rejected by every published model; none is rejected by gpt-6-astra and accepted elsewhere, though the catalog omits it."),
         fast: z.boolean().default(false).describe("Codex Fast mode; higher credit use."),
         webSearch: z.boolean().default(true).describe("Codex's built-in web search."),
         timeoutMs: z

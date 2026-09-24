@@ -279,8 +279,9 @@ test("doctor deep reports the catalog and the levels each model takes", async ()
     "a model the CLI hides is not one a caller can ask for"
   );
   assert.deepEqual(out.deep.models.defaultModel, { slug: DEFAULT_MODEL, inCatalog: true });
-  // none and minimal are missing from the real catalog and the models still take them,
-  // so a level this bridge allows and the catalog omits is not drift.
+  // none is missing from the real catalog and most models still take it; minimal is
+  // missing and refused. Either way a level this bridge allows and the catalog omits
+  // is not drift.
   assert.deepEqual(out.warnings, []);
 });
 

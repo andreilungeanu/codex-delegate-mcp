@@ -66,7 +66,7 @@ test("an omitted or empty workspace is refused, on a first turn and on a resume"
 });
 
 test("reasoningEffort accepts every level the model catalog names", () => {
-  // `codex debug models` lists ultra for gpt-5.6-sol and gpt-5.6-terra. It was
+  // `codex debug models` lists ultra for the astra, sol and terra models. It was
   // unreachable here because an earlier test borrowed it as a stand-in for an invalid
   // value, back when no model took it.
   for (const effort of ["none", "max", "ultra"]) {
