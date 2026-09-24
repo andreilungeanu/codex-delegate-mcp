@@ -308,8 +308,13 @@ export async function runCodexProcess({
 
   const stderrTail = meaningfulStderr(stderrBuffer.text()).slice(-STDERR_TAIL_CHARS);
 
+  // A notice the run got past is not its error. A turn that completed after a
+  // reconnect used to answer with "Codex error: Reconnecting..." for a problem Codex
+  // had already solved, on a completed run and on one whose final file went missing.
+  const agentError = events.turnStatus === "completed" ? null : events.agentError;
+
   const warnings = buildRunWarnings({
-    agentError: events.agentError,
+    agentError,
     timedOut,
     timeoutReason,
     startupMs,
@@ -386,11 +391,15 @@ function createEventReducer({ emit, onThreadId }) {
       emit("turn completed");
     } else if (event?.type === "turn.failed") {
       state.turnStatus = "failed";
-      state.agentError = state.agentError || readAgentError(event.error);
+      // The turn's own reason outranks the stream before it. Retry notices travel as
+      // error events too ("Reconnecting... 2/5"), and the first of those used to stand
+      // in for the reason the turn actually failed.
+      state.agentError = readAgentError(event.error) || state.agentError;
       emit("turn failed");
     } else if (event?.type === "error") {
-      // Codex reports the actionable reason here; the turn.failed that follows repeats it.
-      state.agentError = state.agentError || readAgentError(event);
+      // Latest wins until turn.failed settles it: an earlier notice is one the run got
+      // past, and the JSONL event carries no flag to tell a retry from a verdict.
+      state.agentError = readAgentError(event) || state.agentError;
     } else if (event?.type === "item.started" || event?.type === "item.completed") {
       const item = event.item;
       if (!item) return;

@@ -856,6 +856,101 @@ test("runCodexProcess surfaces the reason from a turn.failed event", async () =>
   assert.ok(result.warnings.some((w) => w === "Codex error: model rejected the request"));
 });
 
+test("a retry notice the run got past stays out of a completed turn", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-retry-ok-"));
+  const resultFile = path.join(dir, "last.txt");
+
+  const result = await runCodexProcess({
+    command: "codex",
+    args: ["exec"],
+    cwd: dir,
+    resultFile,
+    spawnImpl: () =>
+      fakeChild({
+        lines: [
+          JSON.stringify({ type: "thread.started", thread_id: "tid-retry" }),
+          JSON.stringify({ type: "turn.started" }),
+          // Codex streams its reconnects as error events with no flag to tell them
+          // from a verdict; the turn.completed after them is what says it recovered.
+          JSON.stringify({ type: "error", message: "Reconnecting... 2/5 (stream disconnected)" }),
+          JSON.stringify({ type: "turn.completed", usage: {} }),
+        ],
+        writeResult: () => writeFile(resultFile, "done", "utf8"),
+      }),
+    platform: "linux",
+    heartbeatMs: 0,
+    timeoutMs: 5000,
+  });
+
+  assert.equal(result.status, "completed");
+  assert.ok(
+    !result.warnings.some((w) => w.startsWith("Codex error:")),
+    `a completed turn must not carry the notice it recovered from, got ${JSON.stringify(result.warnings)}`
+  );
+});
+
+test("the reason a turn failed outranks the retry notices before it", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-retry-fail-"));
+  const resultFile = path.join(dir, "last.txt");
+  const verdict = JSON.stringify({ error: { message: "capacity exhausted until 14:00" } });
+
+  const result = await runCodexProcess({
+    command: "codex",
+    args: ["exec"],
+    cwd: dir,
+    resultFile,
+    spawnImpl: () =>
+      fakeChild({
+        lines: [
+          JSON.stringify({ type: "thread.started", thread_id: "tid-retry-fail" }),
+          JSON.stringify({ type: "turn.started" }),
+          JSON.stringify({ type: "error", message: "Reconnecting... 2/5 (stream disconnected)" }),
+          JSON.stringify({ type: "turn.failed", error: { message: verdict } }),
+        ],
+        exitCode: 1,
+      }),
+    platform: "linux",
+    heartbeatMs: 0,
+    timeoutMs: 5000,
+  });
+
+  assert.equal(result.status, "failed");
+  assert.ok(
+    result.warnings.some((w) => w === "Codex error: capacity exhausted until 14:00"),
+    `the turn's own reason must be the one reported, got ${JSON.stringify(result.warnings)}`
+  );
+  assert.ok(!result.warnings.some((w) => /Reconnecting/.test(w)));
+});
+
+test("without a turn verdict, the last error event is the one reported", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-last-err-"));
+  const resultFile = path.join(dir, "last.txt");
+
+  const result = await runCodexProcess({
+    command: "codex",
+    args: ["exec"],
+    cwd: dir,
+    resultFile,
+    spawnImpl: () =>
+      fakeChild({
+        lines: [
+          JSON.stringify({ type: "thread.started", thread_id: "tid-last-err" }),
+          JSON.stringify({ type: "turn.started" }),
+          JSON.stringify({ type: "error", message: "Reconnecting... 1/5 (stream disconnected)" }),
+          JSON.stringify({ type: "error", message: "stream closed by server" }),
+        ],
+        exitCode: 1,
+      }),
+    platform: "linux",
+    heartbeatMs: 0,
+    timeoutMs: 5000,
+  });
+
+  assert.equal(result.status, "failed");
+  assert.ok(result.warnings.some((w) => w === "Codex error: stream closed by server"));
+  assert.ok(!result.warnings.some((w) => /Reconnecting/.test(w)));
+});
+
 test("runCodexProcess non-zero exit yields failed without final message", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-nz-"));
   const resultFile = path.join(dir, "last.txt");
