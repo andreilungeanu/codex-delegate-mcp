@@ -9,7 +9,7 @@ concurrency and timeouts behave. [SKILL.md](SKILL.md) carries the workflow itsel
 | --- | --- | --- |
 | `spec` | — | The task brief: goal, scope, decisions already made (quote the user's exact values verbatim), acceptance criteria. Point at files to read or mimic rather than pasting code. |
 | `mode` | `agent` | `agent` edits, `plan` returns a structured plan, `ask` answers questions, `review` runs Codex's native review. An instruction to Codex, not a limit the bridge enforces — every mode can write. |
-| `model` | `gpt-5.6-luna` | Codex model id. Other families (`gpt-5.6-sol`, `gpt-5.6-terra`) are available; pass one only when the user asks. A model outside the listed set is checked against the CLI before the run starts, and an unknown one is refused with the ids it does take. |
+| `model` | `gpt-5.6-luna` | Codex model id. The GPT-6 family (`gpt-6-luna`, `gpt-6-sol`, `gpt-6-astra`) and the rest of the 5.6 family are available; pass one only when the user asks. A model outside the listed set is checked against the CLI before the run starts, and an unknown one is refused with the ids it does take. |
 | `reasoningEffort` | `xhigh` | `none`, `low`, `medium`, `high` and `xhigh` run on every model listed here. `max` needs a `gpt-5.6-*` model and `ultra` needs sol or terra; `ultra` sends `max` with the CLI's own task delegation on top. `minimal` is rejected by every published model. A rejected value fails the turn, and the model's own message names what it takes. |
 | `fast` | `false` | Codex Fast mode (`service_tier=fast`). Higher credit use — only when the user asks. |
 | `webSearch` | `true` | Web search. `false` disables it and nothing else — the worker's shell reaches the network either way. |
