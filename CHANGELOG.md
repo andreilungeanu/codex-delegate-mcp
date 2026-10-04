@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-10-04
+
+### Changed
+
+- The `model` field lists the models the installed Codex CLI offers, read from `codex debug models` before the server
+  answers the host (5s deadline), instead of a list fixed at release. With no catalog to read, it points at `doctor deep`.
+- `doctor deep` warns about the default model only: missing from the catalog, or dated for retirement. Every other model
+  follows the catalog into the `model` field.
+
 ## [2.3.0] - 2026-09-24
 
 ### Added
