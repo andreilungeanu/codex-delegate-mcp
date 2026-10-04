@@ -22,10 +22,12 @@ import { preflightReviewTarget } from "./git-preflight.js";
 
 /**
  * Deadline for the model preflight. An unknown model costs ~2.5s at the API; this cannot.
- * Not lower: measured on Windows against four never-run Codex builds, the first catalog
- * read of a session costs 779-855ms while the binary is cold, and only ~78ms once it is
- * warm. A deadline under that fails open on exactly the first call of a session, which is
- * when an unusual model name is most likely to be tried.
+ * Not lower: `debug models` answers from Codex's cache in ~78ms, but fetches the catalog
+ * again once that cache is five minutes old or was written by another CLI version —
+ * 779-855ms measured on Windows against four never-run builds. A deadline under that fails
+ * open on exactly the first call of a session, which is when an unusual model name is most
+ * likely to be tried. A slower fetch still fails open (1817ms measured on 0.159.3), and the
+ * API's own error answers instead.
  */
 const MODEL_CHECK_MS = 1000;
 
