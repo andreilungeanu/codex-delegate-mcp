@@ -48,7 +48,7 @@ directory, or serialize.
 To cancel one of several, pass its `delegationId`. See [reference.md](reference.md).
 
 Leave `model`, `reasoningEffort` and `fast` at their defaults unless the user asks. Other models
-(the `gpt-6-*` and `gpt-5.6-*` families) are available — pass `model` only on request. `workspace` is
+(the `model` field lists them) are available — pass `model` only on request. `workspace` is
 required on every call, resumes included — pass the one the thread started in, or the
 resumed turn runs somewhere else.
 
