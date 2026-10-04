@@ -15,12 +15,9 @@ import {
   delegateOutputShape,
   SERVER_INSTRUCTIONS,
   installSignalCleanup,
+  readStartupCatalog,
 } from "../src/server.js";
-import {
-  DEFAULT_MODEL,
-  DEFAULT_REASONING_EFFORT,
-  SELECTABLE_MODELS,
-} from "../src/command.js";
+import { DEFAULT_MODEL, DEFAULT_REASONING_EFFORT } from "../src/command.js";
 import { createOperationRegistry } from "../src/ops.js";
 import { executeDelegate } from "../src/delegate.js";
 
@@ -758,13 +755,129 @@ test("a real server kills its worker and exits when its stdin closes", { timeout
   }
 });
 
-test("the model description is the published list, not a list typed beside it", () => {
-  const delegate = buildServer()._registeredTools.delegate;
+test("a real server describes the models its CLI lists, read before the first tools/list", { timeout: 60_000 }, async () => {
+  const { spawn } = await import("node:child_process");
+  const { fileURLToPath } = await import("node:url");
+  const serverPath = fileURLToPath(new URL("../src/server.js", import.meta.url));
 
-  // The whole point of generating it: a model added to SELECTABLE_MODELS reaches the
-  // caller, and one dropped stops being advertised, without a second edit somewhere else.
-  assert.equal(
-    delegate.inputSchema.shape.model.description,
-    `Codex model id: ${SELECTABLE_MODELS.join(", ")}.`
-  );
+  // Stand in for the Codex binary the same way as above: `node` launched against a file
+  // called `debug`, so `codex debug models` prints this catalog. The server is started in
+  // that directory because the catalog read inherits its working directory.
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-catalog-"));
+  const catalog = {
+    models: [
+      { slug: "gpt-9-shipped-after-this-release", visibility: "list" },
+      { slug: DEFAULT_MODEL, visibility: "list" },
+      { slug: "internal-reviewer", visibility: "hide" },
+    ],
+  };
+  await writeFile(path.join(dir, "debug"), `console.log(${JSON.stringify(JSON.stringify(catalog))});`);
+
+  const env = { ...process.env, CODEX_DELEGATE_COMMAND: process.execPath };
+  delete env.CODEX_DELEGATE_DEPTH;
+  const child = spawn(process.execPath, [serverPath], { cwd: dir, stdio: ["pipe", "pipe", "pipe"], env });
+  try {
+    let buffer = "";
+    const reply = (id) =>
+      new Promise((resolve) => {
+        const check = () => {
+          // The text after the last newline is a reply still arriving; tools/list is large
+          // enough to come in more than one chunk.
+          for (const line of buffer.split("\n").slice(0, -1)) {
+            if (!line.trim()) continue;
+            const message = JSON.parse(line);
+            if (message.id === id) return resolve(message);
+          }
+          child.stdout.once("data", (chunk) => {
+            buffer += chunk;
+            check();
+          });
+        };
+        check();
+      });
+    const write = (msg) => child.stdin.write(JSON.stringify(msg) + "\n");
+    write({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "1" } },
+    });
+    await reply(1);
+    write({ jsonrpc: "2.0", method: "notifications/initialized", params: {} });
+    write({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
+    const { result } = await reply(2);
+
+    const delegate = result.tools.find((tool) => tool.name === "delegate");
+    // Default first, then the catalog's order; a hidden model is not offered.
+    assert.equal(
+      delegate.inputSchema.properties.model.description,
+      `Codex model id: ${DEFAULT_MODEL}, gpt-9-shipped-after-this-release.`
+    );
+  } finally {
+    child.kill();
+  }
+});
+
+test("with no catalog to read, the model field points at doctor instead of naming a list", () => {
+  const hiddenOnly = [{ slug: "internal-reviewer", visibility: "hide" }];
+  for (const catalog of [null, [], hiddenOnly]) {
+    const delegate = buildServer({ catalog })._registeredTools.delegate;
+    assert.equal(
+      delegate.inputSchema.shape.model.description,
+      "Codex model id. doctor deep:true lists every id."
+    );
+  }
+});
+
+test("the catalog the description names is the one the delegate preflight trusts", async () => {
+  const catalog = [{ slug: "gpt-9-shipped-after-this-release", visibility: "list" }];
+  let seen;
+  const server = buildServer({
+    catalog,
+    executeDelegate: async (_args, options) => {
+      seen = options;
+      return { result: "ok", status: "completed", workspace: "/w" };
+    },
+  });
+  const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "catalog-test-client", version: "1.0" });
+  await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+  try {
+    await client.callTool({ name: "delegate", arguments: { spec: "x", workspace: "/w" } });
+  } finally {
+    await client.close();
+  }
+
+  assert.equal(seen.catalog, catalog);
+  assert.ok(seen.operationRegistry, "the options runDelegateTool builds still arrive");
+});
+
+test("the startup catalog read is bounded, and a CLI that does not resolve reads nothing", async () => {
+  let seen;
+  const models = [{ slug: DEFAULT_MODEL, visibility: "list" }];
+  const read = await readStartupCatalog({
+    env: {},
+    resolve: () => ({ command: "/bin/codex" }),
+    readCatalog: async (options) => {
+      seen = options;
+      return models;
+    },
+  });
+  assert.equal(read, models);
+  // Unbounded, the reader's own 8s default would hold up the host's connection that long.
+  assert.deepEqual(seen, { command: "/bin/codex", timeoutMs: 5000 });
+
+  let reads = 0;
+  const none = await readStartupCatalog({
+    env: {},
+    resolve: () => {
+      throw new Error("codex not found");
+    },
+    readCatalog: async () => {
+      reads++;
+      return models;
+    },
+  });
+  assert.equal(none, null);
+  assert.equal(reads, 0);
 });

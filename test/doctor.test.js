@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { runDoctor } from "../src/doctor.js";
-import { DEFAULT_MODEL, SELECTABLE_MODELS } from "../src/command.js";
+import { DEFAULT_MODEL } from "../src/command.js";
 import { VERSION } from "../src/version.js";
 
 const resolved = {
@@ -239,6 +239,9 @@ test("doctor tolerates a client that cannot report itself", async () => {
   assert.deepEqual(out.client.capabilities, {});
 });
 
+/** Listed slugs for the catalogs below, default first. */
+const MODELS = [DEFAULT_MODEL, "gpt-6-sol", "gpt-5.5"];
+
 /** `codex debug models`, reduced to the fields the catalog check reads. */
 function catalogJson(models) {
   return JSON.stringify({
@@ -267,7 +270,7 @@ test("doctor deep reports the catalog and the levels each model takes", async ()
       deep: true,
       execFileImpl: deepExec({
         catalog: catalogJson([
-          ...SELECTABLE_MODELS.map((slug) => ({ slug, efforts: ["low", "high", "max", "ultra"] })),
+          ...MODELS.map((slug) => ({ slug, efforts: ["low", "high", "max", "ultra"] })),
           { slug: "codex-auto-review", visibility: "hide", efforts: ["low"] },
         ]),
       }),
@@ -277,7 +280,7 @@ test("doctor deep reports the catalog and the levels each model takes", async ()
   assert.equal(out.deep.models.ran, true);
   assert.deepEqual(
     out.deep.models.models.map((model) => model.slug),
-    [...SELECTABLE_MODELS],
+    [...MODELS],
     "a model the CLI hides is not one a caller can ask for"
   );
   assert.deepEqual(out.deep.models.defaultModel, { slug: DEFAULT_MODEL, inCatalog: true });
@@ -293,7 +296,7 @@ test("doctor deep warns about a reasoning level the enum cannot request", async 
       deep: true,
       execFileImpl: deepExec({
         catalog: catalogJson(
-          SELECTABLE_MODELS.map((slug) => ({
+          MODELS.map((slug) => ({
             slug,
             efforts: slug === DEFAULT_MODEL ? ["high", "hyper"] : ["high"],
           }))
@@ -312,7 +315,7 @@ test("doctor deep warns when the default model is gone from the catalog", async 
       deep: true,
       execFileImpl: deepExec({
         catalog: catalogJson(
-          SELECTABLE_MODELS.filter((slug) => slug !== DEFAULT_MODEL).map((slug) => ({
+          MODELS.filter((slug) => slug !== DEFAULT_MODEL).map((slug) => ({
             slug,
             efforts: ["high"],
           }))
@@ -349,65 +352,33 @@ test("a catalog probe that fails leaves the rest of doctor standing", async () =
   assert.deepEqual(out.warnings, [], "a surface this cannot read reports nothing, it does not guess");
 });
 
-test("doctor deep warns about a model the catalog has and the bridge never names", async () => {
+test("models the catalog adds, drops or dates for retirement are not drift", async () => {
   const out = await runDoctor(
     options({
       deep: true,
       execFileImpl: deepExec({
         catalog: catalogJson([
-          ...SELECTABLE_MODELS.map((slug) => ({ slug, efforts: ["high"] })),
+          { slug: DEFAULT_MODEL, efforts: ["high"] },
           { slug: "gpt-7-unannounced", efforts: ["high"] },
+          {
+            slug: "gpt-5.5",
+            efforts: ["high"],
+            upgrade: { model: "gpt-7-unannounced", retirement_at: "2026-10-14T19:00:00Z", migration_markdown: "…" },
+          },
         ]),
       }),
     })
   );
 
-  assert.equal(out.warnings.length, 1);
-  assert.match(out.warnings[0], /does not publish \(gpt-7-unannounced\)/);
-});
-
-test("doctor deep warns about a published model the catalog has dropped", async () => {
-  const survivors = SELECTABLE_MODELS.filter((slug) => slug !== SELECTABLE_MODELS[1]);
-  const out = await runDoctor(
-    options({
-      deep: true,
-      execFileImpl: deepExec({
-        catalog: catalogJson(survivors.map((slug) => ({ slug, efforts: ["high"] }))),
-      }),
-    })
+  // The model field is described from this same catalog at startup, so there is no
+  // second list for it to disagree with. The date is still reported, just not warned on.
+  assert.deepEqual(out.warnings, []);
+  assert.deepEqual(
+    out.deep.models.models.map((model) => model.slug),
+    [DEFAULT_MODEL, "gpt-7-unannounced", "gpt-5.5"]
   );
-
-  assert.equal(out.warnings.length, 1);
-  assert.ok(out.warnings[0].includes(`no longer has (${SELECTABLE_MODELS[1]})`));
-});
-
-test("doctor deep warns about a published model the catalog has dated for retirement", async () => {
-  const retiring = SELECTABLE_MODELS[1];
-  const out = await runDoctor(
-    options({
-      deep: true,
-      execFileImpl: deepExec({
-        catalog: catalogJson(
-          SELECTABLE_MODELS.map((slug) => ({
-            slug,
-            efforts: ["high"],
-            upgrade:
-              slug === retiring
-                ? { model: "gpt-7-next", retirement_at: "2026-10-14T19:00:00Z", migration_markdown: "…" }
-                : null,
-          }))
-        ),
-      }),
-    })
-  );
-
-  // Still in the catalog, so the "no longer has" check stays quiet; the date is the
-  // only thing that says this entry is on its way out.
-  assert.equal(out.warnings.length, 1);
-  assert.ok(out.warnings[0].includes(`publishes ${retiring}, which retires on 2026-10-14T19:00:00Z`));
-  assert.ok(out.warnings[0].includes("gpt-7-next"));
   assert.equal(
-    out.deep.models.models.find((model) => model.slug === retiring).retiresAt,
+    out.deep.models.models.find((model) => model.slug === "gpt-5.5").retiresAt,
     "2026-10-14T19:00:00Z"
   );
   assert.equal("retiresAt" in out.deep.models.models.find((model) => model.slug === DEFAULT_MODEL), false);
@@ -419,7 +390,7 @@ test("a retiring default is named as the default", async () => {
       deep: true,
       execFileImpl: deepExec({
         catalog: catalogJson(
-          SELECTABLE_MODELS.map((slug) => ({
+          MODELS.map((slug) => ({
             slug,
             efforts: ["high"],
             upgrade: slug === DEFAULT_MODEL ? { model: null, retirement_at: "2027-01-01T00:00:00Z" } : null,
@@ -439,7 +410,7 @@ test("a retired default is reported once, by the message that says what it costs
       deep: true,
       execFileImpl: deepExec({
         catalog: catalogJson(
-          SELECTABLE_MODELS.filter((slug) => slug !== DEFAULT_MODEL).map((slug) => ({ slug, efforts: ["high"] }))
+          MODELS.filter((slug) => slug !== DEFAULT_MODEL).map((slug) => ({ slug, efforts: ["high"] }))
         ),
       }),
     })

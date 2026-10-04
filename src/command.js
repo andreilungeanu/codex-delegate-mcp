@@ -11,24 +11,6 @@ export const MODES = Object.freeze(["agent", "plan", "ask", "review"]);
 export const DEFAULT_MODEL = "gpt-5.6-luna";
 
 /**
- * The models a caller can name, default first. `model` itself is not validated against
- * this — a slug that ships between releases has to remain callable — so this is what the
- * tool description publishes, and what `doctor deep` checks against the catalog the CLI
- * prints. Kept here rather than in the description string so the check has something to
- * compare.
- */
-/** @type {readonly [string, ...string[]]} */
-export const SELECTABLE_MODELS = Object.freeze([
-  DEFAULT_MODEL,
-  "gpt-6-luna",
-  "gpt-6-sol",
-  "gpt-6-astra",
-  "gpt-5.6-sol",
-  "gpt-5.6-terra",
-  "gpt-5.5",
-]);
-
-/**
  * Default reasoning effort — quality over speed unless the user asks otherwise. Every
  * model this bridge publishes accepts xhigh, so the default survives a model override.
  */

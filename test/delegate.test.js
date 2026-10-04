@@ -6,12 +6,14 @@ import { readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { executeDelegate, envMs } from "../src/delegate.js";
 import { createOperationRegistry } from "../src/ops.js";
-import { SELECTABLE_MODELS } from "../src/command.js";
+import { DEFAULT_MODEL } from "../src/command.js";
 import { runCodexProcess } from "../src/run-codex.js";
 
-/** What `codex debug models` reports on 0.147.0, reduced to what the preflight reads. */
+/** What `codex debug models` reports on 0.159.3, reduced to what the preflight reads. */
 const CATALOG = [
-  ...SELECTABLE_MODELS.map((slug) => ({ slug, visibility: "list" })),
+  ...["gpt-6.1-sol", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", DEFAULT_MODEL].map(
+    (slug) => ({ slug, visibility: "list" })
+  ),
   { slug: "codex-auto-review", visibility: "hide" },
 ];
 
@@ -656,12 +658,13 @@ test("a hidden model the CLI still serves is not refused", async () => {
   assert.equal(out.status, "completed");
 });
 
-test("an advertised model is taken on trust, with no catalog read at all", async () => {
+test("a model in the startup catalog is taken on trust, with no catalog read at all", async () => {
   let reads = 0;
   const out = await executeDelegate(
-    { spec: "x", workspace: process.cwd(), model: SELECTABLE_MODELS[2] },
+    { spec: "x", workspace: process.cwd(), model: "gpt-6.1-sol" },
     {
       ...delegateOptions("thread-1"),
+      catalog: CATALOG,
       readCatalog: async () => {
         reads++;
         return CATALOG;
@@ -670,7 +673,44 @@ test("an advertised model is taken on trust, with no catalog read at all", async
   );
 
   assert.equal(out.status, "completed");
-  assert.equal(reads, 0, "an advertised slug is not worth a process to confirm");
+  assert.equal(reads, 0, "a slug the description named is not worth a process to confirm");
+});
+
+test("the default is taken on trust even when the startup catalog was not read", async () => {
+  let reads = 0;
+  const out = await executeDelegate(
+    { spec: "x", workspace: process.cwd() },
+    {
+      ...delegateOptions("thread-1"),
+      catalog: null,
+      readCatalog: async () => {
+        reads++;
+        return CATALOG;
+      },
+    }
+  );
+
+  assert.equal(out.status, "completed");
+  // A CLI whose catalog did not answer at startup would otherwise cost every call a read.
+  assert.equal(reads, 0);
+});
+
+test("a model the startup catalog lacks is read again, so one released mid-session runs", async () => {
+  let reads = 0;
+  const out = await executeDelegate(
+    { spec: "x", workspace: process.cwd(), model: "gpt-9-shipped-after-startup" },
+    {
+      ...delegateOptions("thread-1"),
+      catalog: CATALOG,
+      readCatalog: async () => {
+        reads++;
+        return [...CATALOG, { slug: "gpt-9-shipped-after-startup", visibility: "list" }];
+      },
+    }
+  );
+
+  assert.equal(out.status, "completed");
+  assert.equal(reads, 1);
 });
 
 test("a catalog that cannot be read refuses nothing", async () => {

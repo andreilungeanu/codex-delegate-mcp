@@ -6,7 +6,7 @@ import {
   buildCodexArgs,
   validateDelegateInput,
   PLAN_SCHEMA,
-  SELECTABLE_MODELS,
+  DEFAULT_MODEL,
 } from "./command.js";
 import { readModelCatalog, catalogSlugs, listedSlugs } from "./model-catalog.js";
 import { resolveCodex } from "./resolve-codex.js";
@@ -40,6 +40,7 @@ export async function executeDelegate(rawArgs, options = {}) {
     signal: outerSignal,
     preflight = preflightReviewTarget,
     readCatalog = readModelCatalog,
+    catalog = null,
   } = options;
 
   if (env.CODEX_DELEGATE_DEPTH && String(env.CODEX_DELEGATE_DEPTH).trim() !== "") {
@@ -58,7 +59,7 @@ export async function executeDelegate(rawArgs, options = {}) {
   }
   // Resolver notes describe the setup, not this run — doctor reports them.
   const codex = resolve({ env });
-  await assertKnownModel(request.model, { command: codex.command, readCatalog });
+  await assertKnownModel(request.model, { command: codex.command, readCatalog, catalog });
   const warnings = [];
 
   // Created before the work that can throw, so every exit path has to clean it up.
@@ -223,9 +224,10 @@ function isValidPlanShape(value) {
 }
 
 /**
- * A slug this bridge advertises is not worth a process to confirm — `doctor deep` is what
- * reports SELECTABLE_MODELS going stale. Anything else is either a typo or a model that
- * shipped after this release, and only the CLI can tell those apart, so ask it.
+ * The default, and any slug in the catalog read at startup, is not worth a process to
+ * confirm — `doctor deep` is what reports the default going missing. Anything else is
+ * either a typo or a model that shipped after the server started, and only the CLI can
+ * tell those apart, so ask it again.
  *
  * Hidden models pass: `visibility` decides what a caller is offered, not what the API
  * serves, and refusing one the CLI would have run is worse than the error this replaces.
@@ -235,8 +237,8 @@ function isValidPlanShape(value) {
  * an unknown model costs at the API: a probe that hung longer than the failure it
  * prevents would be a regression on every call that names an unadvertised model.
  */
-async function assertKnownModel(model, { command, readCatalog }) {
-  if (SELECTABLE_MODELS.includes(model)) return;
+async function assertKnownModel(model, { command, readCatalog, catalog }) {
+  if (model === DEFAULT_MODEL || catalogSlugs(catalog).includes(model)) return;
   const models = await readCatalog({ command, timeoutMs: MODEL_CHECK_MS });
   const slugs = catalogSlugs(models);
   if (slugs.length === 0 || slugs.includes(model)) return;

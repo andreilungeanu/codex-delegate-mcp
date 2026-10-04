@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import { statSync } from "node:fs";
 import { promisify } from "node:util";
 import { refreshCodex, clearCodexCache } from "./resolve-codex.js";
-import { REASONING_EFFORTS, DEFAULT_MODEL, SELECTABLE_MODELS } from "./command.js";
+import { REASONING_EFFORTS, DEFAULT_MODEL } from "./command.js";
 import { readModelCatalog } from "./model-catalog.js";
 import { isGitRepo } from "./git-preflight.js";
 import { VERSION } from "./version.js";
@@ -257,28 +257,11 @@ async function probeModelCatalog({ codex, execFileImpl = execFileAsync, warnings
     );
   }
 
-  // Both directions here, unlike the levels above: SELECTABLE_MODELS is what the tool
-  // description publishes, so a slug it misses is one no caller is told about, and one
-  // it names that the catalog dropped is a call that fails at the API.
-  const slugs = models.map((model) => model.slug);
-  const unpublished = slugs.filter((slug) => !SELECTABLE_MODELS.includes(slug));
-  if (unpublished.length) {
-    warnings.push(
-      `The model catalog lists models this bridge does not publish (${unpublished.join(", ")}). SELECTABLE_MODELS in src/command.js is what the model field's description names, so a caller is never told these exist.`
-    );
-  }
-
-  const inCatalog = all.some((model) => model?.slug === DEFAULT_MODEL);
-  // The default gets its own message below, which says more than this one can.
-  const retired = SELECTABLE_MODELS.filter(
-    (slug) => slug !== DEFAULT_MODEL && !all.some((model) => model?.slug === slug)
-  );
-  if (retired.length) {
-    warnings.push(
-      `This bridge publishes models the catalog no longer has (${retired.join(", ")}). A caller that takes one of these from the model field's description gets a run that fails at the API.`
-    );
-  }
-
+  // No check on the other models: the model field is described from this same catalog
+  // when the server starts, so a model it adds or drops is not drift. The default is the
+  // one model this bridge names itself.
+  const defaultEntry = all.find((model) => model?.slug === DEFAULT_MODEL);
+  const inCatalog = Boolean(defaultEntry);
   if (!inCatalog) {
     warnings.push(
       `The default model ${DEFAULT_MODEL} is not in the catalog this CLI prints. Every delegation that does not name its own model asks for it, so all of them would fail at the API. DEFAULT_MODEL in src/command.js is where it goes.`
@@ -286,19 +269,15 @@ async function probeModelCatalog({ codex, execFileImpl = execFileAsync, warnings
   }
 
   // The catalog dates a retirement before it lands, in `upgrade.retirement_at`, with the
-  // replacement it names. Said while the list can still change: the "no longer has"
-  // check above only fires once the entry is gone, when every caller reading the
-  // description has already been pointed at a model the API refuses.
-  for (const model of all) {
-    const retiresAt = model?.upgrade?.retirement_at;
-    if (!retiresAt || !SELECTABLE_MODELS.includes(model.slug)) continue;
-    const replacement = model.upgrade.model
-      ? `; the catalog names ${model.upgrade.model} as its replacement`
+  // replacement it names. Said while the default can still change, rather than once the
+  // entry is gone and every delegation that names no model is already failing.
+  const retiresAt = defaultEntry?.upgrade?.retirement_at;
+  if (retiresAt) {
+    const replacement = defaultEntry.upgrade.model
+      ? `; the catalog names ${defaultEntry.upgrade.model} as its replacement`
       : "";
     warnings.push(
-      model.slug === DEFAULT_MODEL
-        ? `The default model ${DEFAULT_MODEL} retires on ${retiresAt}${replacement}. DEFAULT_MODEL in src/command.js is where it changes.`
-        : `This bridge publishes ${model.slug}, which retires on ${retiresAt}${replacement}. SELECTABLE_MODELS in src/command.js is where it comes out.`
+      `The default model ${DEFAULT_MODEL} retires on ${retiresAt}${replacement}. DEFAULT_MODEL in src/command.js is where it changes.`
     );
   }
 

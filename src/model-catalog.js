@@ -8,9 +8,10 @@ const MAX_CATALOG_BYTES = 8 * 1024 * 1024;
 
 /**
  * `codex debug models` renders the model catalog as JSON without spending quota. Read
- * rather than assumed: this bridge's model and reasoning-level constants are copies, and
- * copies go stale — `xhigh`, `max` and `ultra` each shipped upstream and stayed
- * unreachable here until someone compared the two lists by hand.
+ * rather than assumed: a copied list goes stale — `xhigh`, `max` and `ultra` each shipped
+ * upstream and stayed unreachable here until someone compared the two lists by hand, and
+ * a hand-kept model list missed each model Codex shipped between two of this bridge's
+ * releases.
  *
  * Returns null instead of throwing. Every caller treats a catalog it cannot read as one
  * that objects to nothing: `debug` is a debugging surface and can move, and neither

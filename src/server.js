@@ -11,11 +11,12 @@ import {
   DEFAULT_REASONING_EFFORT,
   MODES,
   REASONING_EFFORTS,
-  SELECTABLE_MODELS,
 } from "./command.js";
 import { executeDelegate as executeDelegateDefault } from "./delegate.js";
 import { runDoctor as runDoctorDefault } from "./doctor.js";
+import { readModelCatalog, listedSlugs } from "./model-catalog.js";
 import { createOperationRegistry } from "./ops.js";
+import { resolveCodex } from "./resolve-codex.js";
 import { VERSION } from "./version.js";
 
 const ICON_BASE = `https://raw.githubusercontent.com/andreilungeanu/codex-delegate-mcp/v${VERSION}/assets`;
@@ -166,16 +167,65 @@ export async function runDelegateTool({
 }
 
 /**
+ * Deadline for the catalog read at startup. `codex debug models` answers from Codex's own
+ * cache while it is under five minutes old and was written by the same CLI version, and
+ * fetches the catalog again otherwise — the usual state when a session starts, and more
+ * often beside the Codex app, whose own CLI builds share the cache: 614-1817ms measured on
+ * Windows with CLI 0.159.3, against ~100ms from a fresh cache. 5s is the budget Codex gives its own catalog refresh
+ * after a login change, well inside the 30s Codex and Claude Code allow a server to start.
+ */
+const STARTUP_CATALOG_MS = 5000;
+
+/**
+ * The catalog the model field is described from, read once before the transport starts: a
+ * host asks for the tool list when it connects and keeps it for the session. Null when no
+ * CLI resolves or it does not answer in time.
+ *
+ * @param {{ env?: NodeJS.ProcessEnv, resolve?: any, readCatalog?: any }} [options]
+ * @returns {Promise<any[] | null>}
+ */
+export async function readStartupCatalog({
+  env = process.env,
+  resolve = resolveCodex,
+  readCatalog = readModelCatalog,
+} = {}) {
+  let command;
+  try {
+    ({ command } = resolve({ env }));
+  } catch {
+    return null;
+  }
+  return readCatalog({ command, timeoutMs: STARTUP_CATALOG_MS });
+}
+
+/**
+ * What the CLI lists, default first. With no list to name, the field points at doctor
+ * rather than at a list nobody checked.
+ *
+ * @param {any[] | null} catalog
+ */
+function describeModelField(catalog) {
+  const listed = listedSlugs(catalog);
+  if (listed.length === 0) return "Codex model id. doctor deep:true lists every id.";
+  const ordered = listed.includes(DEFAULT_MODEL)
+    ? [DEFAULT_MODEL, ...listed.filter((slug) => slug !== DEFAULT_MODEL)]
+    : listed;
+  return `Codex model id: ${ordered.join(", ")}.`;
+}
+
+/**
  * @param {{
  *   executeDelegate?: any,
  *   doctorRunner?: any,
  *   operationRegistry?: any,
+ *   catalog?: any[] | null,
  * }} [options]
  */
 export function buildServer({
   executeDelegate = executeDelegateDefault,
   doctorRunner = runDoctorDefault,
   operationRegistry = createOperationRegistry(),
+  catalog = null,
 } = {}) {
   const server = new McpServer(
     { name: "codex-delegate-mcp", version: VERSION, icons: SERVER_ICONS },
@@ -213,7 +263,7 @@ export function buildServer({
         model: z
           .string()
           .default(DEFAULT_MODEL)
-          .describe(`Codex model id: ${SELECTABLE_MODELS.join(", ")}.`),
+          .describe(describeModelField(catalog)),
         reasoningEffort: z
           .enum([...REASONING_EFFORTS])
           .default(DEFAULT_REASONING_EFFORT)
@@ -242,7 +292,13 @@ export function buildServer({
       },
     },
     async (args, extra) =>
-      runDelegateTool({ args, extra, execute: executeDelegate, operationRegistry })
+      runDelegateTool({
+        args,
+        extra,
+        // The same snapshot the description names, so a model it offers is not read again.
+        execute: (input, options) => executeDelegate(input, { ...options, catalog }),
+        operationRegistry,
+      })
   );
 
   server.registerTool(
@@ -437,8 +493,8 @@ if (isMain) {
     console.log(VERSION);
   } else {
     const operationRegistry = createOperationRegistry();
-    const server = buildServer({ operationRegistry });
     installSignalCleanup(operationRegistry);
+    const server = buildServer({ operationRegistry, catalog: await readStartupCatalog() });
     await server.connect(new StdioServerTransport());
   }
 }
