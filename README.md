@@ -6,7 +6,7 @@ Delegate implementation to the **OpenAI Codex CLI** — your agent writes the br
 
 [![npm version](https://img.shields.io/npm/v/codex-delegate-mcp)](https://www.npmjs.com/package/codex-delegate-mcp)
 [![npm downloads](https://img.shields.io/npm/dt/codex-delegate-mcp)](https://www.npmjs.com/package/codex-delegate-mcp)
-[![MCP Registry](https://img.shields.io/badge/MCP%20Registry-listed-blue)](https://registry.modelcontextprotocol.io/v0/servers?search=codex-delegate)
+[![MCP Registry](https://img.shields.io/badge/MCP%20Registry-listed-blue)](https://registry.modelcontextprotocol.io/v0.1/servers?search=codex-delegate&version=latest)
 [![codex-delegate-mcp MCP server](https://glama.ai/mcp/servers/andreilungeanu/codex-delegate-mcp/badges/score.svg)](https://glama.ai/mcp/servers/andreilungeanu/codex-delegate-mcp)
 [![node](https://img.shields.io/node/v/codex-delegate-mcp)](https://nodejs.org)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -46,7 +46,7 @@ Delegated work runs on the **OpenAI Codex CLI** and its own usage — separate f
 - 📋 **Plan first, then build it on the same thread** — `plan` returns schema-validated steps for you to approve, and `agent` implements them. `ask` answers questions. `review` runs Codex's own reviewer over uncommitted work, a base branch, or a single commit.
 - 🧵 **Resume** — continue a Codex thread with `resumeThreadId`. `resumed: false` tells you the context did not carry over.
 - 🧑‍🤝‍🧑 **Run several, cancel cleanly** — the same question across models, or independent workers on independent directories. `cancel` waits for the exit and warns when a process outlives the kill deadline.
-- 🤝 **One-command install** — Claude Code and GitHub Copilot CLI take it as a plugin, with a skill that teaches your agent how to delegate well. Cursor, VS Code, JetBrains, Windsurf and Visual Studio add the stdio server in settings.
+- 🤝 **One-command install** — Claude Code, GitHub Copilot CLI, Cursor and VS Code take it as a plugin, with a skill that teaches your agent how to delegate well. Cursor and VS Code install the server in one click; JetBrains, Devin Desktop (Windsurf), Visual Studio and the rest add the stdio server in settings.
 - 🩺 **`doctor`** — tells you exactly what's missing if setup isn't right.
 
 ## Install
@@ -68,7 +68,9 @@ That's the whole loop — Claude writes the brief, Codex grinds through the file
 
 ### Cursor
 
-Add an MCP server in **Cursor Settings → MCP** (or project `.cursor/mcp.json`):
+[![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=codex-delegate&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsImNvZGV4LWRlbGVnYXRlLW1jcCJdfQ%3D%3D)
+
+Or add it under **Customize → MCPs** in the sidebar, or in `~/.cursor/mcp.json` (every project) or `.cursor/mcp.json` (this project):
 
 ```json
 {
@@ -88,6 +90,15 @@ Then ask Cursor to delegate implementation to Codex the same way.
 ```shell
 copilot plugin install andreilungeanu/codex-delegate-mcp
 ```
+
+Or through the marketplace, the same way as Claude Code:
+
+```shell
+copilot plugin marketplace add andreilungeanu/codex-delegate-mcp
+copilot plugin install codex-delegate@codex-delegate-mcp
+```
+
+The server alone, without the skill: `copilot mcp add codex-delegate -- npx -y codex-delegate-mcp`.
 
 ### More clients
 
@@ -109,19 +120,14 @@ copilot plugin install andreilungeanu/codex-delegate-mcp
 }
 ```
 
-Or run **Chat: Install Plugin From Source** with this repository's URL.
+Or run **Chat: Install Plugin From Source** with this repository's URL (needs the `chat.plugins.enabled` setting).
 
 </details>
 
 <details>
 <summary><strong>JetBrains AI Assistant</strong> — Settings → Tools → AI Assistant → MCP</summary>
 
-Under **Settings → Tools → AI Assistant → Model Context Protocol (MCP)**, add a server with command `npx` and arguments `-y codex-delegate-mcp`.
-
-</details>
-
-<details>
-<summary><strong>Windsurf</strong> — <code>~/.codeium/windsurf/mcp_config.json</code></summary>
+Under **Settings → Tools → AI Assistant → Model Context Protocol (MCP)**, click **Add** and paste this JSON:
 
 ```json
 {
@@ -134,12 +140,30 @@ Under **Settings → Tools → AI Assistant → Model Context Protocol (MCP)**, 
 }
 ```
 
-Heads-up: Cascade caps you at 100 tools across all servers.
+</details>
+
+<details>
+<summary><strong>Devin Desktop (formerly Windsurf)</strong> — <code>~/.config/devin/mcp_config.json</code></summary>
+
+This config is for Devin Local, the default agent (Local 3.6+). On Windows the file is `%APPDATA%\devin\mcp_config.json`. Legacy Cascade and older Windsurf builds read `~/.codeium/windsurf/mcp_config.json`.
+
+```json
+{
+  "mcpServers": {
+    "codex-delegate": {
+      "command": "npx",
+      "args": ["-y", "codex-delegate-mcp"]
+    }
+  }
+}
+```
+
+Heads-up: Devin Desktop's Cascade agent caps you at 100 tools across all servers.
 
 </details>
 
 <details>
-<summary><strong>Visual Studio 2022</strong> — <code>%USERPROFILE%\.mcp.json</code></summary>
+<summary><strong>Visual Studio 2026 / 2022</strong> — <code>%USERPROFILE%\.mcp.json</code></summary>
 
 ```json
 {
@@ -153,7 +177,7 @@ Heads-up: Cascade caps you at 100 tools across all servers.
 }
 ```
 
-Requires 17.14+. Note the top-level key is `servers`, not `mcpServers`.
+Visual Studio 2022 needs 17.14+. Note the top-level key is `servers`, not `mcpServers`. A `.mcp.json` in the solution directory scopes it to that solution.
 
 </details>
 
@@ -174,6 +198,8 @@ OpenCode does **not** use `mcpServers`. Local servers go under `mcp`, with `type
   }
 }
 ```
+
+This is the v1 shape, which OpenCode v2 still reads (v2's native form is `mcp.servers`).
 
 </details>
 
@@ -231,13 +257,13 @@ In the VS Code extension: **Settings → MCP → Add Server → Local (stdio)**.
 }
 ```
 
-Zed's native agent uses this. External ACP agents in Zed read their own MCP config unless you forward Zed's servers.
+Zed's native agent uses this, and Zed forwards these servers to external agents over ACP; those agents may also read their own MCP config.
 
 </details>
 
 ### Kiro and any other MCP client
 
-Add the following server to the client's MCP config:
+Add the following server to the client's MCP config — for Kiro, `~/.kiro/settings/mcp.json` (user) or `.kiro/settings/mcp.json` (workspace):
 
 ```json
 {
