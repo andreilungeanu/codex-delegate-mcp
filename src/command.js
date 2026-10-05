@@ -8,7 +8,7 @@ export const MODES = Object.freeze(["agent", "plan", "ask", "review"]);
 /**
  * Default worker — orchestrator overrides only when the user asks.
  */
-export const DEFAULT_MODEL = "gpt-5.6-luna";
+export const DEFAULT_MODEL = "gpt-6-luna";
 
 /**
  * Default reasoning effort — quality over speed unless the user asks otherwise. Every

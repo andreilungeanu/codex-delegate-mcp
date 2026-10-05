@@ -7,7 +7,7 @@ Everything here is optional. Environment timer values must be integers from `0` 
 
 | Setting | Default | Notes |
 |---|---|---|
-| `model` | `gpt-5.6-luna` | Per call. Override only when asked for. |
+| `model` | `gpt-6-luna` | Per call. Override only when asked for. |
 | `reasoningEffort` | `xhigh` | `minimal` is rejected by every published model; `none` is rejected by `gpt-6-astra` and accepted elsewhere, though the catalog omits it. |
 | `webSearch` | `true` | Web search. Does not affect the worker's shell network. See below. |
 | `fast` | `false` | Codex Fast mode (`service_tier=fast`); higher credit use. |

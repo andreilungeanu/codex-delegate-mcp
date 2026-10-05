@@ -9,9 +9,9 @@ import { createOperationRegistry } from "../src/ops.js";
 import { DEFAULT_MODEL } from "../src/command.js";
 import { runCodexProcess } from "../src/run-codex.js";
 
-/** What `codex debug models` reports on 0.159.3, reduced to what the preflight reads. */
+/** What `codex debug models` reports on 0.160.0, reduced to what the preflight reads. */
 const CATALOG = [
-  ...["gpt-6.1-sol", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", DEFAULT_MODEL].map(
+  ...["gpt-6.1-sol", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"].map(
     (slug) => ({ slug, visibility: "list" })
   ),
   { slug: "codex-auto-review", visibility: "hide" },
