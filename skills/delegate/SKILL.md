@@ -48,9 +48,9 @@ directory, or serialize.
 To cancel one of several, pass its `delegationId`. See [reference.md](reference.md).
 
 Leave `model`, `reasoningEffort` and `fast` at their defaults unless the user asks. Other models
-(the `model` field lists them) are available — pass `model` only on request. `workspace` is
-required on every call, resumes included — pass the one the thread started in, or the
-resumed turn runs somewhere else.
+and levels (the `model` and `reasoningEffort` fields list them) are available — pass them only
+on request. `workspace` is required on every call, resumes included — pass the one the thread
+started in, or the resumed turn runs somewhere else.
 
 ## Plan mode
 

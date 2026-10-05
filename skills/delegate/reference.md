@@ -10,13 +10,19 @@ concurrency and timeouts behave. [SKILL.md](SKILL.md) carries the workflow itsel
 | `spec` | — | The task brief: goal, scope, decisions already made (quote the user's exact values verbatim), acceptance criteria. Point at files to read or mimic rather than pasting code. |
 | `mode` | `agent` | `agent` edits, `plan` returns a structured plan, `ask` answers questions, `review` runs Codex's native review. An instruction to Codex, not a limit the bridge enforces — every mode can write. |
 | `model` | `gpt-6-luna` | Codex model id. The field lists the models the installed CLI offers, read when the server starts; pass one only when the user asks. Any other id is checked against the CLI before the run starts, and an unknown one is refused with the ids it does take. |
-| `reasoningEffort` | `xhigh` | `low`, `medium`, `high` and `xhigh` run on every listed model; `none` runs on every model but `gpt-6-astra`, though the catalog omits it. `max` needs a `gpt-6-*` or `gpt-5.6-*` model. On astra, sol and terra, `ultra` sends `max` with the CLI's own task delegation on top; a luna model lowers it to plain `max`. Work those delegated subagents do is absent from `usage` and `filesReportedByEditTools`. `minimal` is rejected by every published model. A rejected value fails the turn, and the model's own message names what it takes. |
+| `reasoningEffort` | `xhigh` | The field lists the installed CLI's advertised levels at startup and each model's lower top level; `doctor deep` lists each model's levels. An unadvertised value is forwarded with a warning naming the advertised levels; Codex may normalize or reject it. |
 | `fast` | `false` | Codex Fast mode (`service_tier=fast`). Higher credit use — only when the user asks. |
 | `webSearch` | `true` | Web search. `false` disables it and nothing else — the worker's shell reaches the network either way. |
 | `workspace` | required | Working directory for Codex. Smallest directory holding the task's files; with no such directory the project root is the floor. Must already exist; never create one for the call. |
 | `resumeThreadId` | — | Resume an existing Codex thread. IDs beginning with `-` are rejected as CLI options. Pass the workspace the thread started in: `codex exec resume` has no `--cd`, so the turn runs wherever the child is spawned. |
 | `timeoutMs` | `3600000` | Hard cap for the whole run. |
 | `reviewTarget` | — | Required in `review` mode, rejected elsewhere. Exactly one of the three forms below. |
+
+The catalog omits some accepted values: on CLI 0.156.1, `none` was accepted by luna and sol
+and refused by `gpt-6-astra`. On luna models, `ultra` lowers to plain `max`. On models that
+advertise `ultra`, it enables the CLI's own task delegation, with the underlying effort
+chosen from the catalog. Work those subagents do is absent from `usage` and
+`filesReportedByEditTools`.
 
 Environment variables and Codex binary resolution are documented in
 [CONFIGURATION.md](../../CONFIGURATION.md).

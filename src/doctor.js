@@ -3,8 +3,8 @@ import { execFile } from "node:child_process";
 import { statSync } from "node:fs";
 import { promisify } from "node:util";
 import { refreshCodex, clearCodexCache } from "./resolve-codex.js";
-import { REASONING_EFFORTS, DEFAULT_MODEL } from "./command.js";
-import { readModelCatalog } from "./model-catalog.js";
+import { DEFAULT_MODEL, DEFAULT_REASONING_EFFORT } from "./command.js";
+import { readModelCatalog, modelEfforts } from "./model-catalog.js";
 import { isGitRepo } from "./git-preflight.js";
 import { VERSION } from "./version.js";
 
@@ -223,10 +223,9 @@ async function runDeepSmoke({ codex, execFileImpl = execFileAsync, warnings = []
 }
 
 /**
- * `codex debug models` prints the catalog without spending quota, so what this bridge
- * accepts can be checked against what the models take rather than assumed. The lag it
- * catches has shipped three times — xhigh, then max, then ultra — each unreachable
- * through this bridge until someone compared the two lists by hand.
+ * `codex debug models` prints the catalog without spending quota. The model and
+ * reasoningEffort fields are described from it at startup, so the only names left to check
+ * against it are the two defaults this bridge pins itself.
  */
 async function probeModelCatalog({ codex, execFileImpl = execFileAsync, warnings = [] }) {
   // Diagnostics can wait longer than a delegation: this is the only place the catalog is
@@ -237,25 +236,11 @@ async function probeModelCatalog({ codex, execFileImpl = execFileAsync, warnings
     .filter((model) => model?.visibility === "list")
     .map((model) => ({
       slug: model.slug,
-      reasoningEfforts: (model.supported_reasoning_levels || []).map((level) => level?.effort),
+      reasoningEfforts: modelEfforts([model], model.slug) || [],
       // Only while a retirement is scheduled: a field present on every entry stops
       // being read.
       ...(model.upgrade?.retirement_at ? { retiresAt: model.upgrade.retirement_at } : {}),
     }));
-
-  // One direction only. The reverse would fire on none, which the catalog omits but
-  // most models accept (measured on gpt-6-luna and gpt-6-sol, CLI 0.156.1; gpt-6-astra
-  // refuses it) — warning on it would train the reader to skip this field. minimal is omitted by the catalog
-  // and rejected by every published model, so it stays in the enum only as an
-  // allowlist entry the models arbitrate, not as a working option.
-  const unreachable = [...new Set(models.flatMap((model) => model.reasoningEfforts))].filter(
-    (effort) => effort && !REASONING_EFFORTS.includes(effort)
-  );
-  if (unreachable.length) {
-    warnings.push(
-      `The model catalog lists reasoning levels this bridge rejects (${unreachable.join(", ")}). reasoningEffort is validated against a fixed enum, so a level missing from it cannot be requested at all. REASONING_EFFORTS in src/command.js is where it goes.`
-    );
-  }
 
   // No check on the other models: the model field is described from this same catalog
   // when the server starts, so a model it adds or drops is not drift. The default is the
@@ -278,6 +263,17 @@ async function probeModelCatalog({ codex, execFileImpl = execFileAsync, warnings
       : "";
     warnings.push(
       `The default model ${DEFAULT_MODEL} retires on ${retiresAt}${replacement}. DEFAULT_MODEL in src/command.js is where it changes.`
+    );
+  }
+
+  // The default effort rides on every delegation that names no level, whatever model it
+  // names. The default model is the one it is checked against: a catalog that stops listing
+  // it there is about to turn every plain delegation into a warning. An entry with no list
+  // says nothing either way.
+  const defaultEfforts = modelEfforts(all, DEFAULT_MODEL);
+  if (defaultEfforts && !defaultEfforts.includes(DEFAULT_REASONING_EFFORT)) {
+    warnings.push(
+      `The default reasoning level ${DEFAULT_REASONING_EFFORT} is not among the levels the catalog lists for ${DEFAULT_MODEL} (${defaultEfforts.join(", ")}). A delegation that uses both defaults is forwarded with a warning, and Codex may normalize or reject it. DEFAULT_REASONING_EFFORT in src/command.js is where it changes.`
     );
   }
 

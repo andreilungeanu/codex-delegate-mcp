@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { runDoctor } from "../src/doctor.js";
-import { DEFAULT_MODEL } from "../src/command.js";
+import { DEFAULT_MODEL, DEFAULT_REASONING_EFFORT } from "../src/command.js";
 import { VERSION } from "../src/version.js";
 
 const resolved = {
@@ -270,7 +270,7 @@ test("doctor deep reports the catalog and the levels each model takes", async ()
       deep: true,
       execFileImpl: deepExec({
         catalog: catalogJson([
-          ...MODELS.map((slug) => ({ slug, efforts: ["low", "high", "max", "ultra"] })),
+          ...MODELS.map((slug) => ({ slug, efforts: ["low", "high", "xhigh", "max", "ultra"] })),
           { slug: "codex-auto-review", visibility: "hide", efforts: ["low"] },
         ]),
       }),
@@ -284,13 +284,29 @@ test("doctor deep reports the catalog and the levels each model takes", async ()
     "a model the CLI hides is not one a caller can ask for"
   );
   assert.deepEqual(out.deep.models.defaultModel, { slug: DEFAULT_MODEL, inCatalog: true });
-  // none is missing from the real catalog and most models still take it; minimal is
-  // missing and refused. Either way a level this bridge allows and the catalog omits
-  // is not drift.
+  assert.deepEqual(
+    out.deep.models.models.find((model) => model.slug === DEFAULT_MODEL).reasoningEfforts,
+    ["low", "high", "xhigh", "max", "ultra"]
+  );
   assert.deepEqual(out.warnings, []);
 });
 
-test("doctor deep warns about a reasoning level the enum cannot request", async () => {
+test("a level the catalog adds is not drift: the field is described from the same catalog", async () => {
+  const out = await runDoctor(
+    options({
+      deep: true,
+      execFileImpl: deepExec({
+        catalog: catalogJson(
+          MODELS.map((slug) => ({ slug, efforts: ["high", DEFAULT_REASONING_EFFORT, "hyper"] }))
+        ),
+      }),
+    })
+  );
+
+  assert.deepEqual(out.warnings, []);
+});
+
+test("doctor deep warns when the default model stops listing the default level", async () => {
   const out = await runDoctor(
     options({
       deep: true,
@@ -298,7 +314,7 @@ test("doctor deep warns about a reasoning level the enum cannot request", async 
         catalog: catalogJson(
           MODELS.map((slug) => ({
             slug,
-            efforts: slug === DEFAULT_MODEL ? ["high", "hyper"] : ["high"],
+            efforts: slug === DEFAULT_MODEL ? ["low", "high"] : ["high", DEFAULT_REASONING_EFFORT],
           }))
         ),
       }),
@@ -306,7 +322,39 @@ test("doctor deep warns about a reasoning level the enum cannot request", async 
   );
 
   assert.equal(out.warnings.length, 1);
-  assert.match(out.warnings[0], /rejects \(hyper\)/);
+  assert.ok(
+    out.warnings[0].includes(
+      `The default reasoning level ${DEFAULT_REASONING_EFFORT} is not among the levels the catalog lists for ${DEFAULT_MODEL} (low, high)`
+    )
+  );
+  assert.match(out.warnings[0], /is forwarded with a warning, and Codex may normalize or reject it/);
+});
+
+test("a default model entry with no levels raises no level warning", async () => {
+  const out = await runDoctor(
+    options({
+      deep: true,
+      execFileImpl: deepExec({
+        catalog: catalogJson(MODELS.map((slug) => ({ slug }))),
+      }),
+    })
+  );
+
+  assert.deepEqual(out.warnings, []);
+});
+
+test("doctor treats malformed default reasoning lists as unknown", async () => {
+  for (const levels of [[{ effort: "low" }, {}], { effort: "low" }]) {
+    const out = await runDoctor(options({
+      deep: true,
+      execFileImpl: deepExec({
+        catalog: JSON.stringify({ models: [{ slug: DEFAULT_MODEL, visibility: "list", supported_reasoning_levels: levels }] }),
+      }),
+    }));
+    assert.equal(out.deep.models.ran, true);
+    assert.deepEqual(out.deep.models.models[0].reasoningEfforts, []);
+    assert.deepEqual(out.warnings, []);
+  }
 });
 
 test("doctor deep warns when the default model is gone from the catalog", async () => {
@@ -358,7 +406,7 @@ test("models the catalog adds, drops or dates for retirement are not drift", asy
       deep: true,
       execFileImpl: deepExec({
         catalog: catalogJson([
-          { slug: DEFAULT_MODEL, efforts: ["high"] },
+          { slug: DEFAULT_MODEL, efforts: ["high", DEFAULT_REASONING_EFFORT] },
           { slug: "gpt-7-unannounced", efforts: ["high"] },
           {
             slug: "gpt-5.5",
@@ -392,7 +440,7 @@ test("a retiring default is named as the default", async () => {
         catalog: catalogJson(
           MODELS.map((slug) => ({
             slug,
-            efforts: ["high"],
+            efforts: ["high", DEFAULT_REASONING_EFFORT],
             upgrade: slug === DEFAULT_MODEL ? { model: null, retirement_at: "2027-01-01T00:00:00Z" } : null,
           }))
         ),

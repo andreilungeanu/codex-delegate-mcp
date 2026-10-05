@@ -9,12 +9,26 @@ import { createOperationRegistry } from "../src/ops.js";
 import { DEFAULT_MODEL } from "../src/command.js";
 import { runCodexProcess } from "../src/run-codex.js";
 
+const TO_MAX = ["low", "medium", "high", "xhigh", "max"];
+const TO_ULTRA = [...TO_MAX, "ultra"];
+
 /** What `codex debug models` reports on 0.160.0, reduced to what the preflight reads. */
 const CATALOG = [
-  ...["gpt-6.1-sol", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"].map(
-    (slug) => ({ slug, visibility: "list" })
-  ),
-  { slug: "codex-auto-review", visibility: "hide" },
+  ...[
+    ["gpt-6-astra", TO_ULTRA],
+    ["gpt-6.1-sol", TO_ULTRA],
+    ["gpt-6-sol", TO_ULTRA],
+    ["gpt-6-luna", TO_MAX],
+    ["gpt-5.6-sol", TO_ULTRA],
+    ["gpt-5.6-terra", TO_ULTRA],
+    ["gpt-5.6-luna", TO_MAX],
+    ["gpt-5.5", ["low", "medium", "high", "xhigh"]],
+  ].map(([slug, efforts]) => ({
+    slug,
+    visibility: "list",
+    supported_reasoning_levels: efforts.map((effort) => ({ effort })),
+  })),
+  { slug: "codex-auto-review", visibility: "hide", supported_reasoning_levels: TO_MAX.map((effort) => ({ effort })) },
 ];
 
 function delegateOptions(threadId) {
@@ -742,4 +756,81 @@ test("a catalog with nothing published names no models at all", async () => {
       return true;
     }
   );
+});
+
+test("an unlisted level is forwarded, with a warning naming the advertised levels", async () => {
+  let args = null;
+  const out = await executeDelegate(
+    { spec: "x", workspace: process.cwd(), model: "gpt-6-luna", reasoningEffort: "ultra" },
+    {
+      ...delegateOptions("thread-1"),
+      catalog: CATALOG,
+      runProcess: async (opts) => {
+        args = opts.args;
+        return { ...(await delegateOptions("thread-1").runProcess()), warnings: [] };
+      },
+    }
+  );
+
+  // Ultra on a luna model is lowered to max; none was accepted by luna and sol on CLI
+  // 0.156.1 though no entry listed it. The catalog is not the whole truth, so it only warns.
+  assert.equal(out.status, "completed");
+  assert.ok(args.includes('model_reasoning_effort="ultra"'), "the level is sent as asked");
+  assert.deepEqual(out.warnings, [
+    "reasoningEffort ultra is not advertised for gpt-6-luna (low, medium, high, xhigh, max). The bridge does not block this value; Codex may normalize or reject it.",
+  ]);
+});
+
+test("a listed level, or one checked against no catalog, raises no warning", async () => {
+  const listed = await executeDelegate(
+    { spec: "x", workspace: process.cwd(), model: "gpt-6-sol", reasoningEffort: "ultra" },
+    { ...delegateOptions("thread-1"), catalog: CATALOG }
+  );
+  assert.equal(listed.warnings, undefined);
+
+  // The default model is taken on trust without a read, so there is nothing to check.
+  const unread = await executeDelegate(
+    { spec: "x", workspace: process.cwd(), reasoningEffort: "persistent" },
+    { ...delegateOptions("thread-1"), catalog: null }
+  );
+  assert.equal(unread.warnings, undefined);
+
+  const noLevels = await executeDelegate(
+    { spec: "x", workspace: process.cwd(), model: "gpt-9-no-levels", reasoningEffort: "persistent" },
+    { ...delegateOptions("thread-1"), readCatalog: async () => [{ slug: "gpt-9-no-levels", visibility: "list" }] }
+  );
+  assert.equal(noLevels.warnings, undefined);
+});
+
+test("a model read again is checked against the levels that read returned", async () => {
+  const out = await executeDelegate(
+    { spec: "x", workspace: process.cwd(), model: "gpt-9-shipped-after-startup", reasoningEffort: "xhigh" },
+    {
+      ...delegateOptions("thread-1"),
+      catalog: CATALOG,
+      readCatalog: async () => [
+        ...CATALOG,
+        {
+          slug: "gpt-9-shipped-after-startup",
+          visibility: "list",
+          supported_reasoning_levels: [{ effort: "low" }, { effort: "persistent" }],
+        },
+      ],
+    }
+  );
+
+  assert.equal(out.status, "completed");
+  assert.match(out.warnings?.[0] ?? "", /not advertised for gpt-9-shipped-after-startup \(low, persistent\)/);
+});
+
+test("a partly malformed model entry raises no effort warning", async () => {
+  const out = await executeDelegate(
+    { spec: "x", workspace: process.cwd(), reasoningEffort: "xhigh" },
+    {
+      ...delegateOptions("thread-1"),
+      catalog: [{ slug: DEFAULT_MODEL, visibility: "list", supported_reasoning_levels: [{ effort: "low" }, {}] }],
+    }
+  );
+  assert.equal(out.status, "completed");
+  assert.equal(out.warnings, undefined);
 });

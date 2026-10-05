@@ -65,20 +65,43 @@ test("an omitted or empty workspace is refused, on a first turn and on a resume"
   assert.equal(ok.resumeThreadId, "tid-1");
 });
 
-test("reasoningEffort accepts every level the model catalog names", () => {
-  // `codex debug models` lists ultra for the astra, sol and terra models. It was
-  // unreachable here because an earlier test borrowed it as a stand-in for an invalid
-  // value, back when no model took it.
-  for (const effort of ["none", "max", "ultra"]) {
+test("reasoningEffort takes any level name, not a list fixed at release", () => {
+  // CLI-only and future level names stay reachable without updating a bridge enum.
+  for (const effort of ["none", "max", "ultra", "persistent", "x_high-2"]) {
     assert.equal(
       validateDelegateInput({ workspace: process.cwd(), spec: "x", reasoningEffort: effort }).reasoningEffort,
       effort
     );
   }
-  assert.throws(
-    () => validateDelegateInput({ workspace: process.cwd(), spec: "x", reasoningEffort: "banana" }),
-    /reasoningEffort must be one of/
-  );
+});
+
+test("reasoningEffort preserves numeric and custom values for Codex to interpret", () => {
+  for (const effort of ["16384", "persistent", "Custom-Level", "x y"]) {
+    assert.equal(
+      validateDelegateInput({ workspace: process.cwd(), spec: "x", reasoningEffort: effort }).reasoningEffort,
+      effort
+    );
+  }
+});
+
+test("a numeric reasoning effort is sent as a TOML string", () => {
+  const request = validateDelegateInput({ workspace: process.cwd(), spec: "x", reasoningEffort: "16384" });
+  const built = buildCodexArgs(request, { resultFile: "/tmp/out.txt" });
+  const index = built.args.indexOf('model_reasoning_effort="16384"');
+  assert.notEqual(index, -1);
+  assert.equal(built.args[index - 1], "-c");
+});
+
+test("quotes and backslashes in a reasoning effort stay inside one config argument", () => {
+  const ordinary = validateDelegateInput({ workspace: process.cwd(), spec: "x" });
+  const request = validateDelegateInput({ workspace: process.cwd(), spec: "x", reasoningEffort: 'a"b\\c' });
+  const baseline = buildCodexArgs(ordinary, { resultFile: "/tmp/out.txt" }).args;
+  const args = buildCodexArgs(request, { resultFile: "/tmp/out.txt" }).args;
+  const index = baseline.indexOf(`model_reasoning_effort="${DEFAULT_REASONING_EFFORT}"`);
+  assert.notEqual(index, -1);
+  assert.equal(args[index - 1], "-c");
+  baseline[index] = 'model_reasoning_effort="a\\"b\\\\c"';
+  assert.deepEqual(args, baseline, "only the quoted value changes; no argv entries are added");
 });
 
 test("fast defaults off; only sets Codex service_tier when true", () => {

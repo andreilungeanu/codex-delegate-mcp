@@ -10,11 +10,10 @@ import {
   DEFAULT_MODEL,
   DEFAULT_REASONING_EFFORT,
   MODES,
-  REASONING_EFFORTS,
 } from "./command.js";
 import { executeDelegate as executeDelegateDefault } from "./delegate.js";
 import { runDoctor as runDoctorDefault } from "./doctor.js";
-import { readModelCatalog, listedSlugs } from "./model-catalog.js";
+import { readModelCatalog, listedSlugs, listedEfforts, modelEfforts } from "./model-catalog.js";
 import { createOperationRegistry } from "./ops.js";
 import { resolveCodex } from "./resolve-codex.js";
 import { VERSION } from "./version.js";
@@ -214,6 +213,35 @@ function describeModelField(catalog) {
 }
 
 /**
+ * The levels the same catalog lists, and which models stop short of the highest. The catalog
+ * lists each model's levels lowest first, so the last is its top. Without a list it points at
+ * doctor, as the model field does.
+ *
+ * @param {any[] | null} catalog
+ */
+function describeEffortField(catalog) {
+  const levels = listedEfforts(catalog);
+  if (levels.length === 0) return "Codex reasoning level. doctor deep:true lists each model's levels.";
+  const top = levels[levels.length - 1];
+  /** @type {Map<string, string[]>} */
+  const lower = new Map();
+  for (const slug of listedSlugs(catalog)) {
+    const own = modelEfforts(catalog, slug);
+    const ownTop = own?.[own.length - 1];
+    if (!ownTop || ownTop === top) continue;
+    lower.set(ownTop, [...(lower.get(ownTop) || []), slug]);
+  }
+  const short = [...lower].map(([level, slugs]) => `${level} on ${slugs.join(", ")}`).join("; ");
+  return [
+    `Codex reasoning level: ${levels.join(", ")}.`,
+    short ? `Tops out at ${short}.` : "",
+    "A level the model does not advertise is forwarded, with a warning.",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+/**
  * @param {{
  *   executeDelegate?: any,
  *   doctorRunner?: any,
@@ -265,9 +293,9 @@ export function buildServer({
           .default(DEFAULT_MODEL)
           .describe(describeModelField(catalog)),
         reasoningEffort: z
-          .enum([...REASONING_EFFORTS])
+          .string()
           .default(DEFAULT_REASONING_EFFORT)
-          .describe("minimal is rejected by every published model; none is rejected by gpt-6-astra and accepted elsewhere, though the catalog omits it."),
+          .describe(describeEffortField(catalog)),
         fast: z.boolean().default(false).describe("Codex Fast mode; higher credit use."),
         webSearch: z.boolean().default(true).describe("Codex's built-in web search."),
         timeoutMs: z

@@ -766,9 +766,17 @@ test("a real server describes the models its CLI lists, read before the first to
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-catalog-"));
   const catalog = {
     models: [
-      { slug: "gpt-9-shipped-after-this-release", visibility: "list" },
-      { slug: DEFAULT_MODEL, visibility: "list" },
-      { slug: "internal-reviewer", visibility: "hide" },
+      {
+        slug: "gpt-9-shipped-after-this-release",
+        visibility: "list",
+        supported_reasoning_levels: [{ effort: "low" }, { effort: "xhigh" }, { effort: "max" }, { effort: "persistent" }],
+      },
+      {
+        slug: DEFAULT_MODEL,
+        visibility: "list",
+        supported_reasoning_levels: [{ effort: "low" }, { effort: "xhigh" }, { effort: "max" }],
+      },
+      { slug: "internal-reviewer", visibility: "hide", supported_reasoning_levels: [{ effort: "internal" }] },
     ],
   };
   await writeFile(path.join(dir, "debug"), `console.log(${JSON.stringify(JSON.stringify(catalog))});`);
@@ -813,13 +821,21 @@ test("a real server describes the models its CLI lists, read before the first to
       delegate.inputSchema.properties.model.description,
       `Codex model id: ${DEFAULT_MODEL}, gpt-9-shipped-after-this-release.`
     );
+    assert.equal(
+      delegate.inputSchema.properties.reasoningEffort.description,
+      "Codex reasoning level: low, xhigh, max, persistent. Tops out at max on " +
+        `${DEFAULT_MODEL}. A level the model does not advertise is forwarded, with a warning.`
+    );
+    assert.equal(delegate.inputSchema.properties.reasoningEffort.default, DEFAULT_REASONING_EFFORT);
+    assert.equal(delegate.inputSchema.properties.model.default, DEFAULT_MODEL);
   } finally {
     child.kill();
   }
 });
 
-test("with no catalog to read, the model field points at doctor instead of naming a list", () => {
-  const hiddenOnly = [{ slug: "internal-reviewer", visibility: "hide" }];
+test("with no catalog to read, the model and level fields point at doctor instead of naming a list", () => {
+  const hiddenOnly = [{ slug: "internal-reviewer", visibility: "hide", supported_reasoning_levels: [{ effort: "low" }] }];
+  const noLevels = [{ slug: DEFAULT_MODEL, visibility: "list" }];
   for (const catalog of [null, [], hiddenOnly]) {
     const delegate = buildServer({ catalog })._registeredTools.delegate;
     assert.equal(
@@ -827,6 +843,83 @@ test("with no catalog to read, the model field points at doctor instead of namin
       "Codex model id. doctor deep:true lists every id."
     );
   }
+  for (const catalog of [null, [], hiddenOnly, noLevels]) {
+    const delegate = buildServer({ catalog })._registeredTools.delegate;
+    assert.equal(
+      delegate.inputSchema.shape.reasoningEffort.description,
+      "Codex reasoning level. doctor deep:true lists each model's levels."
+    );
+  }
+});
+
+test("the level field names no shortfall when every listed model reaches the top level", () => {
+  const levels = [{ effort: "low" }, { effort: "xhigh" }];
+  const catalog = [
+    { slug: DEFAULT_MODEL, visibility: "list", supported_reasoning_levels: levels },
+    { slug: "gpt-6-sol", visibility: "list", supported_reasoning_levels: levels },
+  ];
+  const delegate = buildServer({ catalog })._registeredTools.delegate;
+  assert.equal(
+    delegate.inputSchema.shape.reasoningEffort.description,
+    "Codex reasoning level: low, xhigh. A level the model does not advertise is forwarded, with a warning."
+  );
+});
+
+test("the level field groups models by the level they stop at, as Codex 0.160 lists them", () => {
+  const upTo = (top) => {
+    const all = ["low", "medium", "high", "xhigh", "max", "ultra"];
+    return all.slice(0, all.indexOf(top) + 1).map((effort) => ({ effort }));
+  };
+  const catalog = [
+    ["gpt-6-astra", "ultra"],
+    ["gpt-6.1-sol", "ultra"],
+    ["gpt-6-luna", "max"],
+    ["gpt-5.6-luna", "max"],
+    ["gpt-5.5", "xhigh"],
+  ].map(([slug, top]) => ({ slug, visibility: "list", supported_reasoning_levels: upTo(top) }));
+  const delegate = buildServer({ catalog })._registeredTools.delegate;
+  assert.equal(
+    delegate.inputSchema.shape.reasoningEffort.description,
+    "Codex reasoning level: low, medium, high, xhigh, max, ultra. Tops out at max on gpt-6-luna, gpt-5.6-luna; " +
+      "xhigh on gpt-5.5. A level the model does not advertise is forwarded, with a warning."
+  );
+});
+
+test("the level description orders reordered and partial catalogs, excluding unknown and hidden lists", () => {
+  const levels = (...efforts) => efforts.map((effort) => ({ effort }));
+  const catalog = [
+    { slug: "gpt-5.5", visibility: "list", supported_reasoning_levels: levels("low", "high", "xhigh") },
+    { slug: "no-levels", visibility: "list" },
+    { slug: DEFAULT_MODEL, visibility: "list", supported_reasoning_levels: levels("low", "medium", "high", "xhigh", "max") },
+    { slug: "partial-model", visibility: "list", supported_reasoning_levels: [{ effort: "unknown" }, null] },
+    { slug: "gpt-6-sol", visibility: "list", supported_reasoning_levels: levels("low", "medium", "high", "xhigh", "max", "ultra") },
+    { slug: "hidden-model", visibility: "hide", supported_reasoning_levels: levels("low", "secret") },
+  ];
+  for (const models of [catalog, [...catalog].reverse()]) {
+    const delegate = buildServer({ catalog: models })._registeredTools.delegate;
+    const shortfall = models === catalog
+      ? `xhigh on gpt-5.5; max on ${DEFAULT_MODEL}`
+      : `max on ${DEFAULT_MODEL}; xhigh on gpt-5.5`;
+    assert.equal(
+      delegate.inputSchema.shape.reasoningEffort.description,
+      `Codex reasoning level: low, medium, high, xhigh, max, ultra. Tops out at ${shortfall}. ` +
+        "A level the model does not advertise is forwarded, with a warning."
+    );
+  }
+});
+
+test("partial lists describe the highest level without a complete reference model", () => {
+  const levels = (...efforts) => efforts.map((effort) => ({ effort }));
+  const catalog = [
+    { slug: DEFAULT_MODEL, visibility: "list", supported_reasoning_levels: levels("low", "xhigh", "max") },
+    { slug: "gpt-5.5", visibility: "list", supported_reasoning_levels: levels("low", "medium", "high", "xhigh") },
+  ];
+  const delegate = buildServer({ catalog })._registeredTools.delegate;
+  assert.equal(
+    delegate.inputSchema.shape.reasoningEffort.description,
+    "Codex reasoning level: low, medium, high, xhigh, max. Tops out at xhigh on gpt-5.5. " +
+      "A level the model does not advertise is forwarded, with a warning."
+  );
 });
 
 test("the catalog the description names is the one the delegate preflight trusts", async () => {

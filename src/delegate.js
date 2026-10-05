@@ -8,7 +8,7 @@ import {
   PLAN_SCHEMA,
   DEFAULT_MODEL,
 } from "./command.js";
-import { readModelCatalog, catalogSlugs, listedSlugs } from "./model-catalog.js";
+import { readModelCatalog, catalogSlugs, listedSlugs, modelEfforts } from "./model-catalog.js";
 import { resolveCodex } from "./resolve-codex.js";
 import {
   runCodexProcess,
@@ -61,8 +61,10 @@ export async function executeDelegate(rawArgs, options = {}) {
   }
   // Resolver notes describe the setup, not this run — doctor reports them.
   const codex = resolve({ env });
-  await assertKnownModel(request.model, { command: codex.command, readCatalog, catalog });
+  const trusted = await assertKnownModel(request.model, { command: codex.command, readCatalog, catalog });
   const warnings = [];
+  const effortNote = effortWarning(request, trusted);
+  if (effortNote) warnings.push(effortNote);
 
   // Created before the work that can throw, so every exit path has to clean it up.
   const tmp = await mkdtemp(path.join(tmpdir(), "codex-delegate-"));
@@ -238,12 +240,15 @@ function isValidPlanShape(value) {
  * A catalog that cannot be read objects to nothing. The deadline is well under the ~2.5s
  * an unknown model costs at the API: a probe that hung longer than the failure it
  * prevents would be a regression on every call that names an unadvertised model.
+ *
+ * Returns the catalog it trusted — the startup snapshot, or the read it made — so the
+ * reasoning level is checked against the same answer without a second process.
  */
 async function assertKnownModel(model, { command, readCatalog, catalog }) {
-  if (model === DEFAULT_MODEL || catalogSlugs(catalog).includes(model)) return;
+  if (model === DEFAULT_MODEL || catalogSlugs(catalog).includes(model)) return catalog;
   const models = await readCatalog({ command, timeoutMs: MODEL_CHECK_MS });
   const slugs = catalogSlugs(models);
-  if (slugs.length === 0 || slugs.includes(model)) return;
+  if (slugs.length === 0 || slugs.includes(model)) return models;
   const offered = listedSlugs(models);
   const err = /** @type {Error & { code?: string }} */ (
     new Error(
@@ -257,4 +262,20 @@ async function assertKnownModel(model, { command, readCatalog, catalog }) {
   );
   err.code = "invalid_model";
   throw err;
+}
+
+/**
+ * A level the model's catalog entry does not list is warned on, never refused: the catalog
+ * is not the whole truth. `none` was accepted by luna and sol on CLI 0.156.1 though no
+ * entry listed it, and `ultra` on a luna model is lowered to `max`. A model the catalog has no
+ * levels for, or no catalog at all, says nothing either way.
+ *
+ * @param {{ model: string, reasoningEffort?: string }} request
+ * @param {any[] | null | undefined} models
+ */
+function effortWarning({ model, reasoningEffort }, models) {
+  if (!reasoningEffort) return null;
+  const levels = modelEfforts(models, model);
+  if (!levels || levels.includes(reasoningEffort)) return null;
+  return `reasoningEffort ${reasoningEffort} is not advertised for ${model} (${levels.join(", ")}). The bridge does not block this value; Codex may normalize or reject it.`;
 }

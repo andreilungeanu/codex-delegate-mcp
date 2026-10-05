@@ -11,8 +11,8 @@ export const MODES = Object.freeze(["agent", "plan", "ask", "review"]);
 export const DEFAULT_MODEL = "gpt-6-luna";
 
 /**
- * Default reasoning effort — quality over speed unless the user asks otherwise. Every
- * model this bridge publishes accepts xhigh, so the default survives a model override.
+ * Default reasoning effort — quality over speed unless the user asks otherwise.
+ * `doctor deep` warns if the default model's entry stops listing it.
  */
 export const DEFAULT_REASONING_EFFORT = "xhigh";
 
@@ -30,25 +30,6 @@ export const MAX_REVIEW_ARGV_CHARS = 28_000;
  * flags are left in argv. Review mode cannot use it; see buildReviewArgs.
  */
 const STDIN_PROMPT = "-";
-
-/**
- * Union of levels models accept, not a promise each one takes every value.
- * gpt-5.5 stops at xhigh; the luna models add max; astra, sol and terra add ultra
- * (CLI-only: sends max and delegates; a luna model lowers it to plain max). none works
- * on every model but gpt-6-astra, though the catalog omits it everywhere; minimal is
- * in no model's list. A refused value arrives as the model's own error.
- */
-/** @type {readonly [string, ...string[]]} */
-export const REASONING_EFFORTS = Object.freeze([
-  "none",
-  "minimal",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "max",
-  "ultra",
-]);
 
 export const PLAN_SCHEMA = Object.freeze({
   type: "object",
@@ -311,14 +292,8 @@ export function validateDelegateInput(raw, { cwd = process.cwd() } = {}) {
     model = trimmed;
   }
 
-  let reasoningEffort =
+  const reasoningEffort =
     normalizeOptionalText(raw.reasoningEffort) ?? DEFAULT_REASONING_EFFORT;
-  if (reasoningEffort && !REASONING_EFFORTS.includes(reasoningEffort)) {
-    throw bad(
-      "invalid_reasoning_effort",
-      `reasoningEffort must be one of ${REASONING_EFFORTS.join(", ")}`
-    );
-  }
 
   const fast = raw.fast === true;
 
