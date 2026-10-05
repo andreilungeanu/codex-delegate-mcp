@@ -24,6 +24,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Refresh the SDK's locked `fast-uri` and `ip-address` dependencies to patched versions, clearing the
+  dependency audit findings.
 - README install steps follow the clients' current docs: Cursor's **Customize → MCPs** menu and a one-click
   install link, Windsurf's rename to Devin Desktop and its new config path, Visual Studio 2026, Kiro's config
   paths, the Copilot CLI marketplace and `copilot mcp add` alternatives, `chat.plugins.enabled` for VS Code's
