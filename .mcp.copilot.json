@@ -1,6 +1,6 @@
 {
   "codex-delegate": {
     "command": "npx",
-    "args": ["-y", "codex-delegate-mcp@2.4.0"]
+    "args": ["-y", "codex-delegate-mcp@2.5.0"]
   }
 }

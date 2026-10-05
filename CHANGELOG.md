@@ -6,6 +6,30 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-10-05
+
+### Changed
+
+- The default model is `gpt-6-luna`. Codex 0.160's catalog names it as the upgrade for `gpt-5.6-luna`, the
+  previous default, which stays available by name.
+- `reasoningEffort` forwards any non-empty value instead of validating against a fixed list. The field describes
+  advertised levels from the same catalog read as `model`, preserving their order across partial model lists.
+  An unadvertised value is forwarded with a warning; Codex may normalize or reject it. Malformed lists are
+  treated as unknown. On CLI 0.156.1, `none` was accepted by luna and sol and refused by `gpt-6-astra`;
+  `ultra` on luna lowers to `max`.
+- `doctor deep` warns when the default model's catalog entry stops listing the default level, `xhigh`, in place
+  of the warning about catalog levels a fixed list could not request.
+- Dependencies: MCP SDK 1.31.0, Zod 4.6.5, and development Node types 26.6.3. The minimum
+  supported SDK is 1.23.0, which supports Zod 4 schemas.
+
+### Fixed
+
+- README install steps follow the clients' current docs: Cursor's **Customize → MCPs** menu and a one-click
+  install link, Windsurf's rename to Devin Desktop and its new config path, Visual Studio 2026, Kiro's config
+  paths, the Copilot CLI marketplace and `copilot mcp add` alternatives, `chat.plugins.enabled` for VS Code's
+  plugin install, JetBrains' JSON dialog, Zed's ACP forwarding, OpenCode v1/v2 config compatibility, and the
+  MCP Registry badge on the frozen `v0.1` API.
+
 ## [2.4.0] - 2026-10-04
 
 ### Changed
