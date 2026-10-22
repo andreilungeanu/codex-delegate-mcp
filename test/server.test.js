@@ -72,17 +72,20 @@ test("delegate tool derives defaults and descriptions from command constants", (
   assert.ok(!SERVER_INSTRUCTIONS.includes(DEFAULT_MODEL));
 });
 
-test("the delegate description keeps every default without naming a field", () => {
-  // A rule that names some fields reads as "keep these, choose the rest": with model,
+test("the delegate description names only the fields a caller sets", () => {
+  // A rule that names some tuning fields reads as "keep these, choose the rest": with model,
   // reasoningEffort and fast named, a fresh caller turned webSearch off and lowered
-  // timeoutMs for a one-line ask. One sentence about defaults covers every field.
+  // timeoutMs for a one-line ask. A rule naming no field at all reads as "omit what the call
+  // can run without", which drops resumeThreadId from the skill's repair resume. So the
+  // description names what the workflow sets and covers every other field in one sentence.
   const delegate = buildServer()._registeredTools.delegate;
-  const callerSets = ["spec", "mode", "workspace"];
+  const callerSets = ["spec", "mode", "workspace", "resumeThreadId", "reviewTarget"];
   for (const field of Object.keys(delegate.inputSchema.shape)) {
     if (callerSets.includes(field)) continue;
     assert.ok(!delegate.description.includes(field), `description names ${field}`);
   }
-  assert.match(delegate.description, /defaults are the intended values/);
+  for (const field of callerSets) assert.ok(delegate.description.includes(field), `description omits ${field}`);
+  assert.match(delegate.description, /leave every other field at its default unless the user asks/);
 });
 
 test("the schema refuses a delegate call that names no workspace", () => {
