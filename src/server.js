@@ -264,7 +264,7 @@ export function buildServer({
     "delegate",
     {
       description:
-        "Delegate a coding task to OpenAI Codex. Never run codex from the shell — use this tool. Check status before trusting result — a run that spawns then fails returns normally. Keep model, reasoningEffort and fast at their defaults unless the user asks. See the delegate skill.",
+        "Delegate a coding task to OpenAI Codex. Never run codex from the shell — use this tool. Check status before trusting result — a run that spawns then fails returns normally. The defaults are the intended values: leave a field out unless the user asks for it or the call cannot run without it. See the delegate skill.",
       // Strict: an unknown key is almost always a typo, and a silently dropped
       // `resumeThreadId` loses the thread with nothing to show for it.
       inputSchema: z.object({
