@@ -6,6 +6,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.5.1] - 2026-10-22
+
+### Changed
+
+- The `delegate` description names the fields a caller sets: `spec`, `workspace` and `mode`, plus
+  `resumeThreadId` to resume and `reviewTarget` in review. Every other field stays at its default unless the user
+  asks. It used to name only `model`, `reasoningEffort` and `fast`, and fresh callers set the fields it left out,
+  such as `webSearch` and `timeoutMs`, on a one-line task.
+- The hard-cap timeout warning and the skill reference leave a higher `timeoutMs` to the user.
+
+### Fixed
+
+- `/codex-delegate:delegate` loads the delegate skill. Claude Code loaded a slash command of the same name
+  instead, and that command only pointed back to the skill, so the workflow never reached the caller. The command
+  is removed, and the Cursor manifest no longer lists `commands/`; the skill takes the task as its argument.
+
 ## [2.5.0] - 2026-10-05
 
 ### Changed
