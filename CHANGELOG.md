@@ -6,18 +6,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [2.5.2] - 2026-10-22
-
-2.5.1 was tagged but not published: its release run failed the dependency audit. Its changes ship in
-this release.
-
-### Security
-
-- Lockfile bumps of the MCP SDK to 1.32.1, `hono` to 4.13.13 and `proxy-addr` to 2.0.8, clearing the
-  critical advisory GHSA-jqcg-44mw-7w3h, the high advisories GHSA-22jm-h49p-29qw and GHSA-46jr-4wx8-v453,
-  and the moderate GHSA-6prh-2h8m-c8cw, GHSA-rvq5-wwqv-78pq and GHSA-5r4p-p66f-jhc7.
-
-## [2.5.1] - 2026-10-22
+## [2.6.0] - 2026-10-22
 
 ### Changed
 
@@ -32,6 +21,17 @@ this release.
 - `/codex-delegate:delegate` loads the delegate skill. Claude Code loaded a slash command of the same name
   instead, and that command only pointed back to the skill, so the workflow never reached the caller. The command
   is removed, and the Cursor manifest no longer lists `commands/`; the skill takes the task as its argument.
+
+### Security
+
+- Lockfile bumps of the MCP SDK to 1.32.1, `hono` to 4.13.13 and `proxy-addr` to 2.0.8, clearing the
+  critical advisory GHSA-jqcg-44mw-7w3h, the high advisories GHSA-22jm-h49p-29qw and GHSA-46jr-4wx8-v453,
+  and the moderate GHSA-6prh-2h8m-c8cw, GHSA-rvq5-wwqv-78pq and GHSA-5r4p-p66f-jhc7.
+
+### Internal
+
+- The release workflow retries the MCP Registry publish while npm has not yet served the new version, and on
+  registry 5xx responses, as cursor-delegate-mcp's does.
 
 ## [2.5.0] - 2026-10-05
 
