@@ -300,7 +300,8 @@ test("a kill deadline that fires settles without inventing an exit code", async 
   // The diagnostics that ride along are the reason this matters.
   assert.equal(result.threadId, "thr_immortal");
   assert.deepEqual(result.filesReportedByEditTools, [edited]);
-  assert.ok(result.warnings.some((w) => /Hard-cap timeout/.test(w)));
+  // A higher cap is the user's call, as the delegate description says of every tuning field.
+  assert.ok(result.warnings.some((w) => /Hard-cap timeout.*Ask the user before retrying with a higher timeoutMs/.test(w)));
   assert.ok(result.warnings.some((w) => /a process may still be running/.test(w)));
 });
 

@@ -541,7 +541,7 @@ function buildRunWarnings({
       `Codex produced no output within ${startupMs}ms of spawning. Run doctor to check the CLI resolves and is logged in; raise CODEX_DELEGATE_STARTUP_MS on a slow machine.`
     );
   } else if (timedOut && timeoutReason === "hard-cap") {
-    warnings.push(`Hard-cap timeout after ${hardCapMs}ms. Raise timeoutMs for longer tasks.`);
+    warnings.push(`Hard-cap timeout after ${hardCapMs}ms. Ask the user before retrying with a higher timeoutMs.`);
   }
   // Only on a run that broke. Recovered failures fired on most healthy runs, so
   // the caller stopped reading the array that also carries capacity errors.

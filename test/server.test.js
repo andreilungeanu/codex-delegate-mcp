@@ -270,7 +270,7 @@ test("an unknowable exit code does not cost the caller the whole result", async 
         exitCode: null,
         threadId: "thr_immortal",
         result: "",
-        warnings: ["Hard-cap timeout after 1000ms. Raise timeoutMs for longer tasks."],
+        warnings: ["Hard-cap timeout after 1000ms. Ask the user before retrying with a higher timeoutMs."],
         filesReportedByEditTools: ["important.ts"],
       }),
     }

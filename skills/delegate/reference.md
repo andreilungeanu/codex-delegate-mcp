@@ -84,5 +84,5 @@ returns anyway and says so in `warnings`.
 
 A quiet run is not a stuck run. Codex emits nothing while a shell command runs or the model
 reasons, so long silent stretches are normal and are not timed out. The only guards are a 60s
-spawn-to-first-output deadline and the 1h hard cap (`timeoutMs`). Raise `timeoutMs` for work
-that legitimately runs longer.
+spawn-to-first-output deadline and the 1h hard cap (`timeoutMs`). Work that legitimately runs
+longer needs a higher `timeoutMs`, which is the user's call.
