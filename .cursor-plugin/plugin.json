@@ -13,7 +13,6 @@
   "logo": "assets/logo-light.png",
   "keywords": ["mcp", "codex", "openai", "cursor", "delegation", "coding-agent"],
   "skills": "./skills/",
-  "commands": "./commands/",
   "mcpServers": {
     "codex-delegate": {
       "command": "npx",

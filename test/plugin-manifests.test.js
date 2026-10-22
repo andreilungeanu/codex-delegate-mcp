@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { cp, mkdir, writeFile } from "node:fs/promises";
 import { mkdtemp } from "./fixtures/temp-dir.mjs";
 import { execFile } from "node:child_process";
@@ -84,12 +84,19 @@ test("Cursor plugin launches the published package and points at a committed log
   assert.equal(server.command, "npx");
   assert.deepEqual(server.args, ["-y", pin]);
   assert.ok(existsSync(resolve(ROOT, manifest.skills)));
-  assert.ok(existsSync(resolve(ROOT, manifest.commands)));
 
   // A relative logo resolves against raw.githubusercontent.com, so the file has to be
   // committed under that path or the listing falls back to a generic icon.
   assert.ok(!manifest.logo.startsWith("./"), "a raw.githubusercontent path takes no ./ prefix");
   assert.ok(existsSync(resolve(ROOT, manifest.logo)), `${manifest.logo} must exist`);
+});
+
+test("no command shares a skill's name", () => {
+  // Claude Code lists both as /codex-delegate:<name> and loads the command, so the
+  // skill's workflow never reaches the caller.
+  for (const name of readdirSync(resolve(ROOT, "skills"))) {
+    assert.ok(!existsSync(resolve(ROOT, "commands", `${name}.md`)), `commands/${name}.md hides skills/${name}`);
+  }
 });
 
 test("no host auto-discovery leak configs at conventional paths", () => {
