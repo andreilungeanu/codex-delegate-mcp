@@ -305,7 +305,7 @@ export function buildServer({
           .max(86_400_000)
           .optional()
           .describe(
-            "Whole-run cap in ms (default 1h). Mid-turn silence is allowed; startup has a separate 60s first-output deadline."
+            "Whole-run cap in ms (default 6h). Mid-turn silence is allowed; startup has a separate 60s first-output deadline."
           ),
         reviewTarget: reviewTargetSchema
           .optional()

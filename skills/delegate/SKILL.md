@@ -63,4 +63,4 @@ Pass exactly one `reviewTarget`. Shapes, resume rule, and preflight: [reference.
 
 ## Timeouts
 
-A quiet run is not a stuck run. Guards, the 1h cap, and `timeoutMs` are in [reference.md](reference.md#timeouts) and [CONFIGURATION.md](../../CONFIGURATION.md).
+A quiet run is not a stuck run. Guards, the 6h cap, and `timeoutMs` are in [reference.md](reference.md#timeouts) and [CONFIGURATION.md](../../CONFIGURATION.md).

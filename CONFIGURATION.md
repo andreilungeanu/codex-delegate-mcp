@@ -11,7 +11,7 @@ Everything here is optional. Environment timer values must be integers from `0` 
 | `reasoningEffort` | `xhigh` | Per call. The field lists the levels the installed CLI's catalog advertises; `doctor deep` lists each model's. An unadvertised value is forwarded with a warning; Codex may normalize or reject it. |
 | `webSearch` | `true` | Web search. Does not affect the worker's shell network. See below. |
 | `fast` | `false` | Codex Fast mode (`service_tier=fast`); higher credit use. |
-| `timeoutMs` | `3600000` | Hard cap for the whole run. |
+| `timeoutMs` | `21600000` | Hard cap for the whole run. |
 
 ## Environment variables
 
@@ -19,7 +19,7 @@ Everything here is optional. Environment timer values must be integers from `0` 
 |---|---|---|
 | `CODEX_DELEGATE_COMMAND` | auto | Absolute path to a Codex binary, skipping resolution. |
 | `CODEX_DELEGATE_STARTUP_MS` | `60000` | Spawn to first JSONL event. `0` disables. |
-| `CODEX_DELEGATE_HARD_CAP_MS` | `3600000` | Whole run; a per-call `timeoutMs` overrides it. `0` disables. |
+| `CODEX_DELEGATE_HARD_CAP_MS` | `21600000` | Whole run; a per-call `timeoutMs` overrides it. `0` disables. |
 | `CODEX_DELEGATE_HEARTBEAT_MS` | `30000` | Progress heartbeat while quiet. `0` disables. |
 
 `CODEX_DELEGATE_DEPTH` is set on the child process as a recursion marker. If it is already set
@@ -54,7 +54,7 @@ Codex emits nothing while a shell command runs or the model reasons, so **a quie
 stuck run** and mid-turn silence is never timed out. Only two guards bound a run:
 
 - a **60s spawn-to-first-output deadline** — silence here does mean a wedged launcher;
-- a **1h hard cap** on the whole run.
+- a **6h hard cap** on the whole run.
 
 If a task legitimately runs longer, raise `timeoutMs` on the call rather than disabling a guard.
 

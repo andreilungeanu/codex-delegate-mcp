@@ -13,7 +13,7 @@ export const DEFAULT_STARTUP_MS = 60_000;
 export const DEFAULT_HEARTBEAT_MS = 30_000;
 /** How long to wait for the process to actually die after a kill is requested. */
 export const DEFAULT_KILL_DEADLINE_MS = 10_000;
-export const DEFAULT_HARD_CAP_MS = 3_600_000;
+export const DEFAULT_HARD_CAP_MS = 21_600_000;
 
 /**
  * Spawn `codex …`, reduce JSONL for threadId + coarse progress, accept only

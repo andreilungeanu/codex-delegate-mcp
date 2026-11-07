@@ -628,6 +628,39 @@ test("an onProgress throwing on the announce still releases the lease", async ()
   assert.equal(cancel.status, "nothing-active");
 });
 
+test("a delegation gets a 6h hard cap unless the call or the environment says otherwise", async () => {
+  const capFor = async (args, env) => {
+    let seen = null;
+    await executeDelegate(
+      { spec: "x", mode: "ask", workspace: process.cwd(), ...args },
+      {
+        ...delegateOptions("thread-1"),
+        env,
+        runProcess: async (opts) => {
+          seen = opts.timeoutMs;
+          return {
+            status: "completed",
+            exitCode: 0,
+            threadId: "thread-1",
+            timedOut: false,
+            cancelled: false,
+            result: "done",
+            warnings: [],
+            filesReportedByEditTools: [],
+          };
+        },
+      }
+    );
+    return seen;
+  };
+
+  assert.equal(await capFor({}, {}), 21_600_000);
+  assert.equal(await capFor({}, { CODEX_DELEGATE_HARD_CAP_MS: "90000" }), 90_000);
+  assert.equal(await capFor({ timeoutMs: 120_000 }, { CODEX_DELEGATE_HARD_CAP_MS: "90000" }), 120_000);
+  // 0 reaches the runner as "no cap", not as the default.
+  assert.equal(await capFor({}, { CODEX_DELEGATE_HARD_CAP_MS: "0" }), 0);
+});
+
 test("an unadvertised model is checked before the worker is spawned", async () => {
   let spawned = false;
   let seenOptions = null;

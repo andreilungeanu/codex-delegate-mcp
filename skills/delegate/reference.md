@@ -15,7 +15,7 @@ concurrency and timeouts behave. [SKILL.md](SKILL.md) carries the workflow itsel
 | `webSearch` | `true` | Web search. `false` disables it and nothing else — the worker's shell reaches the network either way. |
 | `workspace` | required | Working directory for Codex. Smallest directory holding the task's files; with no such directory the project root is the floor. Must already exist; never create one for the call. |
 | `resumeThreadId` | — | Resume an existing Codex thread. IDs beginning with `-` are rejected as CLI options. Pass the workspace the thread started in: `codex exec resume` has no `--cd`, so the turn runs wherever the child is spawned. |
-| `timeoutMs` | `3600000` | Hard cap for the whole run. |
+| `timeoutMs` | `21600000` | Hard cap for the whole run. |
 | `reviewTarget` | — | Required in `review` mode, rejected elsewhere. Exactly one of the three forms below. |
 
 The catalog omits some accepted values: on CLI 0.156.1, `none` was accepted by luna and sol
@@ -84,5 +84,5 @@ returns anyway and says so in `warnings`.
 
 A quiet run is not a stuck run. Codex emits nothing while a shell command runs or the model
 reasons, so long silent stretches are normal and are not timed out. The only guards are a 60s
-spawn-to-first-output deadline and the 1h hard cap (`timeoutMs`). Work that legitimately runs
+spawn-to-first-output deadline and the 6h hard cap (`timeoutMs`). Work that legitimately runs
 longer needs a higher `timeoutMs`, which is the user's call.

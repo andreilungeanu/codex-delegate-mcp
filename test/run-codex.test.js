@@ -305,6 +305,53 @@ test("a kill deadline that fires settles without inventing an exit code", async 
   assert.ok(result.warnings.some((w) => /a process may still be running/.test(w)));
 });
 
+test("a run without timeoutMs is capped at 6h", async (t) => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-defaultcap-"));
+  let child = null;
+  let killed = false;
+  // Real runCodexProcess and its real default; only the clock is fake, so the cap
+  // is read from when the kill happens rather than from the constant's value.
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const run = runCodexProcess({
+    command: "codex",
+    args: ["exec"],
+    cwd: dir,
+    resultFile: path.join(dir, "last.txt"),
+    spawnImpl: () => {
+      child = new EventEmitter();
+      child.pid = 4242;
+      child.stdout = new Readable({ read() {} });
+      child.stderr = new Readable({ read() {} });
+      child.exitCode = null;
+      child.signalCode = null;
+      return child;
+    },
+    treeKillImpl: async () => {
+      killed = true;
+      child.stdout.push(null);
+      child.stderr.push(null);
+      child.emit("close", null);
+    },
+    platform: "linux",
+    startupMs: 0,
+    heartbeatMs: 0,
+  });
+  const turn = () => new Promise((resolve) => setImmediate(resolve));
+  // The caps are armed in the same tick as the spawn, which follows a real unlink.
+  while (child === null) await turn();
+
+  t.mock.timers.tick(21_600_000 - 1);
+  await turn();
+  assert.equal(killed, false, "the run was killed before 6h");
+
+  t.mock.timers.tick(1);
+  const result = await run;
+  assert.equal(killed, true);
+  assert.equal(result.status, "interrupted");
+  assert.equal(result.reason, "hard-cap");
+  assert.ok(result.warnings.some((w) => /Hard-cap timeout after 21600000ms/.test(w)));
+});
+
 test("a background process holding stdout does not hold the delegation", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-orphan-"));
   const resultFile = path.join(dir, "last.txt");
