@@ -46,7 +46,7 @@ Delegated work runs on the **OpenAI Codex CLI** and its own usage — separate f
 - 📋 **Plan first, then build it on the same thread** — `plan` returns schema-validated steps for you to approve, and `agent` implements them. `ask` answers questions. `review` runs Codex's own reviewer over uncommitted work, a base branch, or a single commit.
 - 🧵 **Resume** — continue a Codex thread with `resumeThreadId`. `resumed: false` tells you the context did not carry over.
 - 🧑‍🤝‍🧑 **Run several, cancel cleanly** — the same question across models, or independent workers on independent directories. `cancel` waits for the exit and warns when a process outlives the kill deadline.
-- 🤝 **One-command install** — Claude Code, GitHub Copilot CLI, Cursor and VS Code take it as a plugin, with a skill that teaches your agent how to delegate well. Cursor and VS Code install the server in one click; JetBrains, Devin Desktop (Windsurf), Visual Studio and the rest add the stdio server in settings.
+- 🤝 **One-command install** — Claude Code, Google Antigravity, GitHub Copilot CLI, Cursor and VS Code take it as a plugin, with a skill that teaches your agent how to delegate well. Cursor and VS Code install the server in one click; JetBrains, Devin Desktop (Windsurf), Visual Studio and the rest add the stdio server in settings.
 - 🩺 **`doctor`** — tells you exactly what's missing if setup isn't right.
 
 ## Install
@@ -85,13 +85,17 @@ Or add it under **Customize → MCPs** in the sidebar, or in `~/.cursor/mcp.json
 
 Then ask Cursor to delegate implementation to Codex the same way.
 
-### GitHub Copilot CLI
+### Google Antigravity
 
 ```shell
-copilot plugin install andreilungeanu/codex-delegate-mcp
+agy plugin install https://github.com/andreilungeanu/codex-delegate-mcp
 ```
 
-Or through the marketplace, the same way as Claude Code:
+Restart the Antigravity app to load it. If you added `codex-delegate` to `mcp_config.json` by hand, remove that entry.
+
+Without the CLI, use the manual config under [More clients](#more-clients).
+
+### GitHub Copilot CLI
 
 ```shell
 copilot plugin marketplace add andreilungeanu/codex-delegate-mcp
@@ -204,20 +208,19 @@ This is the v1 shape, which OpenCode v2 still reads (v2's native form is `mcp.se
 </details>
 
 <details>
-<summary><strong>Google Antigravity</strong> — <code>~/.gemini/config/mcp_config.json</code> or workspace <code>.agents/mcp_config.json</code></summary>
+<summary><strong>Google Antigravity</strong> (without the plugin) — <code>~/.gemini/config/mcp_config.json</code> or workspace <code>.agents/mcp_config.json</code></summary>
 
 ```json
 {
   "mcpServers": {
     "codex-delegate": {
       "command": "npx",
-      "args": ["-y", "codex-delegate-mcp"]
+      "args": ["-y", "codex-delegate-mcp"],
+      "timeoutSeconds": 21660
     }
   }
 }
 ```
-
-In the IDE: **…** on the agent panel → **MCP Servers** → **Manage MCP Servers** → **View raw config**. Antigravity 2.0, IDE, and CLI share the Gemini config file. You may need to approve the server's tools on first run.
 
 </details>
 
