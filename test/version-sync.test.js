@@ -11,7 +11,7 @@ test("package and plugin manifest versions stay in sync", () => {
   const manifests = [
     read("../.claude-plugin/plugin.json"),
     read("../.cursor-plugin/plugin.json"),
-    read("../plugin.json"),
+    read("../.github/plugin/plugin.json"),
   ];
   const copilotMarketplace = read("../.github/plugin/marketplace.json");
   const registry = read("../server.json");

@@ -32,7 +32,7 @@ test("logo assets exist as PNGs", () => {
 });
 
 test("marketplaces and Copilot plugin point at the intended package", () => {
-  const copilot = read("plugin.json");
+  const copilot = read(".github/plugin/plugin.json");
   assert.equal(copilot.name, pluginName);
   assert.ok(existsSync(resolve(ROOT, copilot.skills)));
   assert.ok(existsSync(resolve(ROOT, copilot.mcpServers)));
@@ -108,6 +108,8 @@ test("no host auto-discovery leak configs at conventional paths", () => {
   assert.ok(!existsSync(resolve(ROOT, ".mcp.json")), ".mcp.json at the repo root leaks into Copilot installs");
   assert.ok(!existsSync(resolve(ROOT, "hooks/hooks.json")), "hooks/hooks.json is auto-discovered by some hosts");
   assert.ok(!existsSync(resolve(ROOT, ".agents/plugins")), "Codex marketplace packaging is not used");
+  // Antigravity reads a root plugin.json as a second manifest, and `agy plugin validate --strict` fails on it.
+  assert.ok(!existsSync(resolve(ROOT, "plugin.json")), "Copilot's manifest belongs in .github/plugin/");
 });
 
 // The probe carries the real dependency names so the sentinel is exercised on the
