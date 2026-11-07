@@ -13,6 +13,11 @@ const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const read = (rel) => JSON.parse(readFileSync(resolve(ROOT, rel), "utf8"));
 const pkg = read("package.json");
 const pin = `codex-delegate-mcp@${pkg.version}`;
+// Copilot installs this whole repository as the plugin and spawns its server there. `npx -y <pin>`
+// in that folder matches the pin to this package.json, finds no node_modules/.bin, and the server
+// never starts. An npm alias spec has no package name, so npx skips the local match and fetches
+// the exact pinned version.
+const npxPin = `npm:${pin}`;
 const pluginName = "codex-delegate";
 const serverName = "codex-delegate";
 const marketplaceName = "codex-delegate-mcp";
@@ -32,7 +37,7 @@ test("marketplaces and Copilot plugin point at the intended package", () => {
   assert.ok(existsSync(resolve(ROOT, copilot.skills)));
   assert.ok(existsSync(resolve(ROOT, copilot.mcpServers)));
   const copilotMcp = read(".mcp.copilot.json");
-  assert.deepEqual(copilotMcp[serverName].args, ["-y", pin]);
+  assert.deepEqual(copilotMcp[serverName].args, ["-y", npxPin]);
 
   const copilotMarketplace = read(".github/plugin/marketplace.json");
   assert.equal(copilotMarketplace.name, marketplaceName);
@@ -82,7 +87,7 @@ test("Cursor plugin launches the published package and points at a committed log
   assert.equal(manifest.name, pluginName);
   const server = manifest.mcpServers[serverName];
   assert.equal(server.command, "npx");
-  assert.deepEqual(server.args, ["-y", pin]);
+  assert.deepEqual(server.args, ["-y", npxPin]);
   assert.ok(existsSync(resolve(ROOT, manifest.skills)));
 
   // A relative logo resolves against raw.githubusercontent.com, so the file has to be
