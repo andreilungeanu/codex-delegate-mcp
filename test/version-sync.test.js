@@ -12,6 +12,7 @@ test("package and plugin manifest versions stay in sync", () => {
     read("../.claude-plugin/plugin.json"),
     read("../.cursor-plugin/plugin.json"),
     read("../.github/plugin/plugin.json"),
+    read("../.antigravity-plugin/plugin.json"),
   ];
   const copilotMarketplace = read("../.github/plugin/marketplace.json");
   const registry = read("../server.json");
@@ -43,6 +44,7 @@ test("package and plugin manifest versions stay in sync", () => {
     JSON.stringify(manifests[1].mcpServers).includes(pin),
     `Cursor inline MCP config must pin ${pin}`
   );
+  assert.ok(JSON.stringify(read("../mcp_config.json")).includes(pin), `mcp_config.json must pin ${pin}`);
 });
 
 test("registry ownership metadata matches the published package", () => {

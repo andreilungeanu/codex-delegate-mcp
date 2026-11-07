@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "codex-delegate": {
+      "command": "npx",
+      "args": ["-y", "npm:codex-delegate-mcp@2.6.0"],
+      "timeoutSeconds": 21660
+    }
+  }
+}

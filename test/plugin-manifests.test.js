@@ -8,15 +8,16 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import { DEFAULT_HARD_CAP_MS } from "../src/run-codex.js";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const read = (rel) => JSON.parse(readFileSync(resolve(ROOT, rel), "utf8"));
 const pkg = read("package.json");
 const pin = `codex-delegate-mcp@${pkg.version}`;
-// Copilot installs this whole repository as the plugin and spawns its server there. `npx -y <pin>`
-// in that folder matches the pin to this package.json, finds no node_modules/.bin, and the server
-// never starts. An npm alias spec has no package name, so npx skips the local match and fetches
-// the exact pinned version.
+// Copilot and Antigravity install this whole repository as the plugin and spawn its server
+// there. `npx -y <pin>` in that folder matches the pin to this package.json, finds no
+// node_modules/.bin, and the server never starts. An npm alias spec has no package name, so npx
+// skips the local match and fetches the exact pinned version.
 const npxPin = `npm:${pin}`;
 const pluginName = "codex-delegate";
 const serverName = "codex-delegate";
@@ -94,6 +95,63 @@ test("Cursor plugin launches the published package and points at a committed log
   // committed under that path or the listing falls back to a generic icon.
   assert.ok(!manifest.logo.startsWith("./"), "a raw.githubusercontent path takes no ./ prefix");
   assert.ok(existsSync(resolve(ROOT, manifest.logo)), `${manifest.logo} must exist`);
+});
+
+test("Antigravity plugin manifest and MCP config reference real files and outlast the bridge hard cap", () => {
+  const manifest = read(".antigravity-plugin/plugin.json");
+  assert.equal(manifest.name, pluginName);
+  assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
+
+  // The marketplace asks for a square logo of at least 128 px; IHDR holds width and height.
+  const logo = readFileSync(resolve(ROOT, manifest.logo));
+  assert.deepEqual([...logo.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  assert.equal(logo.readUInt32BE(16), logo.readUInt32BE(20), "logo must be 1:1");
+  assert.ok(logo.readUInt32BE(16) >= 128, "logo must be at least 128 px");
+  assert.ok(existsSync(resolve(ROOT, "skills")), "default skills/ directory must exist");
+
+  const config = read("mcp_config.json");
+  assert.deepEqual(Object.keys(config), ["mcpServers"]);
+  const server = config.mcpServers[serverName];
+  assert.ok(server, `mcp_config.json must define the ${serverName} server`);
+  assert.equal(server.command, "npx");
+  assert.deepEqual(server.args, ["-y", npxPin]);
+  // Antigravity ends a tool call after 180 s unless the server entry sets timeoutSeconds, and
+  // progress notifications do not extend it. The hard-cap timer starts after Antigravity's
+  // clock, so the margin lets the structured hard-cap error arrive first.
+  const timeoutSec = server.timeoutSeconds;
+  // The schema types timeoutSeconds as an integer; a quoted value would pass the comparison
+  // below by coercion.
+  assert.ok(Number.isInteger(timeoutSec), "Antigravity timeoutSeconds must be a JSON integer");
+  assert.ok(
+    timeoutSec * 1000 >= DEFAULT_HARD_CAP_MS + 60000,
+    "Antigravity timeoutSeconds must exceed the bridge hard cap by at least a minute"
+  );
+});
+
+test("Antigravity plugin manifest uses accepted schema fields", () => {
+  // The manifest schema sets additionalProperties: false and has no mcpServers field; servers
+  // live in mcp_config.json. Keep this contract in npm test so CI catches it without the
+  // Antigravity CLI installed.
+  // https://antigravity.google/docs/build-plugins
+  const allowed = new Set([
+    "$schema", "name", "displayName", "description", "version", "disabled", "logo",
+    "suggestedPrompts", "skills", "author", "homepage", "repository", "license", "keywords",
+    "extensions",
+  ]);
+  const manifest = read(".antigravity-plugin/plugin.json");
+  assert.deepEqual(Object.keys(manifest).filter((key) => !allowed.has(key)), [], "unsupported manifest keys");
+  assert.deepEqual(Object.keys(manifest.author).filter((key) => !["name", "email", "url"].includes(key)), []);
+  assert.ok(manifest.suggestedPrompts.length <= 3, "suggestedPrompts holds at most 3 entries");
+  assert.ok(
+    manifest.description.length >= 120 && manifest.description.length <= 160,
+    "marketplace listings take a description of 120-160 characters"
+  );
+
+  // Marketplace submission requires `agy plugin validate --strict` to pass and a name and
+  // displayName that do not lead with "Antigravity", "Gemini", "Claude", or "Cursor".
+  for (const value of [manifest.name, manifest.displayName]) {
+    assert.doesNotMatch(value, /^(antigravity|gemini|claude|cursor)/i, `${value} leads with a reserved name`);
+  }
 });
 
 test("no command shares a skill's name", () => {
