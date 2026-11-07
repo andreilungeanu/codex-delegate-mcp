@@ -6,6 +6,36 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-11-08
+
+### Added
+
+- Antigravity plugin: `agy plugin install https://github.com/andreilungeanu/codex-delegate-mcp`. It sets `timeoutSeconds`
+  to 21660, a minute past the hard cap; Antigravity otherwise ends a tool call after 180s.
+
+### Changed
+
+- The default hard cap on a single delegation (`CODEX_DELEGATE_HARD_CAP_MS`) is 6h, up from 1h, so long research and
+  refactor runs fit in one call. Longer work continues in another run with `resumeThreadId`.
+- Copilot CLI installs from the plugin marketplace: `copilot plugin marketplace add andreilungeanu/codex-delegate-mcp`,
+  then `copilot plugin install codex-delegate@codex-delegate-mcp`. Copilot deprecates direct repository installs.
+  Copilot's manifest moved from the repository root to `.github/plugin/plugin.json`.
+
+### Fixed
+
+- The Copilot plugin's server starts. Copilot runs it inside the plugin folder, a copy of this repository, where
+  `npx -y codex-delegate-mcp@X.Y.Z` matched the pin to the folder's own `package.json` and failed with
+  `'codex-delegate-mcp' is not recognized`. The Copilot, Cursor and Antigravity configs pin
+  `npm:codex-delegate-mcp@X.Y.Z`, which npx always fetches. Existing installs pick it up with
+  `copilot plugin update codex-delegate`.
+
+### Security
+
+- Lockfile bumps of `zod` to 4.6.7, `body-parser` to 2.4.0, `content-type` to 2.1.0, `fast-uri` to 3.1.9, `ip-address`
+  to 10.7.6, `qs` to 6.17.1 and `@hono/node-server` to 2.1.6, clearing the high advisories GHSA-mrhx-c7xc-m3w5 and
+  GHSA-27r3-jxmh-p828, the moderate GHSA-rmxm-3fg6-px4f, GHSA-w74x-v6f9-j3xg, GHSA-wjr9-j795-jxcr, GHSA-rxp7-6hxx-x8q5
+  and GHSA-6pq8-jhm2-2vcw, and the low GHSA-333x-w4r6-6crp and GHSA-xhq7-xmqj-769h.
+
 ## [2.6.0] - 2026-10-22
 
 ### Changed
