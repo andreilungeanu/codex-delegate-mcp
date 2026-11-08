@@ -26,6 +26,8 @@ Add a local stdio server. Many hosts use a top-level `mcpServers` object:
 }
 ```
 
+Cline ends a tool call after 60 s; add `"timeout": 3600`, its maximum.
+
 Host-specific files and shapes — including OpenCode and Kilo Code (`mcp` + `type: "local"` + `command` as one array) — are in the README. Do not paste `mcpServers` into those two.
 
 No API keys and no environment variables are required. Auth is the Codex CLI's own session. Optional knobs: [CONFIGURATION.md](CONFIGURATION.md).
