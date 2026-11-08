@@ -99,7 +99,7 @@ test("Cursor plugin launches the published package and points at a committed log
 
 test("Antigravity plugin manifest and MCP config reference real files and outlast the bridge hard cap", () => {
   const manifest = read(".antigravity-plugin/plugin.json");
-  assert.equal(manifest.name, pluginName);
+  assert.equal(manifest.name, "delegate-to-codex");
   assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
 
   // The marketplace asks for a square logo of at least 128 px; IHDR holds width and height.
@@ -148,7 +148,8 @@ test("Antigravity plugin manifest uses accepted schema fields", () => {
   );
 
   // Marketplace submission requires `agy plugin validate --strict` to pass and a name and
-  // displayName that do not lead with "Antigravity", "Gemini", "Claude", or "Cursor".
+  // displayName that do not lead with "Antigravity", "Gemini", "Claude", or "Cursor". Only this
+  // manifest carries the Antigravity name; the other hosts keep `codex-delegate`.
   for (const value of [manifest.name, manifest.displayName]) {
     assert.doesNotMatch(value, /^(antigravity|gemini|claude|cursor)/i, `${value} leads with a reserved name`);
   }
