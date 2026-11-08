@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.8.0] - 2026-11-08
+
+### Changed
+
+- Dependencies: MCP SDK 1.32.2 and development Node types 26.6.6.
+
+### Internal
+
+- CI and the release workflow run `actions/setup-node` 7.1.0, as cursor-delegate-mcp's do.
+
 ## [2.7.0] - 2026-11-08
 
 ### Added
