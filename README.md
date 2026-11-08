@@ -245,25 +245,6 @@ In the VS Code extension: **Settings → MCP → Add Server → Local (stdio)**.
 
 </details>
 
-<details>
-<summary><strong>Zed</strong> — Settings → AI → MCP Servers, or <code>context_servers</code> in Zed settings</summary>
-
-```json
-{
-  "context_servers": {
-    "codex-delegate": {
-      "command": "npx",
-      "args": ["-y", "codex-delegate-mcp"],
-      "env": {}
-    }
-  }
-}
-```
-
-Zed's native agent uses this, and Zed forwards these servers to external agents over ACP; those agents may also read their own MCP config.
-
-</details>
-
 ### Kiro and any other MCP client
 
 Add the following server to the client's MCP config — for Kiro, `~/.kiro/settings/mcp.json` (user) or `.kiro/settings/mcp.json` (workspace):
