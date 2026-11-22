@@ -2,7 +2,7 @@ import process from "node:process";
 import { execFile } from "node:child_process";
 import { statSync } from "node:fs";
 import { promisify } from "node:util";
-import { refreshCodex, clearCodexCache } from "./resolve-codex.js";
+import { resolveCodex } from "./resolve-codex.js";
 import { DEFAULT_MODEL, DEFAULT_REASONING_EFFORT } from "./command.js";
 import { readModelCatalog, modelEfforts } from "./model-catalog.js";
 import { isGitRepo } from "./git-preflight.js";
@@ -24,7 +24,7 @@ const execFileAsync = promisify(execFile);
 export async function runDoctor({
   deep = false,
   workspace = process.cwd(),
-  resolve = refreshCodex,
+  resolve = resolveCodex,
   env = process.env,
   getClientInfo,
   execFileImpl = execFileAsync,
@@ -279,5 +279,3 @@ async function probeModelCatalog({ codex, execFileImpl = execFileAsync, warnings
 
   return { ran: true, models, defaultModel: { slug: DEFAULT_MODEL, inCatalog } };
 }
-
-export { clearCodexCache };

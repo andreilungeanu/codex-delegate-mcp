@@ -13,32 +13,13 @@ export class CodexResolveError extends Error {
   }
 }
 
-let cached = null;
-
-export function clearCodexCache() {
-  cached = null;
-}
-
-export function resolveCodex(options = {}) {
-  // Revalidate rather than trust the cache forever: reinstalling Codex moves the
-  // binary, and a stale path would fail every delegation until a restart.
-  if (cached && existsSync(cached.command)) return cached;
-  cached = resolveCodexUncached(options);
-  return cached;
-}
-
-export function refreshCodex(options = {}) {
-  try {
-    const resolved = resolveCodexUncached(options);
-    cached = resolved;
-    return resolved;
-  } catch (err) {
-    cached = null;
-    throw err;
-  }
-}
-
-export function resolveCodexUncached({
+/**
+ * Resolved on every call, never cached: `codex update` installs the new release beside
+ * the old one, which stays on disk, so a stored path kept running the old CLI and refused
+ * its new models until a restart. The lookup costs ~80ms on Windows (`where` plus
+ * `codex --version`), which is small next to a delegation.
+ */
+export function resolveCodex({
   env = process.env,
   platform = process.platform,
   homeDir = os.homedir(),

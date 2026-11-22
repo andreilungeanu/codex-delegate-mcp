@@ -5,10 +5,7 @@ import { spawnSync } from "node:child_process";
 import {
   parseVersion,
   compareSemver,
-  refreshCodex,
   resolveCodex,
-  resolveCodexUncached,
-  clearCodexCache,
   whichOnPath,
 } from "../src/resolve-codex.js";
 import { mkdir, writeFile, rm } from "node:fs/promises";
@@ -22,9 +19,8 @@ test("parseVersion and compareSemver", () => {
   assert.equal(compareSemver([0, 144, 0], [0, 144, 0]), 0);
 });
 
-test("resolveCodexUncached uses override and version gate", () => {
-  clearCodexCache();
-  const resolved = resolveCodexUncached({
+test("resolveCodex uses override and version gate", () => {
+  const resolved = resolveCodex({
     env: { CODEX_DELEGATE_COMMAND: process.execPath },
     platform: "linux",
     homeDir: "/nonexistent-home",
@@ -34,8 +30,7 @@ test("resolveCodexUncached uses override and version gate", () => {
   assert.equal(resolved.version, "0.144.4");
 });
 
-test("resolveCodexUncached reports the version without gating on it", () => {
-  clearCodexCache();
+test("resolveCodex reports the version without gating on it", () => {
   const base = {
     env: { CODEX_DELEGATE_COMMAND: process.execPath },
     platform: "linux",
@@ -45,23 +40,21 @@ test("resolveCodexUncached reports the version without gating on it", () => {
   // An old CLI is the caller's business, not ours to refuse: any floor we set
   // could only mean "older than we happened to test".
   assert.equal(
-    resolveCodexUncached({ ...base, runVersion: () => "codex-cli 0.100.0" }).version,
+    resolveCodex({ ...base, runVersion: () => "codex-cli 0.100.0" }).version,
     "0.100.0"
   );
 
   // An unreadable version does not block resolution either.
-  clearCodexCache();
   assert.equal(
-    resolveCodexUncached({ ...base, runVersion: () => "no version here" }).version,
+    resolveCodex({ ...base, runVersion: () => "no version here" }).version,
     null
   );
 });
 
-test("resolveCodexUncached rejects relative override", () => {
-  clearCodexCache();
+test("resolveCodex rejects relative override", () => {
   assert.throws(
     () =>
-      resolveCodexUncached({
+      resolveCodex({
         env: { CODEX_DELEGATE_COMMAND: "codex" },
         platform: "linux",
         homeDir: "/nonexistent-home",
@@ -71,11 +64,10 @@ test("resolveCodexUncached rejects relative override", () => {
   );
 });
 
-test("resolveCodexUncached not_found when no candidates", () => {
-  clearCodexCache();
+test("resolveCodex not_found when no candidates", () => {
   assert.throws(
     () =>
-      resolveCodexUncached({
+      resolveCodex({
         env: { PATH: "", Path: "" },
         platform: "win32",
         homeDir: "D:\\nonexistent-home-no-codex",
@@ -96,8 +88,7 @@ test("a standalone releases path that cannot be listed is skipped", async () => 
   await writeFile(path.join(standalone, "releases"), "not a directory\n", "utf8");
 
   try {
-    clearCodexCache();
-    const resolved = resolveCodexUncached({
+    const resolved = resolveCodex({
       env: { CODEX_DELEGATE_COMMAND: process.execPath },
       platform: "linux",
       homeDir: home,
@@ -107,10 +98,9 @@ test("a standalone releases path that cannot be listed is skipped", async () => 
     assert.equal(resolved.source, "override");
     assert.equal(resolved.command, process.execPath);
 
-    clearCodexCache();
     assert.throws(
       () =>
-        resolveCodexUncached({
+        resolveCodex({
           env: { PATH: "", Path: "" },
           platform: "linux",
           homeDir: home,
@@ -121,17 +111,15 @@ test("a standalone releases path that cannot be listed is skipped", async () => 
     );
   } finally {
     await rm(home, { recursive: true, force: true });
-    clearCodexCache();
   }
 });
 
 test("a failed resolution keeps the resolver's notes", () => {
-  clearCodexCache();
   // The shape of an npm-only Windows install: the only codex on PATH is a .cmd
   // shim, nothing else resolves, and the resolver refuses. The note that says
   // why is written at the same moment it used to be thrown away.
   try {
-    resolveCodexUncached({
+    resolveCodex({
       env: { PATH: "", Path: "" },
       platform: "win32",
       homeDir: "D:\\nonexistent-home-no-codex",
@@ -148,9 +136,8 @@ test("a failed resolution keeps the resolver's notes", () => {
 });
 
 test("a version-probe failure still carries the resolver's notes", () => {
-  clearCodexCache();
   try {
-    resolveCodexUncached({
+    resolveCodex({
       env: { CODEX_DELEGATE_COMMAND: process.execPath },
       platform: "win32",
       homeDir: "D:\\nonexistent-home-no-codex",
@@ -177,14 +164,14 @@ test("whichOnPath on Windows skips a .cmd shim in favor of codex.exe", () => {
   assert.equal(command, "C:\\Codex\\codex.EXE");
 });
 
-test("resolveCodexUncached skips and warns about Windows PATH shims", () => {
+test("resolveCodex skips and warns about Windows PATH shims", () => {
   const pathLookup = whichOnPath("codex", "win32", {}, () => ({
     status: 0,
     stdout: "C:\\Users\\me\\AppData\\Roaming\\npm\\codex.cmd\r\n",
   }));
   assert.deepEqual(pathLookup, { command: null, unusable: true });
 
-  const resolved = resolveCodexUncached({
+  const resolved = resolveCodex({
     env: { CODEX_DELEGATE_COMMAND: process.execPath, PATH: "", Path: "" },
     platform: "win32",
     homeDir: "D:\\nonexistent-home-no-codex",
@@ -207,78 +194,36 @@ test("whichOnPath retains non-Windows first-result behavior", () => {
   assert.equal(command, "/usr/local/bin/codex");
 });
 
-test("refreshCodex bypasses and updates the cache", () => {
-  clearCodexCache();
-  const options = {
-    env: { CODEX_DELEGATE_COMMAND: process.execPath },
-    platform: "linux",
-    homeDir: "/nonexistent-home",
+test("a standalone release installed after the first call is picked up on the next", async () => {
+  // `codex update` adds the new release and leaves the old one on disk. A stored path
+  // that still existed kept the server on the old CLI, refusing its new models.
+  const home = await mkdtemp(path.join(tmpdir(), "cdm-update-"));
+  const releases = path.join(home, ".codex", "packages", "standalone", "releases");
+  const install = async (version) => {
+    const bin = path.join(releases, `${version}-x86_64-unknown-linux-musl`, "bin", "codex");
+    await mkdir(path.dirname(bin), { recursive: true });
+    await writeFile(bin, "#!/bin/sh\n", "utf8");
+    return bin;
   };
-
-  resolveCodex({ ...options, runVersion: () => "codex-cli 0.144.4" });
-  const refreshed = refreshCodex({ ...options, runVersion: () => "codex-cli 0.144.5" });
-
-  assert.equal(refreshed.version, "0.144.5");
-  assert.equal(
-    resolveCodex({ ...options, runVersion: () => "codex-cli 9.9.9" }).version,
-    "0.144.5"
-  );
-  clearCodexCache();
-});
-
-test("refreshCodex clears the cache when its fresh probe fails", () => {
-  clearCodexCache();
-  const options = {
-    env: { CODEX_DELEGATE_COMMAND: process.execPath },
-    platform: "linux",
-    homeDir: "/nonexistent-home",
-  };
-
-  resolveCodex({ ...options, runVersion: () => "codex-cli 0.144.4" });
-  assert.throws(
-    () =>
-      refreshCodex({
-        ...options,
-        runVersion: () => {
-          throw new Error("probe exploded");
-        },
-      }),
-    /probe exploded/
-  );
-
-  assert.equal(
-    resolveCodex({ ...options, runVersion: () => "codex-cli 0.144.6" }).version,
-    "0.144.6"
-  );
-  clearCodexCache();
-});
-
-test("a cached resolution is dropped once its binary disappears", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "cdm-cache-"));
-  const bin = path.join(dir, "codex");
-  await writeFile(bin, "#!/bin/sh\n", "utf8");
-
-  clearCodexCache();
-  let resolves = 0;
   const opts = {
-    env: { CODEX_DELEGATE_COMMAND: bin },
+    env: {},
     platform: "linux",
-    homeDir: dir,
-    runVersion: () => {
-      resolves += 1;
-      return "codex-cli 0.145.0";
-    },
+    homeDir: home,
+    runVersion: (command) => `codex-cli ${parseVersion(command).join(".")}`,
     lookupOnPath: () => null,
   };
 
-  assert.equal(resolveCodex(opts).command, bin);
-  assert.equal(resolves, 1);
-  resolveCodex(opts);
-  assert.equal(resolves, 1, "second call should hit the cache");
+  try {
+    const oldBin = await install("0.164.0");
+    assert.equal(resolveCodex(opts).command, oldBin);
 
-  await rm(bin, { force: true });
-  assert.throws(() => resolveCodex(opts), /not found/);
-  clearCodexCache();
+    const newBin = await install("0.171.0");
+    const resolved = resolveCodex(opts);
+    assert.equal(resolved.command, newBin);
+    assert.equal(resolved.version, "0.171.0");
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
 });
 
 test("a probe that ignores SIGTERM cannot outlive its own timeout", { timeout: 30_000 }, () => {
