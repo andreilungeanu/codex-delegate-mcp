@@ -129,11 +129,15 @@ export async function executeDelegate(rawArgs, options = {}) {
         onThreadId: (id) => lease.updateThreadId(id),
       });
     } finally {
+      // Removed before the run settles: a shutdown exits as soon as its cancel settles, and an rm
+      // still pending then left the folder in the temp directory.
+      await rm(tmp, { recursive: true, force: true }).catch(() => {});
       markSettled();
       lease.release();
       if (outerSignal) outerSignal.removeEventListener("abort", forward);
     }
   } finally {
+    // For a throw before the run started; a folder already removed is a no-op.
     await rm(tmp, { recursive: true, force: true }).catch(() => {});
   }
 

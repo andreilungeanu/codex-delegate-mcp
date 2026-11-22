@@ -702,7 +702,9 @@ test("a real server kills its worker and exits when its stdin closes", { timeout
   // The suite itself can be running inside a delegation, and the recursion marker is
   // inherited through this spread: the server would then refuse its own delegate call
   // and this test would wait out the whole spawn deadline for a worker that never came.
-  const env = { ...process.env, CODEX_DELEGATE_COMMAND: process.execPath };
+  // The server's own temp folder, so the delegation's folder can be looked for after the exit.
+  const serverTmp = await mkdtemp(path.join(tmpdir(), "cdm-eof-tmp-"));
+  const env = { ...process.env, CODEX_DELEGATE_COMMAND: process.execPath, TEMP: serverTmp, TMP: serverTmp, TMPDIR: serverTmp };
   delete env.CODEX_DELEGATE_DEPTH;
 
   const child = spawn(process.execPath, [serverPath], {
@@ -761,6 +763,10 @@ test("a real server kills its worker and exits when its stdin closes", { timeout
     const until = Date.now() + 20_000;
     while (Date.now() < until && alive(workerPid)) await new Promise((r) => setTimeout(r, 50));
     assert.equal(alive(workerPid), false, "the worker outlived the host that closed the pipe");
+    // The server exits as soon as the cancel settles, so the delegation's folder has to be
+    // gone by then. An rm still pending at the exit left it in %TEMP% after every shutdown.
+    const { readdirSync } = await import("node:fs");
+    assert.deepEqual(readdirSync(serverTmp).filter((name) => name.startsWith("codex-delegate-")), []);
   } finally {
     if (child.exitCode === null) child.kill();
     if (workerPid && alive(workerPid)) {
