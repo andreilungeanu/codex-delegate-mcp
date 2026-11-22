@@ -63,6 +63,8 @@ If a task legitimately runs longer, raise `timeoutMs` on the call rather than di
 Resolution order is the `CODEX_DELEGATE_COMMAND` override, then the newest standalone install
 under `~/.codex/packages/standalone/releases/`, then `codex` on `PATH`.
 
-On Windows the standalone binary wins whenever both are present, because a `PATH` entry that
-turns out to be a `.cmd` shim cannot be spawned without a shell. If resolution looks wrong, run
+On Windows the standalone binary wins whenever both are present, because a `PATH` entry can be
+a `.cmd` shim, which cannot be spawned without a shell. With only an npm or pnpm shim on `PATH`,
+the bridge runs the shim's own target instead: `node` with `@openai/codex/bin/codex.js`. If
+resolution looks wrong, run
 the `doctor` tool — it re-resolves from scratch and reports what it found.
