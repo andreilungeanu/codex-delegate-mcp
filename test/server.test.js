@@ -974,7 +974,18 @@ test("the startup catalog read is bounded, and a CLI that does not resolve reads
   });
   assert.equal(read, models);
   // Unbounded, the reader's own 8s default would hold up the host's connection that long.
-  assert.deepEqual(seen, { command: "/bin/codex", timeoutMs: 5000 });
+  assert.deepEqual(seen, { command: "/bin/codex", commandArgs: [], timeoutMs: 5000 });
+
+  // An npm install resolves to node plus the bin script, which the read has to carry.
+  await readStartupCatalog({
+    env: {},
+    resolve: () => ({ command: "/bin/node", commandArgs: ["/npm/codex.js"] }),
+    readCatalog: async (options) => {
+      seen = options;
+      return models;
+    },
+  });
+  assert.deepEqual(seen, { command: "/bin/node", commandArgs: ["/npm/codex.js"], timeoutMs: 5000 });
 
   let reads = 0;
   const none = await readStartupCatalog({

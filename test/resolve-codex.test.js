@@ -185,6 +185,115 @@ test("resolveCodex skips and warns about Windows PATH shims", () => {
   ]);
 });
 
+// What npm's cmd-shim writes for `npm i -g @openai/codex`: it runs bin/codex.js with node.
+const NPM_SHIM = [
+  "@ECHO off",
+  "GOTO start",
+  ":find_dp0",
+  "SET dp0=%~dp0",
+  "EXIT /b",
+  ":start",
+  "SETLOCAL",
+  "CALL :find_dp0",
+  "",
+  'IF EXIST "%dp0%\\node.exe" (',
+  '  SET "_prog=%dp0%\\node.exe"',
+  ") ELSE (",
+  '  SET "_prog=node"',
+  "  SET PATHEXT=%PATHEXT:;.JS;=;%",
+  ")",
+  "",
+  'endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\\node_modules\\@openai\\codex\\bin\\codex.js" %*',
+  "",
+].join("\r\n");
+
+// What pnpm's @zkochan/cmd-shim writes: the same target, through %~dp0.
+const PNPM_SHIM = [
+  "@SETLOCAL",
+  '@IF EXIST "%~dp0\\node.exe" (',
+  '  "%~dp0\\node.exe"  "%~dp0\\global\\5\\node_modules\\@openai\\codex\\bin\\codex.js" %*',
+  ") ELSE (",
+  "  @SET PATHEXT=%PATHEXT:;.JS;=;%",
+  '  node  "%~dp0\\global\\5\\node_modules\\@openai\\codex\\bin\\codex.js" %*',
+  ")",
+  "",
+].join("\r\n");
+
+async function shimDir(shim, target, body = "") {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-shim-"));
+  const file = path.join(dir, ...target.split("\\"));
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(file, body, "utf8");
+  const cmd = path.join(dir, "codex.cmd");
+  await writeFile(cmd, shim, "utf8");
+  return { dir, cmd, file };
+}
+
+const whereFinds = (...lines) => () => ({ status: 0, stdout: lines.join("\r\n") + "\r\n" });
+
+test("whichOnPath runs the script an npm .cmd shim points at with node, since node cannot spawn the .cmd", async () => {
+  const { dir, cmd, file } = await shimDir(NPM_SHIM, "node_modules\\@openai\\codex\\bin\\codex.js");
+  try {
+    assert.deepEqual(whichOnPath("codex", "win32", {}, whereFinds(cmd)), {
+      command: process.execPath,
+      commandArgs: [file],
+      shim: cmd,
+    });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("whichOnPath reads a pnpm .cmd shim, and runs an .exe target directly", async () => {
+  const pnpm = await shimDir(PNPM_SHIM, "global\\5\\node_modules\\@openai\\codex\\bin\\codex.js");
+  const exe = await shimDir(NPM_SHIM.replace("bin\\codex.js", "bin\\codex.exe"), "node_modules\\@openai\\codex\\bin\\codex.exe");
+  try {
+    assert.deepEqual(whichOnPath("codex", "win32", {}, whereFinds(pnpm.cmd)), {
+      command: process.execPath,
+      commandArgs: [pnpm.file],
+      shim: pnpm.cmd,
+    });
+    assert.deepEqual(whichOnPath("codex", "win32", {}, whereFinds(exe.cmd)), {
+      command: exe.file,
+      commandArgs: [],
+      shim: exe.cmd,
+    });
+  } finally {
+    await rm(pnpm.dir, { recursive: true, force: true });
+    await rm(exe.dir, { recursive: true, force: true });
+  }
+});
+
+test("whichOnPath still prefers a codex.exe on PATH over a readable shim", async () => {
+  const { dir, cmd } = await shimDir(NPM_SHIM, "node_modules\\@openai\\codex\\bin\\codex.js");
+  try {
+    assert.equal(whichOnPath("codex", "win32", {}, whereFinds(cmd, "C:\\Codex\\codex.exe")), "C:\\Codex\\codex.exe");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("resolveCodex probes the version through an npm shim's script, in a real process", async () => {
+  const script = 'console.log("codex-cli 9.9.9 " + JSON.stringify(process.argv.slice(2)))';
+  const { dir, cmd, file } = await shimDir(NPM_SHIM, "node_modules\\@openai\\codex\\bin\\codex.js", script);
+  try {
+    const resolved = resolveCodex({
+      env: {},
+      platform: "win32",
+      homeDir: path.join(dir, "no-home"),
+      lookupOnPath: (command, platform, env) => whichOnPath(command, platform, env, whereFinds(cmd)),
+    });
+    assert.equal(resolved.command, process.execPath);
+    assert.deepEqual(resolved.commandArgs, [file]);
+    assert.equal(resolved.source, "path");
+    assert.equal(resolved.shim, cmd);
+    assert.equal(resolved.version, "9.9.9");
+    assert.deepEqual(resolved.warnings, []);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("whichOnPath retains non-Windows first-result behavior", () => {
   const command = whichOnPath("codex", "linux", {}, () => ({
     status: 0,

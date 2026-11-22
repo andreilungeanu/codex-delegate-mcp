@@ -20,14 +20,14 @@ const MAX_CATALOG_BYTES = 8 * 1024 * 1024;
  * Not `--bundled`, which skips the refresh and answers a different catalog.
  * Refusing a model on that dump would refuse one the live CLI would have run.
  *
- * @param {{ command?: string | null, execFileImpl?: any, timeoutMs?: number }} options
+ * @param {{ command?: string | null, commandArgs?: string[], execFileImpl?: any, timeoutMs?: number }} options
  * @returns {Promise<any[] | null>}
  */
-export async function readModelCatalog({ command, execFileImpl = execFileAsync, timeoutMs = 8000 }) {
+export async function readModelCatalog({ command, commandArgs = [], execFileImpl = execFileAsync, timeoutMs = 8000 }) {
   if (!command) return null;
   let stdout = "";
   try {
-    ({ stdout } = await execFileImpl(command, ["debug", "models"], {
+    ({ stdout } = await execFileImpl(command, [...commandArgs, "debug", "models"], {
       encoding: "utf8",
       timeout: timeoutMs,
       // SIGKILL: SIGTERM is catchable and would outlive the timeout.

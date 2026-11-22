@@ -2,8 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
-import { readdir, writeFile } from "node:fs/promises";
+import { readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import path from "node:path";
+import { mkdtemp } from "./fixtures/temp-dir.mjs";
 import { executeDelegate, envMs } from "../src/delegate.js";
 import { createOperationRegistry } from "../src/ops.js";
 import { DEFAULT_MODEL } from "../src/command.js";
@@ -185,6 +187,49 @@ test("an orphan holding stdout does not prevent the next delegation", async () =
   assert.equal(first.status, "completed");
   assert.equal(second.status, "completed");
   assert.equal((await registry.cancel({})).status, "nothing-active");
+});
+
+// An npm install resolves to node plus the shim's bin script. The script has to come before the
+// Codex args in the real spawn, and in the catalog probe, or node runs a file named `exec`.
+test("a resolved launcher script comes before the Codex args, in the run and the catalog probe", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-launcher-"));
+  try {
+    const script = path.join(dir, "codex.js");
+    await writeFile(
+      script,
+      [
+        "const argv = process.argv.slice(2);",
+        "process.stdin.resume();",
+        "process.stdin.on('end', () => {",
+        "  const out = argv[argv.indexOf('--output-last-message') + 1];",
+        "  require('node:fs').writeFileSync(out, JSON.stringify(argv.slice(0, 2)));",
+        "  console.log(JSON.stringify({ type: 'turn.completed', usage: {} }));",
+        "});",
+      ].join("\n"),
+      "utf8"
+    );
+    let catalogProbe;
+    // A model other than the default, so the catalog is read to check it.
+    const result = await executeDelegate(
+      { spec: "hello", mode: "ask", workspace: process.cwd(), model: "gpt-6-sol" },
+      {
+        env: {},
+        operationRegistry: createOperationRegistry(),
+        readCatalog: async (opts) => {
+          catalogProbe = opts;
+          return CATALOG;
+        },
+        resolve: () => ({ command: process.execPath, commandArgs: [script], version: "0.171.0", warnings: [] }),
+        runProcess: (opts) => runCodexProcess({ ...opts, heartbeatMs: 0, drainMs: 60 }),
+      }
+    );
+    assert.equal(result.status, "completed", JSON.stringify(result));
+    assert.deepEqual(JSON.parse(result.result), ["exec", "--json"]);
+    assert.equal(catalogProbe.command, process.execPath);
+    assert.deepEqual(catalogProbe.commandArgs, [script]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 test("a pre-aborted outer signal interrupts before the run", async () => {

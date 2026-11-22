@@ -189,12 +189,13 @@ export async function readStartupCatalog({
   readCatalog = readModelCatalog,
 } = {}) {
   let command;
+  let commandArgs;
   try {
-    ({ command } = resolve({ env }));
+    ({ command, commandArgs = [] } = resolve({ env }));
   } catch {
     return null;
   }
-  return readCatalog({ command, timeoutMs: STARTUP_CATALOG_MS });
+  return readCatalog({ command, commandArgs, timeoutMs: STARTUP_CATALOG_MS });
 }
 
 /**

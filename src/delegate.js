@@ -61,7 +61,8 @@ export async function executeDelegate(rawArgs, options = {}) {
   }
   // Resolver notes describe the setup, not this run — doctor reports them.
   const codex = resolve({ env });
-  const trusted = await assertKnownModel(request.model, { command: codex.command, readCatalog, catalog });
+  const commandArgs = codex.commandArgs ?? [];
+  const trusted = await assertKnownModel(request.model, { command: codex.command, commandArgs, readCatalog, catalog });
   const warnings = [];
   const effortNote = effortWarning(request, trusted);
   if (effortNote) warnings.push(effortNote);
@@ -115,7 +116,7 @@ export async function executeDelegate(rawArgs, options = {}) {
       onProgress?.(`delegation id: ${lease.delegationId}`);
       processResult = await runProcess({
         command: codex.command,
-        args: built.args,
+        args: [...commandArgs, ...built.args],
         cwd: request.workspace,
         env,
         resultFile,
@@ -244,9 +245,9 @@ function isValidPlanShape(value) {
  * Returns the catalog it trusted — the startup snapshot, or the read it made — so the
  * reasoning level is checked against the same answer without a second process.
  */
-async function assertKnownModel(model, { command, readCatalog, catalog }) {
+async function assertKnownModel(model, { command, commandArgs, readCatalog, catalog }) {
   if (model === DEFAULT_MODEL || catalogSlugs(catalog).includes(model)) return catalog;
-  const models = await readCatalog({ command, timeoutMs: MODEL_CHECK_MS });
+  const models = await readCatalog({ command, commandArgs, timeoutMs: MODEL_CHECK_MS });
   const slugs = catalogSlugs(models);
   if (slugs.length === 0 || slugs.includes(model)) return models;
   const offered = listedSlugs(models);

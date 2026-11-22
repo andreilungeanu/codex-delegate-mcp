@@ -37,7 +37,9 @@ export async function runDoctor({
     codex = {
       found: true,
       command: resolved.command,
+      ...(resolved.commandArgs?.length ? { commandArgs: [...resolved.commandArgs] } : {}),
       source: resolved.source,
+      ...(resolved.shim ? { shim: resolved.shim } : {}),
       version: resolved.version,
     };
     // Resolution notes describe the resolver working. On Windows the loudest fires
@@ -69,7 +71,7 @@ export async function runDoctor({
     }
   })();
 
-  const login = await probeLogin(codex.found ? codex.command : null, execFileImpl);
+  const login = await probeLogin(codex.found ? codex.command : null, execFileImpl, codex.commandArgs);
   const recursion = {
     depth: env.CODEX_DELEGATE_DEPTH ?? null,
     active: Boolean(env.CODEX_DELEGATE_DEPTH && String(env.CODEX_DELEGATE_DEPTH).trim()),
@@ -126,10 +128,10 @@ async function describeWorkspace(workspace, warnings, execFileImpl) {
   return out;
 }
 
-async function probeLogin(command, execFileImpl = execFileAsync) {
+async function probeLogin(command, execFileImpl = execFileAsync, commandArgs = []) {
   if (!command) return { status: "skipped", reason: "codex_not_found" };
   try {
-    const { stdout, stderr } = await execFileImpl(command, ["login", "status"], {
+    const { stdout, stderr } = await execFileImpl(command, [...commandArgs, "login", "status"], {
       encoding: "utf8",
       timeout: 8000,
       // SIGKILL: SIGTERM is catchable and would outlive the timeout.
@@ -183,7 +185,7 @@ async function runDeepSmoke({ codex, execFileImpl = execFileAsync, warnings = []
     let stderr = "";
     let exitCode = 0;
     try {
-      ({ stdout, stderr } = await execFileImpl(codex.command, args, {
+      ({ stdout, stderr } = await execFileImpl(codex.command, [...(codex.commandArgs ?? []), ...args], {
         encoding: "utf8",
         timeout: 8000,
         killSignal: "SIGKILL",
@@ -230,7 +232,7 @@ async function runDeepSmoke({ codex, execFileImpl = execFileAsync, warnings = []
 async function probeModelCatalog({ codex, execFileImpl = execFileAsync, warnings = [] }) {
   // Diagnostics can wait longer than a delegation: this is the only place the catalog is
   // read for its own sake, so a slow CLI is worth reporting rather than skipping.
-  const all = await readModelCatalog({ command: codex.command, execFileImpl, timeoutMs: 8000 });
+  const all = await readModelCatalog({ command: codex.command, commandArgs: codex.commandArgs, execFileImpl, timeoutMs: 8000 });
   if (!all) return { ran: false, reason: "unreadable" };
   const models = all
     .filter((model) => model?.visibility === "list")

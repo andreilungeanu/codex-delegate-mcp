@@ -147,6 +147,42 @@ test("doctor deep probes the exec surfaces it depends on", async () => {
   assert.ok(seen.includes("exec review --help"));
 });
 
+// An npm install resolves to node plus the bin script. Each probe has to put the script first, in
+// a real spawn, or node runs a file named `login` or `exec`.
+test("doctor runs login, help and catalog probes through a resolved launcher script", async () => {
+  const { mkdtemp, rm, writeFile } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const path = (await import("node:path")).default;
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-doctor-launcher-"));
+  try {
+    const script = path.join(dir, "codex.js");
+    await writeFile(
+      script,
+      [
+        "const call = process.argv.slice(2).join(' ');",
+        "if (call === 'login status') console.log('Logged in');",
+        "else if (call.endsWith('--help')) console.log(call === 'exec --help' ? '--json --output-last-message -C, --cd <DIR>' : '--json --output-last-message');",
+        `else if (call === 'debug models') console.log(JSON.stringify({ models: [{ slug: ${JSON.stringify(DEFAULT_MODEL)}, visibility: 'list', supported_reasoning_levels: [{ effort: ${JSON.stringify(DEFAULT_REASONING_EFFORT)} }] }] }));`,
+        "else process.exit(9);",
+      ].join("\n"),
+      "utf8"
+    );
+    const out = await runDoctor({
+      workspace: process.cwd(),
+      env: {},
+      deep: true,
+      resolve: () => ({ command: process.execPath, commandArgs: [script], source: "path", version: "0.171.0", warnings: [] }),
+    });
+    assert.deepEqual(out.codex.commandArgs, [script]);
+    assert.equal(out.login.status, "ok", JSON.stringify(out.login));
+    assert.equal(out.login.detail, "Logged in");
+    for (const surface of Object.values(out.deep.surfaces)) assert.equal(surface.ok, true);
+    assert.equal(out.deep.models.ran, true, JSON.stringify(out.deep.models));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 /** Codex 0.147.0's surfaces, reduced to the flags this check reads. */
 function helpFor(invocation, { cdOn = ["exec --help"] } = {}) {
   const cd = cdOn.includes(invocation) ? " -C, --cd <DIR>" : "";

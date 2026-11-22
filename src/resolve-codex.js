@@ -1,7 +1,7 @@
 import process from "node:process";
 import os from "node:os";
 import path from "node:path";
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 
 export class CodexResolveError extends Error {
@@ -63,7 +63,13 @@ export function resolveCodex({
         "Preferring the standalone Codex binary on Windows: a PATH entry can be a wrapper rather than a directly spawnable executable."
       );
     } else {
-      candidates.push({ command: which, source: "path" });
+      const shimTarget = typeof pathLookup === "object" ? pathLookup : null;
+      candidates.push({
+        command: which,
+        commandArgs: shimTarget?.commandArgs ?? [],
+        source: "path",
+        ...(shimTarget?.shim ? { shim: shimTarget.shim } : {}),
+      });
     }
   }
 
@@ -82,10 +88,14 @@ export function resolveCodex({
       // The version is reported, never gated on. A floor here could only ever say
       // "older than what we happened to test", and refusing an install on that
       // basis breaks setups that work to protect against ones we never tried.
-      const version = parseVersion(runVersion(candidate.command));
+      const commandArgs = candidate.commandArgs ?? [];
+      const version = parseVersion(runVersion(candidate.command, commandArgs));
       return {
         command: candidate.command,
+        // Go before every Codex argument: the bin script when an npm shim resolves to node.
+        commandArgs,
         source: candidate.source,
+        ...(candidate.shim ? { shim: candidate.shim } : {}),
         version: version ? formatVersion(version) : null,
         warnings,
       };
@@ -137,6 +147,9 @@ function findNewestStandalone(homeDir, platform) {
   return best;
 }
 
+/**
+ * @returns {string | { command: string | null, commandArgs?: string[], shim?: string, unusable?: boolean } | null}
+ */
 export function whichOnPath(command, platform, env, run = spawnSync) {
   const probe = platform === "win32" ? "where" : "which";
   // Synchronous: a hung probe freezes the server. SIGKILL: SIGTERM is catchable.
@@ -157,11 +170,45 @@ export function whichOnPath(command, platform, env, run = spawnSync) {
 
   const executable = lines.find((line) => /\.exe$/i.test(line));
   if (executable) return executable;
+  // npm and pnpm put a .cmd shim on PATH that runs bin/codex.js with node. Node spawns a .cmd only
+  // through cmd.exe, which would parse the argv, and the argv carries the caller's text. The
+  // shim's own target runs without cmd.exe.
+  for (const line of lines) {
+    const target = /\.cmd$/i.test(line) ? readCmdShim(line) : null;
+    if (target) return { ...target, shim: line };
+  }
   return lines.length ? { command: null, unusable: true } : null;
 }
 
-function defaultRunVersion(command) {
-  const result = spawnSync(command, ["--version"], {
+/**
+ * The program a .cmd shim from npm or pnpm runs, or null. Matched the way npm's read-cmd-shim
+ * matches it. A .js target runs with this server's node, which is how the shim runs it when no
+ * node.exe sits beside it.
+ * @returns {{ command: string, commandArgs: string[] } | null}
+ */
+export function readCmdShim(file, nodePath = process.execPath) {
+  let text;
+  try {
+    if (statSync(file).size > 64 * 1024) return null;
+    text = readFileSync(file, "utf8");
+  } catch {
+    return null;
+  }
+  const relative = text.match(/"%(?:~dp0|dp0%)\\([^"]+?)"\s+%[*]/)?.[1];
+  if (!relative) return null;
+  const target = path.join(path.dirname(file), ...relative.split(/[\\/]/).filter(Boolean));
+  try {
+    if (!statSync(target).isFile()) return null;
+  } catch {
+    return null;
+  }
+  if (/\.exe$/i.test(target)) return { command: target, commandArgs: [] };
+  if (/\.[cm]?js$/i.test(target)) return { command: nodePath, commandArgs: [target] };
+  return null;
+}
+
+function defaultRunVersion(command, commandArgs = []) {
+  const result = spawnSync(command, [...commandArgs, "--version"], {
     encoding: "utf8",
     timeout: 5000,
     killSignal: "SIGKILL",
