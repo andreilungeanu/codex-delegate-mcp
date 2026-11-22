@@ -189,8 +189,6 @@ test("an orphan holding stdout does not prevent the next delegation", async () =
   assert.equal((await registry.cancel({})).status, "nothing-active");
 });
 
-// An npm install resolves to node plus the shim's bin script. The script has to come before the
-// Codex args in the real spawn, and in the catalog probe, or node runs a file named `exec`.
 test("a resolved launcher script comes before the Codex args, in the run and the catalog probe", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-launcher-"));
   try {

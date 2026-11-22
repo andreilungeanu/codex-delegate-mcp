@@ -147,8 +147,6 @@ test("doctor deep probes the exec surfaces it depends on", async () => {
   assert.ok(seen.includes("exec review --help"));
 });
 
-// An npm install resolves to node plus the bin script. Each probe has to put the script first, in
-// a real spawn, or node runs a file named `login` or `exec`.
 test("doctor runs login, help and catalog probes through a resolved launcher script", async () => {
   const { mkdtemp, rm, writeFile } = await import("node:fs/promises");
   const { tmpdir } = await import("node:os");

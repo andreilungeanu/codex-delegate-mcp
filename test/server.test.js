@@ -763,10 +763,9 @@ test("a real server kills its worker and exits when its stdin closes", { timeout
     const until = Date.now() + 20_000;
     while (Date.now() < until && alive(workerPid)) await new Promise((r) => setTimeout(r, 50));
     assert.equal(alive(workerPid), false, "the worker outlived the host that closed the pipe");
-    // The server exits as soon as the cancel settles, so the delegation's folder has to be
-    // gone by then. An rm still pending at the exit left it in %TEMP% after every shutdown.
     const { readdirSync } = await import("node:fs");
-    assert.deepEqual(readdirSync(serverTmp).filter((name) => name.startsWith("codex-delegate-")), []);
+    assert.deepEqual(readdirSync(serverTmp).filter((name) => name.startsWith("codex-delegate-")), [],
+      "the delegation's temp folder outlived the shutdown");
   } finally {
     if (child.exitCode === null) child.kill();
     if (workerPid && alive(workerPid)) {

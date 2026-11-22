@@ -170,9 +170,8 @@ export function whichOnPath(command, platform, env, run = spawnSync) {
 
   const executable = lines.find((line) => /\.exe$/i.test(line));
   if (executable) return executable;
-  // npm and pnpm put a .cmd shim on PATH that runs bin/codex.js with node. Node spawns a .cmd only
-  // through cmd.exe, which would parse the argv, and the argv carries the caller's text. The
-  // shim's own target runs without cmd.exe.
+  // An npm or pnpm codex.cmd runs bin/codex.js with node. Its target runs directly: the .cmd needs
+  // cmd.exe, which would parse the caller's text in the argv.
   for (const line of lines) {
     const target = /\.cmd$/i.test(line) ? readCmdShim(line) : null;
     if (target) return { ...target, shim: line };
@@ -181,9 +180,8 @@ export function whichOnPath(command, platform, env, run = spawnSync) {
 }
 
 /**
- * The program a .cmd shim from npm or pnpm runs, or null. Matched the way npm's read-cmd-shim
- * matches it. A .js target runs with this server's node, which is how the shim runs it when no
- * node.exe sits beside it.
+ * The program an npm or pnpm .cmd shim runs, or null, matched as npm's read-cmd-shim does. A .js
+ * target gets this server's node, as the shim does when no node.exe sits beside it.
  * @returns {{ command: string, commandArgs: string[] } | null}
  */
 export function readCmdShim(file, nodePath = process.execPath) {

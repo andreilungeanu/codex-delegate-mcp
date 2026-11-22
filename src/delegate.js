@@ -129,8 +129,7 @@ export async function executeDelegate(rawArgs, options = {}) {
         onThreadId: (id) => lease.updateThreadId(id),
       });
     } finally {
-      // Removed before the run settles: a shutdown exits as soon as its cancel settles, and an rm
-      // still pending then left the folder in the temp directory.
+      // Removed before markSettled(): a shutdown exits as soon as its cancel settles.
       await rm(tmp, { recursive: true, force: true }).catch(() => {});
       markSettled();
       lease.release();
