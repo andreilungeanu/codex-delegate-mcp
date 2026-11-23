@@ -871,10 +871,9 @@ test("an armed belt does not hold an otherwise idle process open", { timeout: 30
   assert.ok(elapsed < 10_000, `the belt held the process open (${elapsed}ms)`);
 });
 
-// The only tests here that run the actual entrypoint against a real worker. Every test above
-// injects an exit and a registry, and none of them would notice that nothing is listening for
-// EOF or a signal. An idle server would not either: with no delegation holding the loop open it
-// exits on its own the moment stdin ends, whatever the handlers do. So these have to be busy.
+// The only tests here that run the actual entrypoint against a real worker; every test above
+// injects an exit and a registry. They have to be busy: an idle server exits on its own once
+// stdin ends, whatever the handlers do.
 async function shutDownBusyServer(name, shutDown) {
   const { spawn } = await import("node:child_process");
   const { fileURLToPath } = await import("node:url");

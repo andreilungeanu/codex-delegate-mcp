@@ -506,12 +506,8 @@ export function installSignalCleanup(
   ]);
   for (const [signal, code] of signals) process.on(signal, () => shutdown(code, true));
 
-  // Closing the server's stdin is how the stdio transport is shut down, and it is
-  // what a host reaches for before it resorts to a signal. The SDK transport does not
-  // listen for it — it subscribes to `data` and `error` only — so EOF used to leave
-  // this process up with a delegation still running and nobody left to hand it to.
-  // An idle server falls out here on its own; a busy one is held up by the child it
-  // spawned and by the heartbeat, which is exactly the case that needed this.
+  // Closing stdin is how a host shuts a stdio server down. The SDK aborts the requests in
+  // flight; this also refuses new runs, waits for the kills, and exits under the belt.
   stdin.on("end", () => shutdown(0));
 }
 
