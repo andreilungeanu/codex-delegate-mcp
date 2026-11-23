@@ -7,7 +7,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { z } from "zod";
 import { Client } from "@modelcontextprotocol/client";
-import { InMemoryTransport, CLIENT_CAPABILITIES_META_KEY, CLIENT_INFO_META_KEY } from "@modelcontextprotocol/server";
+import {
+  InMemoryTransport,
+  CLIENT_CAPABILITIES_META_KEY,
+  CLIENT_INFO_META_KEY,
+  PROTOCOL_VERSION_META_KEY,
+} from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import {
   buildServer,
@@ -38,13 +43,15 @@ async function connectEra(versionNegotiation, serverOpts) {
 const payloadOf = (result) => JSON.parse(result.content[0].text);
 
 for (const [era, versionNegotiation] of ERAS) {
-  test(`doctor reports the host's identity on a ${era}-era connection`, async () => {
+  test(`doctor reports the host's identity and protocol revision on a ${era}-era connection`, async () => {
     const doctorRunner = async ({ getClientInfo }) => getClientInfo();
     const { client, close } = await connectEra(versionNegotiation, { doctorRunner });
     try {
       const info = payloadOf(await client.callTool({ name: "doctor", arguments: {} }));
       assert.equal(info.version?.name, "era-host");
       assert.deepEqual(info.capabilities?.elicitation, { form: {} });
+      if (era === "2025") assert.match(info.protocolVersion, /^2025-/);
+      else assert.equal(info.protocolVersion, "2026-07-28");
     } finally {
       await close();
     }
@@ -58,10 +65,12 @@ for (const [era, versionNegotiation] of ERAS) {
         const _meta = {
           [CLIENT_INFO_META_KEY]: { name: "envelope-host", version: "9" },
           [CLIENT_CAPABILITIES_META_KEY]: { sampling: {} },
+          [PROTOCOL_VERSION_META_KEY]: "2026-07-28",
         };
         const info = payloadOf(await client.callTool({ name: "doctor", arguments: {}, _meta }));
         assert.equal(info.version?.name, "era-host");
         assert.deepEqual(info.capabilities, { elicitation: { form: {} } });
+        assert.match(info.protocolVersion, /^2025-/);
       } finally {
         await close();
       }

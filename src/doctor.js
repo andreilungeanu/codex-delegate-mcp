@@ -65,6 +65,8 @@ export async function runDoctor({
         name: info.version?.name ?? null,
         version: info.version?.version ?? null,
         capabilities: info.capabilities || {},
+        // The MCP revision the host speaks: 2026-07-28 or a 2025-era one.
+        ...(typeof info.protocolVersion === "string" ? { protocolVersion: info.protocolVersion } : {}),
       };
     } catch {
       return { name: null, version: null, capabilities: {} };

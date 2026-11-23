@@ -273,6 +273,13 @@ test("doctor tolerates a client that cannot report itself", async () => {
   assert.deepEqual(out.client.capabilities, {});
 });
 
+test("doctor reports the host's protocol revision, and leaves it out when the host named none", async () => {
+  const named = await runDoctor(options({ getClientInfo: () => ({ capabilities: {}, version: {}, protocolVersion: "2026-07-28" }) }));
+  assert.equal(named.client.protocolVersion, "2026-07-28");
+  const unnamed = await runDoctor(options({ getClientInfo: () => ({ capabilities: {}, version: {} }) }));
+  assert.equal("protocolVersion" in unnamed.client, false);
+});
+
 /** Listed slugs for the catalogs below, default first. */
 const MODELS = [DEFAULT_MODEL, "gpt-6-sol", "gpt-5.5"];
 

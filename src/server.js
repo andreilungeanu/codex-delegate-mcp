@@ -3,7 +3,12 @@ import process from "node:process";
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
-import { McpServer, CLIENT_CAPABILITIES_META_KEY, CLIENT_INFO_META_KEY } from "@modelcontextprotocol/server";
+import {
+  McpServer,
+  CLIENT_CAPABILITIES_META_KEY,
+  CLIENT_INFO_META_KEY,
+  PROTOCOL_VERSION_META_KEY,
+} from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { z } from "zod";
 import {
@@ -409,6 +414,7 @@ export function clientInfoOf(server, ctx) {
   return {
     capabilities: server.server.getClientCapabilities() ?? envelope?.[CLIENT_CAPABILITIES_META_KEY],
     version: server.server.getClientVersion() ?? envelope?.[CLIENT_INFO_META_KEY],
+    protocolVersion: server.server.getNegotiatedProtocolVersion() ?? envelope?.[PROTOCOL_VERSION_META_KEY],
   };
 }
 
