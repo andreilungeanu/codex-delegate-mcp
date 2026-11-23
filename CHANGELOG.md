@@ -6,6 +6,57 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.9.0] - 2026-11-24
+
+### Added
+
+- `doctor` reports `client.protocolVersion`: `2026-07-28`, or the 2025-era revision the host
+  negotiated.
+
+### Changed
+
+- MCP SDK v2 (`@modelcontextprotocol/server` 2.4.0): the server takes 2025-era and 2026-07-28
+  hosts. The runtime dependencies are this package and `zod`.
+- The Antigravity plugin runs `delegate` in the background (`tools.delegate.background: "always"`):
+  Antigravity hands the call back to the model at once and wakes it with the result. The plugin is
+  named Delegate to Codex (`delegate-to-codex`).
+- The Codex CLI is resolved on every call, so a Codex update is picked up without a server restart.
+- A delegation's id is announced, and `cancel` reaches it, before the review and model preflight. A
+  cancel there ends the delegation with `status: "interrupted"`, `reason: "cancelled"` and no
+  further Codex probe.
+- A shutdown signal that arrives after stdin closed sets the exit code and waits for the
+  delegations to be stopped, where it exited at once. Only a second signal skips that wait.
+- llms-install sets Cline's tool-call timeout.
+
+### Fixed
+
+- On Linux and macOS, a cancel, a hard cap or a shutdown stops the commands Codex runs. Codex
+  starts each shell command in a session of its own, outside the process group the bridge killed,
+  so a test run or `sleep` kept running. Codex's group is stopped, its descendants are listed with
+  `ps`, and each is killed.
+- On SIGHUP (a closed terminal) the server stops its delegations before exiting, where Codex was
+  left running.
+- `cancel` refuses a blank `delegationId` or `threadId`, which cancelled every running delegation.
+  Surrounding whitespace is trimmed.
+- A delegation that arrives once shutdown began fails with `shutting_down` instead of starting
+  Codex.
+- On Windows an npm or pnpm `codex.cmd` runs its own target with node: on `PATH`, where it was
+  refused, and as `CODEX_DELEGATE_COMMAND`, where resolution fell back to another install.
+- A shutdown during a delegation removes the delegation's temp folder before the server exits.
+- The SessionStart hook sends npm's output to stderr, keeping the install summary out of the
+  session context, and raises no DEP0190 warning on Node 24.
+- The Claude plugin manifest names its image `icon`, the field Anthropic's plugin directory reads.
+
+### Removed
+
+- The Zed config from the README: Zed caps a tool call at 600 s.
+
+### Internal
+
+- `npm test` runs `test/*.test.js` through `scripts/run-tests.mjs`. CI adds a Windows Node 24 leg,
+  names an unreadable coverage file when the coverage floor fails, and retries `npm audit` while
+  the registry is unavailable.
+
 ## [2.8.0] - 2026-11-08
 
 ### Changed
