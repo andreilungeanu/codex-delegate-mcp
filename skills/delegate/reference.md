@@ -29,8 +29,8 @@ Environment variables and Codex binary resolution are documented in
 
 ## Return value
 
-Every tool returns one compact JSON text block. Fields that carry no signal are omitted, so
-anything present is worth reading.
+Every tool returns one compact JSON text block; a `delegate` run as an MCP task returns it as the
+task's result. Fields that carry no signal are omitted, so anything present is worth reading.
 
 | Field | When present | Meaning |
 | --- | --- | --- |

@@ -24,7 +24,7 @@ This package is an MCP stdio server that delegates coding work to `codex exec`. 
 
 All three tools use strict input schemas. Unknown input fields are rejected.
 
-No tool declares an MCP `outputSchema`, and no tool returns `structuredContent`. Every tool returns exactly one compact JSON text block. Declaring an `outputSchema` obliges the server to also send `structuredContent`; a host that reads both it and the text block, including Codex, places the payload in the model context twice.
+No tool declares an MCP `outputSchema`, and no tool returns `structuredContent`. Every tool returns exactly one compact JSON text block; a `delegate` answered with an MCP task returns it as the task's result. Declaring an `outputSchema` obliges the server to also send `structuredContent`; a host that reads both it and the text block, including Codex, places the payload in the model context twice.
 
 `src/server.js` exports `delegateOutputShape` as the in-repository contract for a successful delegate result. `test/server.test.js` enforces a strict copy of that shape, so a field added in `src/delegate.js` must also be added to the contract.
 
