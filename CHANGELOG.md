@@ -6,6 +6,55 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-11-24
+
+`delegate` no longer holds your agent while Codex works. In an interactive Claude Code CLI session
+it runs as an MCP task: your agent stays free to plan, review or start the next delegation, and
+Codex's result arrives when its turn ends. Codex and other hosts keep the blocking call. One thing
+changes on upgrade in Claude Code: the `delegate` call returns before Codex has finished, and its
+result comes back as a task notification.
+
+### Added
+
+- The server serves the MCP Tasks extension (`io.modelcontextprotocol/tasks`, 2026-07-28) to a
+  request that lists it: `tasks/get`, `tasks/update` and `tasks/cancel`. A finished task's result
+  is kept for an hour.
+- `cancel` takes a `delegate` task's id as `delegationId`, and `delegate` takes one in
+  `resumeThreadId` for as long as the server runs, even after the task itself is dropped.
+
+### Changed
+
+- **Breaking: in an interactive Claude Code CLI session, `delegate` runs as an MCP task.** The call
+  returns once Codex starts its thread, and the same result arrives as a task notification when
+  the turn ends. Progress shows as the task's status message in `/tasks`, and stopping the task
+  cancels the run and stops Codex. A stopped task's status message names the thread to resume
+  (`cancelled; resume with resumeThreadId <id>`), with a note when a resume started a new thread
+  or when Codex may still be running. A stop that arrives after Codex exited leaves the result and
+  stops what Codex left running in its process group, as `cancel` does. A delegation that fails
+  before Codex starts a thread, such as one naming an unknown model, still fails the call. A
+  request that does not list the extension, as Codex's does not and Claude Code's does not from a
+  subagent, is answered with the result, as before.
+
+### Fixed
+
+- The server shuts down, stopping its delegations, when its stdio transport closes. When the
+  server's stdout broke, as it does when the host dies, the transport paused stdin, no stdin EOF
+  arrived, and the server and Codex kept running until the hard cap.
+- On Linux and macOS a review brief longer than 28,000 characters runs. It was refused with
+  `argv_too_long`, a limit set for Windows' `CreateProcess` and applied everywhere.
+- On Linux and macOS, a cancel also stops a session that a command running in a session of its
+  own starts while the bridge lists Codex's processes. Each process is stopped as the listing
+  finds it, and the listing repeats until it finds none it missed.
+- A cancel during a review's git check ends the delegation there, where the aborted check read as
+  a missing branch and the remotes were probed next.
+- The descendant walk lists processes with `I_WANT_A_BROKEN_PS` set, which switches procps to BSD
+  parsing as `PS_PERSONALITY=bsd` does.
+
+### Internal
+
+- `npm test` takes only `.js` arguments as test files, so a flag's separate value
+  (`--test-name-pattern foo`) no longer runs the whole suite and the fixtures.
+
 ## [2.9.0] - 2026-11-24
 
 ### Added

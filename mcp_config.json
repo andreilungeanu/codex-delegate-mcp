@@ -2,7 +2,7 @@
   "mcpServers": {
     "codex-delegate": {
       "command": "npx",
-      "args": ["-y", "npm:codex-delegate-mcp@2.9.0"],
+      "args": ["-y", "npm:codex-delegate-mcp@3.0.0"],
       "timeoutSeconds": 21660,
       "tools": { "delegate": { "background": "always" } }
     }
