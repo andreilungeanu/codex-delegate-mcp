@@ -18,15 +18,17 @@ const execFileAsync = promisify(execFile);
  *   workspace?: string,
  *   reviewTarget?: any,
  *   execFileImpl?: any,
+ *   signal?: AbortSignal,
  * }} [options]
  */
 export async function preflightReviewTarget({
   workspace,
   reviewTarget,
   execFileImpl = execFileAsync,
+  signal,
 } = {}) {
   if (!reviewTarget || !workspace) return;
-  const git = gitRunner(workspace, execFileImpl);
+  const git = gitRunner(workspace, execFileImpl, signal);
 
   const repo = await git(["rev-parse", "--git-dir"]);
   if (repo.status === "unknown") return;
@@ -87,7 +89,8 @@ export async function isGitRepo(workspace, execFileImpl = execFileAsync) {
   return status === "unknown" ? null : status === "yes";
 }
 
-function gitRunner(workspace, execFileImpl) {
+/** @param {string} workspace @param {any} execFileImpl @param {AbortSignal} [signal] */
+function gitRunner(workspace, execFileImpl, signal) {
   return async (args) => {
     try {
       // GIT_TERMINAL_PROMPT=0 refuses a prompt on stdin that is not there.
@@ -99,6 +102,7 @@ function gitRunner(workspace, execFileImpl) {
         env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
         timeout: 5000,
         killSignal: "SIGKILL",
+        signal,
         windowsHide: true,
         shell: false,
       });

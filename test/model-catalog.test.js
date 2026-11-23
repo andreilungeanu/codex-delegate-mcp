@@ -62,6 +62,36 @@ test("a probe that cannot run reads as no catalog", async () => {
   assert.equal(models, null);
 });
 
+test("an abort stops a catalog read in flight and kills the probe", async () => {
+  const { mkdtemp, writeFile, readFile, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const path = await import("node:path");
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-catalog-abort-"));
+  const pidFile = path.join(dir, "probe.pid");
+  const script = path.join(dir, "codex.js");
+  await writeFile(script, `require("node:fs").writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setTimeout(() => {}, 60000);`);
+  const controller = new AbortController();
+  try {
+    const read = readModelCatalog({ command: process.execPath, commandArgs: [script], timeoutMs: 30_000, signal: controller.signal });
+    const until = Date.now() + 10_000;
+    let pid;
+    while (!pid && Date.now() < until) {
+      pid = Number(await readFile(pidFile, "utf8").catch(() => "")) || undefined;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    const startedAt = Date.now();
+    controller.abort();
+    assert.equal(await read, null);
+    assert.ok(Date.now() - startedAt < 5_000, "the read waited out its timeout");
+    const alive = () => { try { process.kill(pid, 0); return true; } catch { return false; } };
+    const gone = Date.now() + 5_000;
+    while (alive() && Date.now() < gone) await new Promise((r) => setTimeout(r, 25));
+    assert.equal(alive(), false, "the probe outlived the abort");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("no CLI means no spawn attempt", async () => {
   let spawned = false;
   const models = await readModelCatalog({

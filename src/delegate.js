@@ -103,7 +103,12 @@ export async function executeDelegate(rawArgs, options = {}) {
   async function setUpAndRun() {
     const cancelled = () => controller.signal.aborted;
     if (request.mode === "review") {
-      await preflight({ workspace: request.workspace, reviewTarget: request.reviewTarget });
+      try {
+        await preflight({ workspace: request.workspace, reviewTarget: request.reviewTarget, signal: controller.signal });
+      } catch (err) {
+        if (cancelled()) return cancelledBeforeSpawn();
+        throw err;
+      }
     }
     if (cancelled()) return cancelledBeforeSpawn();
     // Resolver notes describe the setup, not this run — doctor reports them.
@@ -111,7 +116,7 @@ export async function executeDelegate(rawArgs, options = {}) {
     const commandArgs = codex.commandArgs ?? [];
     let trusted;
     try {
-      trusted = await assertKnownModel(request.model, { command: codex.command, commandArgs, readCatalog, catalog });
+      trusted = await assertKnownModel(request.model, { command: codex.command, commandArgs, readCatalog, catalog, signal: controller.signal });
     } catch (err) {
       if (cancelled()) return cancelledBeforeSpawn();
       throw err;
@@ -259,9 +264,9 @@ function isValidPlanShape(value) {
  * Returns the catalog it trusted — the startup snapshot, or the read it made — so the
  * reasoning level is checked against the same answer without a second process.
  */
-async function assertKnownModel(model, { command, commandArgs, readCatalog, catalog }) {
+async function assertKnownModel(model, { command, commandArgs, readCatalog, catalog, signal }) {
   if (model === DEFAULT_MODEL || catalogSlugs(catalog).includes(model)) return catalog;
-  const models = await readCatalog({ command, commandArgs, timeoutMs: MODEL_CHECK_MS });
+  const models = await readCatalog({ command, commandArgs, timeoutMs: MODEL_CHECK_MS, signal });
   const slugs = catalogSlugs(models);
   if (slugs.length === 0 || slugs.includes(model)) return models;
   const offered = listedSlugs(models);
