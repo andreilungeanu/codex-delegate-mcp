@@ -42,7 +42,13 @@ export function resolveCodex({
         code: "override_missing",
       });
     }
-    candidates.push({ command: override, source: "override" });
+    // Node cannot spawn a .cmd without cmd.exe, so a pinned npm or pnpm shim runs its target, as on PATH.
+    const shimTarget = platform === "win32" && /\.cmd$/i.test(override) ? readCmdShim(override) : null;
+    candidates.push(
+      shimTarget
+        ? { ...shimTarget, source: "override", shim: override }
+        : { command: override, source: "override" }
+    );
   }
 
   const standalone = findNewestStandalone(homeDir, platform);

@@ -294,6 +294,26 @@ test("resolveCodex probes the version through an npm shim's script, in a real pr
   }
 });
 
+test("a CODEX_DELEGATE_COMMAND naming an npm shim runs the shim's script, in a real process", async () => {
+  const script = 'console.log("codex-cli 9.9.9 " + JSON.stringify(process.argv.slice(2)))';
+  const { dir, cmd, file } = await shimDir(NPM_SHIM, "node_modules\\@openai\\codex\\bin\\codex.js", script);
+  try {
+    const resolved = resolveCodex({
+      env: { CODEX_DELEGATE_COMMAND: cmd },
+      platform: "win32",
+      homeDir: path.join(dir, "no-home"),
+      lookupOnPath: () => null,
+    });
+    assert.equal(resolved.command, process.execPath);
+    assert.deepEqual(resolved.commandArgs, [file]);
+    assert.equal(resolved.source, "override");
+    assert.equal(resolved.shim, cmd);
+    assert.equal(resolved.version, "9.9.9");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("whichOnPath retains non-Windows first-result behavior", () => {
   const command = whichOnPath("codex", "linux", {}, () => ({
     status: 0,
