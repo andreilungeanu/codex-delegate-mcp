@@ -182,6 +182,26 @@ async function withPs(body, fn) {
   }
 }
 
+test("a session a command in its own session starts while the tree is listed is killed too", posixOnly, async () => {
+  const { child, grandchildPid } = await startTree("own-session-trigger");
+  const pidFile = child.spawnargs[2];
+  let latePid;
+  try {
+    await withPs(`out=$("$REAL_PS" "$@")\ntouch "${pidFile}.trigger"\nsleep 0.5\nprintf '%s\\n' "$out"`, () =>
+      treeKill(child.pid, { childAlive: true })
+    );
+    await until(() => existsSync(`${pidFile}.late`), 5_000, "the grandchild never started its session");
+    latePid = Number(readFileSync(`${pidFile}.late`, "utf8").trim());
+    await until(() => !pidAlive(latePid), 5_000, "a session started during the listing survived the kill");
+  } finally {
+    for (const pid of [child.pid, grandchildPid, latePid]) {
+      try {
+        if (pid) process.kill(pid, "SIGKILL");
+      } catch {}
+    }
+  }
+});
+
 test("a command Codex starts while its tree is listed is killed too", posixOnly, async () => {
   const { child, grandchildPid } = await startTree("spawn-on-trigger");
   const pidFile = child.spawnargs[2];

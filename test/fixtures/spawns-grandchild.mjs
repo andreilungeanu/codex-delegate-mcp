@@ -14,14 +14,23 @@ if (!pidFile) process.exit(0);
 // "own-session" starts the grandchild in a session of its own, outside this process group, as Codex
 // 0.170 starts each shell command on Linux, and the grandchild runs one command of its own, as the
 // shell does, reporting its pid in <pidFile>.nested.
-const ownSession = mode === "own-session";
+// "own-session-trigger" has that grandchild start a further session of its own once
+// <pidFile>.trigger exists, reporting its pid in <pidFile>.late.
+const ownSession = mode === "own-session" || mode === "own-session-trigger";
 const nested = `const c = require("node:child_process").spawn(process.execPath, ["-e", "setInterval(() => {}, 1 << 30)"], { stdio: "ignore" });
 require("node:fs").writeFileSync(${JSON.stringify(`${pidFile}.nested`)}, c.pid + "\\n");`;
+const lateOnTrigger = `const w = setInterval(() => {
+  if (!require("node:fs").existsSync(${JSON.stringify(`${pidFile}.trigger`)})) return;
+  clearInterval(w);
+  const l = require("node:child_process").spawn(process.execPath, ["-e", "setInterval(() => {}, 1 << 30)"], { stdio: "ignore", detached: true });
+  require("node:fs").writeFileSync(${JSON.stringify(`${pidFile}.late`)}, l.pid + "\\n");
+}, 5);`;
+const grandchildCode = { "own-session": nested, "own-session-trigger": lateOnTrigger }[mode] ?? "";
 const grandchild = spawn(
   process.execPath,
   // Ignoring SIGTERM matters: the group kill is SIGKILL, and a grandchild that dies
   // on a polite signal would pass even if the kill never reached the group.
-  ["-e", `${ownSession ? nested : ""} process.on('SIGTERM', () => {}); setInterval(() => {}, 1 << 30);`],
+  ["-e", `${grandchildCode} process.on('SIGTERM', () => {}); setInterval(() => {}, 1 << 30);`],
   { stdio: "ignore", detached: ownSession }
 );
 

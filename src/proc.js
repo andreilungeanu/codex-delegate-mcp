@@ -47,6 +47,29 @@ function descendantPids(pid) {
   return out;
 }
 
+/** A command in a session of its own can start another session; each walk can find one more level. */
+const MAX_WALKS = 4;
+
+/**
+ * Every process below pid, each stopped as it is found and the tree listed again until a listing
+ * finds none the last one missed, so no process starts a command between the listing and the kill.
+ */
+function stoppedDescendants(pid) {
+  /** @type {number[]} */
+  const found = [];
+  for (let walk = 0; walk < MAX_WALKS; walk++) {
+    const fresh = descendantPids(pid).filter((d) => !found.includes(d));
+    if (fresh.length === 0) break;
+    for (const d of fresh) {
+      found.push(d);
+      try {
+        process.kill(d, "SIGSTOP");
+      } catch {}
+    }
+  }
+  return found;
+}
+
 /**
  * Kill the process tree. On Windows plain kill() only hits a shell wrapper.
  *
@@ -82,7 +105,7 @@ export async function treeKill(pid, { childAlive = true } = {}) {
       process.kill(-pid, "SIGSTOP");
     } catch {}
   }
-  const descendants = childAlive ? descendantPids(pid) : [];
+  const descendants = childAlive ? stoppedDescendants(pid) : [];
   try {
     process.kill(-pid, "SIGKILL");
   } catch {
