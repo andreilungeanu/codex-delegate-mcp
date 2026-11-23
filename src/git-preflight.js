@@ -92,6 +92,9 @@ export async function isGitRepo(workspace, execFileImpl = execFileAsync) {
 /** @param {string} workspace @param {any} execFileImpl @param {AbortSignal} [signal] */
 function gitRunner(workspace, execFileImpl, signal) {
   return async (args) => {
+    // A cancel ends the preflight: an aborted probe is not git saying no, and Node spawns git even
+    // for a signal already aborted.
+    signal?.throwIfAborted();
     try {
       // GIT_TERMINAL_PROMPT=0 refuses a prompt on stdin that is not there.
       // SIGKILL: SIGTERM is catchable and would outlive the timeout.
@@ -108,6 +111,7 @@ function gitRunner(workspace, execFileImpl, signal) {
       });
       return { status: "yes", stdout: String(stdout ?? "") };
     } catch (err) {
+      if (signal?.aborted) throw err;
       // No git binary is "cannot say"; anything else is git saying no.
       return { status: err?.code === "ENOENT" ? "unknown" : "no", stdout: "" };
     }

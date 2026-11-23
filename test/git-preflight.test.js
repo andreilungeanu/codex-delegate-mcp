@@ -136,6 +136,31 @@ test("preflight only checks a ref when the target names one", async () => {
   assert.deepEqual(git.calls, ["rev-parse --git-dir"]);
 });
 
+test("an abort ends the preflight at the git probe in flight, with no further probe", async () => {
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const run = promisify(execFile);
+  const controller = new AbortController();
+  const calls = [];
+  // The ref check never answers, as git does on a hung network mount.
+  const git = (_command, args, options) => {
+    calls.push(args.join(" "));
+    const hangs = args.includes("--verify");
+    if (hangs) setTimeout(() => controller.abort(), 100);
+    return run(process.execPath, ["-e", hangs ? "setTimeout(() => {}, 60000)" : ""], options);
+  };
+  await assert.rejects(
+    preflightReviewTarget({
+      workspace: process.cwd(),
+      reviewTarget: { kind: "base", branch: "main" },
+      execFileImpl: git,
+      signal: controller.signal,
+    }),
+    (err) => !String(err.code).startsWith("invalid_")
+  );
+  assert.deepEqual(calls, ["rev-parse --git-dir", "rev-parse --verify --quiet main^{commit}"]);
+});
+
 test("isGitRepo asks git rather than looking for a .git entry", async () => {
   const inside = fakeGit(REPO);
   assert.equal(await isGitRepo("/repo/src", inside.execFileImpl), true);
