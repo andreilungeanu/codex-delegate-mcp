@@ -157,6 +157,20 @@ test("a delegation that fails before Codex starts a thread answers the request, 
   }
 });
 
+test("tasks/update needs its inputResponses map", async () => {
+  const held = heldRun();
+  const raw = await connectRaw({ executeDelegate: held.executeDelegate });
+  try {
+    const call = await raw.delegate();
+    const { taskId } = call.result;
+    assert.equal((await raw.send("tasks/update", { taskId })).error?.code, -32602);
+    assert.equal((await raw.send("tasks/update", { taskId, inputResponses: {} })).error, undefined);
+    held.finish();
+  } finally {
+    await raw.close();
+  }
+});
+
 test("tasks/cancel stops the run, and the task names the thread to resume", async () => {
   const held = heldRun("thread-9");
   const raw = await connectRaw({ executeDelegate: held.executeDelegate });
