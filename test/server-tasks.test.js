@@ -265,6 +265,8 @@ async function rawServer(name, execBody) {
   const env = { ...process.env, CODEX_DELEGATE_COMMAND: process.execPath };
   delete env.CODEX_DELEGATE_DEPTH;
   const child = spawn(process.execPath, [ENTRY], { env, stdio: ["pipe", "pipe", "ignore"] });
+  // A test can still be writing when the server has already shut down: EPIPE, not a failure.
+  child.stdin.on("error", () => {});
   const exited = new Promise((resolve) => child.on("exit", (code) => resolve(code)));
   const replies = new Map();
   let nextId = 0;
