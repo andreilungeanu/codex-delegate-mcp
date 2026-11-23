@@ -56,6 +56,10 @@ test("Claude plugin launches bundled code and bootstraps its runtime dependencie
   assert.notEqual(marketplace.plugins[0].name, marketplace.name);
   assert.equal(manifest.mcpServers, "./.claude-plugin/mcp.json");
   assert.equal(manifest.hooks, "./.claude-plugin/hooks.json");
+  // Anthropic's plugin directory reads `icon`, resolved against the plugin root.
+  const icon = resolve(ROOT, manifest.icon);
+  assert.ok(existsSync(icon), "icon asset must exist");
+  assert.deepEqual([...readFileSync(icon).subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10], "icon must be a PNG");
 
   const claudeMcp = read(".claude-plugin/mcp.json");
   const server = claudeMcp.mcpServers[serverName];
