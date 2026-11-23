@@ -11,14 +11,18 @@ const [pidFile, mode] = process.argv.slice(2);
 // process on every suite.
 if (!pidFile) process.exit(0);
 
+// "own-session" starts the grandchild in a session of its own, outside this process group, as Codex
+// 0.170 starts each shell command on Linux, and the grandchild runs one command of its own, as the
+// shell does, reporting its pid in <pidFile>.nested.
+const ownSession = mode === "own-session";
+const nested = `const c = require("node:child_process").spawn(process.execPath, ["-e", "setInterval(() => {}, 1 << 30)"], { stdio: "ignore" });
+require("node:fs").writeFileSync(${JSON.stringify(`${pidFile}.nested`)}, c.pid + "\\n");`;
 const grandchild = spawn(
   process.execPath,
   // Ignoring SIGTERM matters: the group kill is SIGKILL, and a grandchild that dies
   // on a polite signal would pass even if the kill never reached the group.
-  ["-e", "process.on('SIGTERM', () => {}); setInterval(() => {}, 1 << 30);"],
-  // "own-session" starts it in a session of its own, outside this process group, as Codex 0.170 starts
-  // each shell command on Linux.
-  { stdio: "ignore", detached: mode === "own-session" }
+  ["-e", `${ownSession ? nested : ""} process.on('SIGTERM', () => {}); setInterval(() => {}, 1 << 30);`],
+  { stdio: "ignore", detached: ownSession }
 );
 
 // Enough JSONL to look like a healthy run, so a startup deadline is not what ends it.

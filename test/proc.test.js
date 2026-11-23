@@ -10,6 +10,8 @@ import { fileURLToPath } from "node:url";
 import { isChildAlive, treeKill } from "../src/proc.js";
 
 const posixOnly = { skip: process.platform === "win32" ? "POSIX process groups" : false };
+// Above any pid_max, so the descendant walk finds no child of it.
+const NO_PID = 4_194_305;
 
 /** Record what treeKill signals, without signalling anything. */
 async function recordKills(pid, options) {
@@ -38,18 +40,18 @@ test("isChildAlive is false once the child has exited", () => {
 test("the group is signalled even after the leader has exited", posixOnly, async () => {
   // The whole point of detaching: a POSIX group outlives its leader, so Codex can be
   // gone while the commands it started are still in the group.
-  const calls = await recordKills(4242, { childAlive: false });
-  assert.deepEqual(calls, [{ target: -4242, signal: "SIGKILL" }]);
+  const calls = await recordKills(NO_PID, { childAlive: false });
+  assert.deepEqual(calls, [{ target: -NO_PID, signal: "SIGKILL" }]);
 });
 
 test("the bare pid is only signalled while the child is alive", posixOnly, async () => {
   // A reaped pid can be recycled, so the fallback must not fire once the child is
   // gone — that signal would land on somebody else's process.
-  const calls = await recordKills(4242, { childAlive: true });
+  const calls = await recordKills(NO_PID, { childAlive: true });
   assert.deepEqual(calls, [
-    { target: -4242, signal: "SIGSTOP" },
-    { target: -4242, signal: "SIGKILL" },
-    { target: 4242, signal: "SIGKILL" },
+    { target: -NO_PID, signal: "SIGSTOP" },
+    { target: -NO_PID, signal: "SIGKILL" },
+    { target: NO_PID, signal: "SIGKILL" },
   ]);
 });
 
@@ -143,15 +145,23 @@ test("the kill reaches a grandchild while the leader is still running", async ()
   }
 });
 
-test("the kill reaches a grandchild in a session of its own while the leader is running", posixOnly, async () => {
+test("the kill reaches a grandchild in a session of its own, and the command it runs", posixOnly, async () => {
   const { child, grandchildPid } = await startTree("own-session");
+  const nestedFile = `${child.spawnargs[2]}.nested`;
+  await until(() => existsSync(nestedFile) && readFileSync(nestedFile, "utf8").includes("\n"), 10_000,
+    "the grandchild never reported its command");
+  const nestedPid = Number(readFileSync(nestedFile, "utf8").trim());
   try {
     await treeKill(child.pid, { childAlive: true });
     await until(() => !pidAlive(grandchildPid), 10_000, "grandchild survived the kill");
+    await until(() => !pidAlive(nestedPid), 10_000, "the grandchild's command survived the kill");
+    await until(() => !isChildAlive(child), 10_000, "leader survived the kill");
   } finally {
-    try {
-      process.kill(grandchildPid, "SIGKILL");
-    } catch {}
+    for (const pid of [child.pid, grandchildPid, nestedPid]) {
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {}
+    }
   }
 });
 
