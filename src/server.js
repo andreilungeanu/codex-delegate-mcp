@@ -95,9 +95,20 @@ export const delegateOutputShape = {
 
 /** @param {{ args?: any, operationRegistry: any }} params */
 export async function runCancelTool({ args = {}, operationRegistry }) {
+  const [delegationId, threadId] = [args?.delegationId, args?.threadId].map((id) =>
+    typeof id === "string" ? id.trim() : id
+  );
+  // A blank id would fall through to cancel-all, which only omitting both selectors asks for.
+  if (delegationId === "" || threadId === "") {
+    const payload = { error: "invalid_id", message: "A blank id selects no run. Omit both ids to cancel every run." };
+    return {
+      content: [{ type: /** @type {"text"} */ ("text"), text: JSON.stringify(payload) }],
+      isError: true,
+    };
+  }
   try {
     const result = await operationRegistry.cancel({
-      id: args?.delegationId || args?.threadId || null,
+      id: delegationId || threadId || null,
       cause: "user",
     });
     return {

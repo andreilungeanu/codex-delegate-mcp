@@ -217,6 +217,34 @@ test("runCancelTool cancels by delegationId before a thread id exists", async ()
   lease.release();
 });
 
+test("a blank cancel selector is refused and cancels nothing; a padded id cancels only its run", async () => {
+  const operationRegistry = createOperationRegistry();
+  const cancelled = [];
+  const leases = ["a", "b"].map((name) =>
+    operationRegistry.acquire({ threadId: `tid-${name}`, cancel: async () => cancelled.push(name) })
+  );
+  const server = buildServer({ operationRegistry });
+  const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: "cancel-test-client", version: "1.0" });
+  await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+  try {
+    for (const args of [{ delegationId: "" }, { threadId: "   " }]) {
+      const viaTool = await client.callTool({ name: "cancel", arguments: args });
+      assert.equal(viaTool.isError, true, `${JSON.stringify(args)} must be refused`);
+      const direct = await runCancelTool({ args, operationRegistry });
+      assert.equal(direct.isError, true, `${JSON.stringify(args)} must be refused by the handler too`);
+    }
+    assert.deepEqual(cancelled, []);
+
+    const padded = await client.callTool({ name: "cancel", arguments: { delegationId: ` ${leases[0].delegationId} ` } });
+    assert.equal(JSON.parse(padded.content[0].text).status, "cancelled");
+    assert.deepEqual(cancelled, ["a"]);
+  } finally {
+    await client.close();
+    for (const lease of leases) lease.release();
+  }
+});
+
 test("runCancelTool returns an error payload when cancellation fails", async () => {
   const registry = createOperationRegistry();
   const lease = registry.acquire({
