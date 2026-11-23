@@ -9,7 +9,7 @@ import {
   CLIENT_INFO_META_KEY,
   PROTOCOL_VERSION_META_KEY,
 } from "@modelcontextprotocol/server";
-import { serveStdio } from "@modelcontextprotocol/server/stdio";
+import { serveStdio, StdioServerTransport } from "@modelcontextprotocol/server/stdio";
 import { z } from "zod";
 import {
   DEFAULT_MODEL,
@@ -494,6 +494,7 @@ export function clientInfoOf(server, ctx) {
  *   armExitBelt?: () => void,
  *   stdin?: any,
  * }} [options]
+ * @returns {() => void} Shuts down as stdin EOF does, for a host that goes some other way.
  */
 export function installSignalCleanup(
   operationRegistry,
@@ -555,6 +556,7 @@ export function installSignalCleanup(
   // Closing stdin is how a host shuts a stdio server down. The SDK aborts the requests in
   // flight; this also refuses new runs, waits for the kills, and exits under the belt.
   stdin.on("end", () => shutdown(0));
+  return () => shutdown(0);
 }
 
 /** Past the kill deadline (10s in run-codex) plus taskkill's own runtime. */
@@ -606,10 +608,17 @@ if (isMain) {
     console.log(VERSION);
   } else {
     const operationRegistry = createOperationRegistry();
-    installSignalCleanup(operationRegistry);
+    const hostGone = installSignalCleanup(operationRegistry);
     const catalog = await readStartupCatalog();
+    const transport = new StdioServerTransport();
     // One factory serves both protocol eras, and only a 2026-07-28 instance answers with tasks. The
     // registry and catalog are shared, so a cancel reaches every run and the catalog is read once.
-    serveStdio(({ era }) => buildServer({ era, operationRegistry, catalog }));
+    serveStdio(({ era }) => buildServer({ era, operationRegistry, catalog }), { transport });
+    // The transport also closes on a broken stdout, and then pauses stdin, so no 'end' arrives.
+    const closeServers = transport.onclose;
+    transport.onclose = () => {
+      closeServers?.();
+      hostGone();
+    };
   }
 }

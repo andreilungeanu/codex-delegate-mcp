@@ -385,3 +385,27 @@ test("tasks/cancel after Codex exited keeps the result and still stops what Code
     await server.cleanup();
   }
 });
+
+// A host that dies breaks the server's stdout first; the transport then pauses stdin, so no 'end'.
+test("a host whose stdout pipe breaks mid-task leaves no Codex process behind", { timeout: 60_000 }, async () => {
+  const server = await rawServer("task-epipe", "setInterval(() => {}, 1000);");
+  try {
+    await server.send("server/discover");
+    const call = await server.send("tools/call", { name: "delegate", arguments: { workspace: server.dir, spec: "x" } });
+    assert.equal(call.result.resultType, "task", JSON.stringify(call));
+    const pid = server.workerPid();
+    assert.ok(pid && alive(pid), "Codex should be running when the host goes");
+    server.child.stdout.destroy();
+    const poll = { jsonrpc: "2.0", id: 999, method: "tasks/get", params: { taskId: call.result.taskId, _meta: envelope() } };
+    for (let i = 0; i < 5; i++) {
+      server.child.stdin.write(JSON.stringify({ ...poll, id: 999 + i }) + "\n");
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    server.child.stdin.end();
+    const until = Date.now() + 20_000;
+    while (Date.now() < until && alive(pid)) await new Promise((r) => setTimeout(r, 50));
+    assert.equal(alive(pid), false, "Codex outlived the host");
+  } finally {
+    await server.cleanup();
+  }
+});
