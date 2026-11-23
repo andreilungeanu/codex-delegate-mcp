@@ -1,11 +1,15 @@
 // Names each V8 coverage file in a directory that is not valid JSON, the file
 // `--experimental-test-coverage` stops at with "Could not report code coverage". The name carries
 // the writer's pid and write time, and the scripts listed before the cut name the process.
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import process from "node:process";
 
 const dir = process.argv[2];
+if (!dir || !existsSync(dir)) {
+  console.log(`no coverage directory at ${dir ?? "(none given)"}: the run wrote no coverage files`);
+  process.exit(0);
+}
 const names = readdirSync(dir);
 let broken = 0;
 for (const name of names) {
