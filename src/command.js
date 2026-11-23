@@ -17,8 +17,8 @@ export const DEFAULT_MODEL = "gpt-6-luna";
 export const DEFAULT_REASONING_EFFORT = "xhigh";
 
 /**
- * Leave headroom under the Windows CreateProcess ~32k limit. Review only: every
- * other mode sends the brief on stdin, so nothing large is left in its argv.
+ * Leave headroom under the Windows CreateProcess ~32k limit. Review on Windows only: every
+ * other mode sends the brief on stdin, and Linux and macOS allow far longer arguments.
  */
 export const MAX_REVIEW_ARGV_CHARS = 28_000;
 
@@ -60,9 +60,10 @@ export const PLAN_SCHEMA = Object.freeze({
  * @param {{
  *   resultFile?: string,
  *   outputSchemaFile?: string | null,
+ *   platform?: string,
  * }} [options]
  */
-export function buildCodexArgs(request, { resultFile, outputSchemaFile } = {}) {
+export function buildCodexArgs(request, { resultFile, outputSchemaFile, platform = process.platform } = {}) {
   if (!request || typeof request !== "object") throw new TypeError("request required");
   if (!resultFile || typeof resultFile !== "string") throw new TypeError("resultFile required");
   if (!MODES.includes(request.mode)) throw new Error(`unsupported mode: ${request.mode}`);
@@ -70,7 +71,7 @@ export function buildCodexArgs(request, { resultFile, outputSchemaFile } = {}) {
   let built;
   if (request.mode === "review") {
     if (outputSchemaFile) throw new Error("output schema is not supported in review mode");
-    built = buildReviewArgs(request, { resultFile });
+    built = buildReviewArgs(request, { resultFile, platform });
   } else if (request.mode === "ask" && outputSchemaFile) {
     throw new Error("output schema is not supported in ask mode");
   } else if (request.mode === "plan" && !outputSchemaFile) {
@@ -160,7 +161,7 @@ function buildResumeArgs(request, { resultFile, outputSchemaFile }) {
   return { kind: "resume", args, stdin: request.spec };
 }
 
-function buildReviewArgs(request, { resultFile }) {
+function buildReviewArgs(request, { resultFile, platform }) {
   if (!request.reviewTarget) throw new Error("reviewTarget required in review mode");
   const args = [
     "exec",
@@ -173,7 +174,7 @@ function buildReviewArgs(request, { resultFile }) {
   ];
   // No stdin: `exec review` rejects a positional prompt alongside a target, so the
   // brief has to keep travelling in argv here — command line and cap included.
-  assertReviewArgvLength(args);
+  if (platform === "win32") assertReviewArgvLength(args);
   return { kind: "review", args, stdin: null };
 }
 

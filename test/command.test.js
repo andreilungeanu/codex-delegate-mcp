@@ -550,7 +550,7 @@ test("an oversized spec rides stdin instead of being refused", () => {
   assert.equal(built.args.at(-1), "-");
 });
 
-test("review still refuses an oversized spec, because its brief is still argv", () => {
+test("review on Windows refuses a spec past CreateProcess's limit, because its brief is still argv", () => {
   const huge = "x".repeat(30_000);
   assert.throws(
     () =>
@@ -562,10 +562,21 @@ test("review still refuses an oversized spec, because its brief is still argv", 
           webSearch: false,
           reviewTarget: { kind: "uncommitted" },
         },
-        { resultFile: "/tmp/out.txt" }
+        { resultFile: "/tmp/out.txt", platform: "win32" }
       ),
     (err) => err.code === "argv_too_long"
   );
+});
+
+// Linux takes 128 KiB per argument and macOS about 1 MiB in all.
+test("review on Linux and macOS takes a spec past the Windows limit", () => {
+  for (const platform of ["linux", "darwin"]) {
+    const built = buildCodexArgs(
+      { spec: "x".repeat(30_000), mode: "review", workspace: "/tmp/repo", webSearch: false, reviewTarget: { kind: "uncommitted" } },
+      { resultFile: "/tmp/out.txt", platform }
+    );
+    assert.equal(built.kind, "review");
+  }
 });
 
 test("a spec far past the CreateProcess limit is fine once it leaves argv", () => {
