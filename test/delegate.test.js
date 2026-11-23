@@ -323,6 +323,63 @@ test("a cancel during the model check keeps Codex from starting", async () => {
   }
 });
 
+test("a cancel during the review preflight runs no Codex probe after it", async () => {
+  const registry = createOperationRegistry();
+  let preflightAsked;
+  const asked = new Promise((resolve) => (preflightAsked = resolve));
+  let releasePreflight;
+  const held = new Promise((resolve) => (releasePreflight = resolve));
+  let resolved = 0;
+  const run = executeDelegate(
+    { spec: "x", mode: "review", workspace: process.cwd(), reviewTarget: { kind: "uncommitted" } },
+    {
+      ...delegateOptions("t-review"),
+      operationRegistry: registry,
+      preflight: async () => {
+        preflightAsked();
+        await held;
+      },
+      resolve: () => {
+        resolved++;
+        return { command: "/bin/codex", version: "0.171.0", warnings: [] };
+      },
+    }
+  );
+  await asked;
+  const cancel = registry.cancel({});
+  releasePreflight();
+  const [result] = await Promise.all([run, cancel]);
+  assert.equal(result.status, "interrupted");
+  assert.equal(result.reason, "cancelled");
+  assert.equal(resolved, 0, "Codex was resolved after the cancel");
+});
+
+test("a cancel during the check of an unknown model reports the cancel, not the model", async () => {
+  const registry = createOperationRegistry();
+  let catalogAsked;
+  const asked = new Promise((resolve) => (catalogAsked = resolve));
+  let releaseCatalog;
+  const held = new Promise((resolve) => (releaseCatalog = resolve));
+  const run = executeDelegate(
+    { spec: "x", mode: "ask", workspace: process.cwd(), model: "gpt-unknown" },
+    {
+      ...delegateOptions("t-unknown"),
+      operationRegistry: registry,
+      readCatalog: async () => {
+        catalogAsked();
+        await held;
+        return CATALOG;
+      },
+    }
+  );
+  await asked;
+  const cancel = registry.cancel({});
+  releaseCatalog();
+  const [result] = await Promise.all([run, cancel]);
+  assert.equal(result.status, "interrupted");
+  assert.equal(result.reason, "cancelled");
+});
+
 test("a delegation that arrives once shutdown began starts no Codex", async () => {
   const codex = await recordingCodex();
   try {

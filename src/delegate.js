@@ -12,6 +12,7 @@ import { readModelCatalog, catalogSlugs, listedSlugs, modelEfforts } from "./mod
 import { resolveCodex } from "./resolve-codex.js";
 import {
   runCodexProcess,
+  cancelledBeforeSpawn,
   DEFAULT_HARD_CAP_MS,
   DEFAULT_HEARTBEAT_MS,
   DEFAULT_STARTUP_MS,
@@ -91,13 +92,31 @@ export async function executeDelegate(rawArgs, options = {}) {
     // Announced first: the only handle on a run that wedges before Codex names a thread.
     // Inside the try, so a throwing progress sink still releases the lease.
     onProgress?.(`delegation id: ${delegationId}`);
+    processResult = await setUpAndRun();
+  } finally {
+    markSettled();
+    lease.release();
+    if (outerSignal) outerSignal.removeEventListener("abort", forward);
+  }
+
+  // A cancel during the preflight ends the run there: no further probe, and no answer from one.
+  async function setUpAndRun() {
+    const cancelled = () => controller.signal.aborted;
     if (request.mode === "review") {
       await preflight({ workspace: request.workspace, reviewTarget: request.reviewTarget });
     }
+    if (cancelled()) return cancelledBeforeSpawn();
     // Resolver notes describe the setup, not this run — doctor reports them.
     codex = resolve({ env });
     const commandArgs = codex.commandArgs ?? [];
-    const trusted = await assertKnownModel(request.model, { command: codex.command, commandArgs, readCatalog, catalog });
+    let trusted;
+    try {
+      trusted = await assertKnownModel(request.model, { command: codex.command, commandArgs, readCatalog, catalog });
+    } catch (err) {
+      if (cancelled()) return cancelledBeforeSpawn();
+      throw err;
+    }
+    if (cancelled()) return cancelledBeforeSpawn();
     const effortNote = effortWarning(request, trusted);
     if (effortNote) warnings.push(effortNote);
 
@@ -112,7 +131,7 @@ export async function executeDelegate(rawArgs, options = {}) {
 
       const built = buildCodexArgs(request, { resultFile, outputSchemaFile });
 
-      processResult = await runProcess({
+      return await runProcess({
         command: codex.command,
         args: [...commandArgs, ...built.args],
         cwd: request.workspace,
@@ -130,10 +149,6 @@ export async function executeDelegate(rawArgs, options = {}) {
       // Removed before markSettled(): a shutdown exits as soon as its cancel settles.
       await rm(tmp, { recursive: true, force: true }).catch(() => {});
     }
-  } finally {
-    markSettled();
-    lease.release();
-    if (outerSignal) outerSignal.removeEventListener("abort", forward);
   }
 
   warnings.push(...(processResult.warnings || []));
@@ -181,7 +196,7 @@ export async function executeDelegate(rawArgs, options = {}) {
     delegationId,
     resumed: request.resumeThreadId ? resumed : undefined,
     workspace: request.workspace,
-    cliVersion: codex.version || undefined,
+    cliVersion: codex?.version || undefined,
     usage: processResult.usage ?? undefined,
     filesReportedByEditTools: files.length ? files : undefined,
     plan,

@@ -15,6 +15,20 @@ export const DEFAULT_HEARTBEAT_MS = 30_000;
 export const DEFAULT_KILL_DEADLINE_MS = 10_000;
 export const DEFAULT_HARD_CAP_MS = 21_600_000;
 
+/** The result of a run cancelled before Codex was spawned. */
+export function cancelledBeforeSpawn() {
+  return {
+    status: /** @type {const} */ ("interrupted"),
+    reason: /** @type {const} */ ("cancelled"),
+    exitCode: null,
+    threadId: null,
+    usage: null,
+    result: "",
+    warnings: [],
+    filesReportedByEditTools: [],
+  };
+}
+
 /**
  * Spawn `codex …`, reduce JSONL for threadId + coarse progress, accept only
  * the private --output-last-message file after a clean exit.
@@ -76,17 +90,6 @@ export async function runCodexProcess({
   const { state: events, handleLine } = createEventReducer({ emit, onThreadId });
   const stderrBuffer = createStderrTail(DEFAULT_STDERR_BYTES);
 
-  const interruptedBeforeSpawn = () => ({
-    status: "interrupted",
-    reason: "cancelled",
-    exitCode: null,
-    threadId: null,
-    usage: null,
-    result: "",
-    warnings: [],
-    filesReportedByEditTools: [],
-  });
-
   const childEnv = { ...env };
   // Recursion marker for nested delegate detection by the parent server.
   childEnv.CODEX_DELEGATE_DEPTH = "1";
@@ -106,7 +109,7 @@ export async function runCodexProcess({
   };
   if (platform !== "win32") spawnOpts.detached = true;
 
-  if (signal?.aborted) return interruptedBeforeSpawn();
+  if (signal?.aborted) return cancelledBeforeSpawn();
   child = spawnImpl(command, args, spawnOpts);
   const childPid = child.pid;
 
