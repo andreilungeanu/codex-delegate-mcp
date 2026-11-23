@@ -23,17 +23,18 @@ if (complete) {
   process.exit(0);
 }
 
-const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+const install = ["install", "--omit=dev", "--no-audit", "--no-fund"];
+const win32 = process.platform === "win32";
 try {
-  execFileSync(npm, ["install", "--omit=dev", "--no-audit", "--no-fund"], {
+  // On win32 one command line and no args array: Node 24 warns (DEP0190) on args under shell:true.
+  execFileSync(win32 ? ["npm.cmd", ...install].join(" ") : "npm", win32 ? [] : install, {
     cwd: root,
     // npm's stdout to stderr: Claude Code adds a SessionStart hook's stdout to the session context.
     stdio: ["ignore", 2, "inherit"],
-    // npm.cmd is a batch file, and Node refuses to spawn one without a shell — so
-    // the first session after a plugin install fails on Windows, before doctor
-    // exists to say why. The argument list is fixed and carries no user input, so
-    // the reason this project keeps shell off for `codex exec` does not apply.
-    shell: process.platform === "win32",
+    // npm.cmd is a batch file, which Node spawns only through a shell (EINVAL otherwise). The
+    // arguments are fixed and carry no user input, so the reason `codex exec` runs without a
+    // shell does not apply.
+    shell: win32,
   });
 } catch (err) {
   console.error(`codex-delegate-mcp: dependency install failed: ${err?.message || err}`);

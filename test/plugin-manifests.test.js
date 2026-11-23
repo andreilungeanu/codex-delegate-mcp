@@ -230,6 +230,8 @@ test("the SessionStart hook keeps npm's output off stdout", async () => {
   const { stdout, stderr } = await runHook(root);
   assert.equal(stdout, "", "nothing from the install may reach the session context");
   assert.match(stderr, /added \d+ packages?/, "npm's summary is still there to diagnose from");
+  // Red only on Node 24+, the first to warn.
+  assert.doesNotMatch(stderr, /DEP0190/);
 });
 
 test("the dependency sentinel repairs every incomplete install", async () => {
