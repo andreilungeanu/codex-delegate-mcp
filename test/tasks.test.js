@@ -86,6 +86,28 @@ test("a failed task carries an internal error and a cancelled one keeps its stat
   assert.equal(view.statusMessage, "cancelled; resume with resumeThreadId tid-x");
 });
 
+test("a completed task's result is marked complete, as the tools/call result it stands for", () => {
+  const { store } = clockedStore();
+  const task = store.create();
+  store.add(task);
+  store.finish(task, { result: { content: [{ type: "text", text: "done" }] } });
+  assert.deepEqual(store.view(task).result, { content: [{ type: "text", text: "done" }], resultType: "complete" });
+});
+
+test("a finished task drops its last progress line, and a failed one says why", () => {
+  const { store } = clockedStore();
+  const done = store.create();
+  const failed = store.create();
+  for (const task of [done, failed]) {
+    store.add(task);
+    task.statusMessage = "still working — 60s elapsed, last event 30s ago";
+  }
+  store.finish(done, { result: { content: [] } });
+  store.finish(failed, { error: new Error("boom") });
+  assert.equal(store.view(done).statusMessage, undefined);
+  assert.equal(store.view(failed).statusMessage, "boom");
+});
+
 test("a task cancelled before Codex started a thread names no thread to resume", () => {
   const { store } = clockedStore();
   const task = store.create();
