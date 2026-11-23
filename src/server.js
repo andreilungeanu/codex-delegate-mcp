@@ -21,6 +21,7 @@ import { runDoctor as runDoctorDefault } from "./doctor.js";
 import { readModelCatalog, listedSlugs, listedEfforts, modelEfforts } from "./model-catalog.js";
 import { createOperationRegistry } from "./ops.js";
 import { resolveCodex } from "./resolve-codex.js";
+import { TASKS_EXTENSION, createTaskStore, listsTasks, registerTaskHandlers, runAsTask } from "./tasks.js";
 import { VERSION } from "./version.js";
 
 const ICON_BASE = `https://raw.githubusercontent.com/andreilungeanu/codex-delegate-mcp/v${VERSION}/assets`;
@@ -35,6 +36,9 @@ if (nodeMajor < 20) {
   console.error(`codex-delegate-mcp requires Node 20+ (found ${process.versions.node})`);
   process.exit(1);
 }
+
+// Shared by every server the factory builds, so a task outlives the request that started it.
+const taskStore = createTaskStore();
 
 export const SERVER_INSTRUCTIONS = `Hand coding work to Codex via the delegate tool; never shell out to codex. Auto-approved in every mode: agent/plan/ask/review reach any file the user account can, and the network. mode instructs, it does not limit. Review the git diff after every run.`;
 
@@ -131,39 +135,61 @@ export async function runCancelTool({ args = {}, operationRegistry }) {
   }
 }
 
+/**
+ * Progress notifications for a request that carries a progress token; a no-op otherwise.
+ *
+ * @param {any} ctx
+ * @returns {(message: string) => void}
+ */
+export function progressNotifier(ctx) {
+  const progressToken = ctx?.mcpReq?._meta?.progressToken;
+  if (progressToken == null) return () => {};
+  let progress = 0;
+  return (message) => {
+    // notify is async: a rejection settles outside this try, and an
+    // unhandled one exits the process — taking every concurrent delegation with
+    // it. A host that drops mid-run is the trigger, and the heartbeat drives this
+    // path all turn. The try stays for a sync throw, which lands while the call
+    // is still being made and so before Promise.resolve can wrap it.
+    try {
+      Promise.resolve(
+        ctx.mcpReq.notify({
+          method: "notifications/progress",
+          params: { progressToken, progress: ++progress, message },
+        })
+      ).catch(() => {});
+    } catch {}
+  };
+}
+
+/**
+ * A run as an MCP task passes its own signal and onProgress, and executeDelegate's task options.
+ *
+ * @param {{
+ *   args: any,
+ *   ctx?: any,
+ *   execute?: any,
+ *   operationRegistry?: any,
+ *   signal?: AbortSignal,
+ *   onProgress?: (message: string) => void,
+ *   [option: string]: any,
+ * }} deps
+ */
 export async function runDelegateTool({
   args,
   ctx,
   execute = executeDelegateDefault,
   operationRegistry,
+  signal = ctx?.mcpReq?.signal,
+  onProgress = progressNotifier(ctx),
+  ...runOptions
 }) {
-  const progressToken = ctx?.mcpReq?._meta?.progressToken;
-  /** @type {(message: string) => void} */
-  let onProgress = () => {};
-  if (progressToken != null) {
-    let progress = 0;
-    onProgress = (message) => {
-      // notify is async: a rejection settles outside this try, and an
-      // unhandled one exits the process — taking every concurrent delegation with
-      // it. A host that drops mid-run is the trigger, and the heartbeat drives this
-      // path all turn. The try stays for a sync throw, which lands while the call
-      // is still being made and so before Promise.resolve can wrap it.
-      try {
-        Promise.resolve(
-          ctx.mcpReq.notify({
-            method: "notifications/progress",
-            params: { progressToken, progress: ++progress, message },
-          })
-        ).catch(() => {});
-      } catch {}
-    };
-  }
-
   try {
     const result = await execute(args, {
       operationRegistry,
       onProgress,
-      signal: ctx?.mcpReq?.signal,
+      signal,
+      ...runOptions,
     });
     return {
       content: [{ type: /** @type {"text"} */ ("text"), text: JSON.stringify(result) }],
@@ -264,6 +290,8 @@ function describeEffortField(catalog) {
  *   doctorRunner?: any,
  *   operationRegistry?: any,
  *   catalog?: any[] | null,
+ *   era?: "legacy" | "modern",
+ *   tasks?: ReturnType<typeof createTaskStore>,
  * }} [options]
  */
 export function buildServer({
@@ -271,11 +299,19 @@ export function buildServer({
   doctorRunner = runDoctorDefault,
   operationRegistry = createOperationRegistry(),
   catalog = null,
+  era,
+  tasks = taskStore,
 } = {}) {
+  // Tasks only on a 2026-07-28 instance: the SDK also lifts envelope keys off 2025-era requests.
+  const servesTasks = era === "modern";
   const server = new McpServer(
     { name: "codex-delegate-mcp", version: VERSION, icons: SERVER_ICONS },
-    { instructions: SERVER_INSTRUCTIONS }
+    {
+      instructions: SERVER_INSTRUCTIONS,
+      ...(servesTasks ? { capabilities: { extensions: { [TASKS_EXTENSION]: {} } } } : {}),
+    }
   );
+  if (servesTasks) registerTaskHandlers(server, tasks);
 
   server.registerTool(
     "delegate",
@@ -304,7 +340,7 @@ export function buildServer({
         resumeThreadId: z
           .string()
           .optional()
-          .describe("Thread to continue. Reuse its workspace. Forbidden with review."),
+          .describe("Thread to continue, or the task id of a delegate run as an MCP task. Reuse its workspace. Forbidden with review."),
         model: z
           .string()
           .default(DEFAULT_MODEL)
@@ -336,21 +372,31 @@ export function buildServer({
         openWorldHint: true,
       },
     },
-    async (args, ctx) =>
-      runDelegateTool({
-        args,
-        ctx,
-        // The same snapshot the description names, so a model it offers is not read again.
-        execute: (input, options) => executeDelegate(input, { ...options, catalog }),
-        operationRegistry,
-      })
+    async (args, ctx) => {
+      // Claude Code shows the model a task's id and never its thread id, even after a stop.
+      const resumeThreadId = tasks.get(args.resumeThreadId?.trim())?.threadId ?? args.resumeThreadId;
+      /** @param {Record<string, any>} [over] */
+      const run = (over) =>
+        runDelegateTool({
+          args: { ...args, resumeThreadId },
+          ctx,
+          // The same snapshot the description names, so a model it offers is not read again.
+          execute: (input, options) => executeDelegate(input, { ...options, catalog }),
+          operationRegistry,
+          ...over,
+        });
+      if (!servesTasks || !listsTasks(ctx)) return run();
+      return /** @type {any} */ (
+        runAsTask({ run, signal: ctx?.mcpReq?.signal, notify: progressNotifier(ctx), store: tasks })
+      );
+    }
   );
 
   server.registerTool(
     "cancel",
     {
       description:
-        "Cancel active runs. delegationId selects one (announced in progress before spawn — the only handle if a run wedges at startup), threadId all on its thread, neither all. Waits for settlement; if a process tree survives the kill deadline, it still returns and the delegate result warns. Status: cancelled, nothing-active, or not-found (no active run with this ID).",
+        "Cancel active runs. delegationId selects one (announced in progress before spawn — the only handle if a run wedges at startup; a delegate task's id is its delegationId), threadId all on its thread, neither all. Waits for settlement; if a process tree survives the kill deadline, it still returns and the delegate result warns. Status: cancelled, nothing-active, or not-found (no active run with this ID).",
       inputSchema: z
         .object({
           delegationId: z.string().optional(),
@@ -562,8 +608,8 @@ if (isMain) {
     const operationRegistry = createOperationRegistry();
     installSignalCleanup(operationRegistry);
     const catalog = await readStartupCatalog();
-    // One factory serves both protocol eras, and may build more than one server: the registry
-    // and catalog are shared, so a cancel reaches every run and the catalog is read once.
-    serveStdio(() => buildServer({ operationRegistry, catalog }));
+    // One factory serves both protocol eras, and only a 2026-07-28 instance answers with tasks. The
+    // registry and catalog are shared, so a cancel reaches every run and the catalog is read once.
+    serveStdio(({ era }) => buildServer({ era, operationRegistry, catalog }));
   }
 }

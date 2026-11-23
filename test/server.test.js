@@ -32,7 +32,7 @@ import { executeDelegate } from "../src/delegate.js";
 const ERAS = [["2025", undefined], ["2026-07-28", { mode: { pin: "2026-07-28" } }]];
 async function connectEra(versionNegotiation, serverOpts) {
   const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair();
-  const served = serveStdio(() => buildServer(serverOpts), { transport: serverTransport });
+  const served = serveStdio(({ era }) => buildServer({ ...serverOpts, era }), { transport: serverTransport });
   const client = new Client(
     { name: "era-host", version: "3" },
     { capabilities: { elicitation: { form: {} } }, ...(versionNegotiation ? { versionNegotiation } : {}) }
