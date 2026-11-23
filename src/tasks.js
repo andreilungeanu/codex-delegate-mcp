@@ -10,7 +10,6 @@ const MAX_FINISHED = 100;
 const FAST_POLL_MS = 3000;
 const SLOW_POLL_MS = 10000;
 const FAST_POLL_FOR_MS = 60 * 1000;
-const MAX_REMEMBERED_THREADS = 10_000;
 
 // Claude Code lists the extension only on a call that can become a task: not from a subagent.
 export function listsTasks(ctx) {
@@ -37,9 +36,7 @@ export function createTaskStore({ now = Date.now, retainMs = RETAIN_MS, maxFinis
   /** @param {Task} task */
   const drop = (task) => {
     tasks.delete(task.taskId);
-    if (!task.threadId) return;
-    threads.set(task.taskId, task.threadId);
-    if (threads.size > MAX_REMEMBERED_THREADS) threads.delete(/** @type {string} */ (threads.keys().next().value));
+    if (task.threadId) threads.set(task.taskId, task.threadId);
   };
   // A running task is never dropped: its id is the host's only handle on the run.
   const prune = () => {
