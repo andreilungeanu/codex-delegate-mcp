@@ -9,7 +9,8 @@ import { fileURLToPath } from "node:url";
 import process from "node:process";
 
 const args = process.argv.slice(2);
-const named = args.filter((arg) => !arg.startsWith("-"));
+// By extension, so a flag's separate value (`--test-name-pattern foo`) is not taken for a file.
+const named = args.filter((arg) => !arg.startsWith("-") && /\.[cm]?js$/.test(arg));
 const testDir = fileURLToPath(new URL("../test/", import.meta.url));
 const files = named.length
   ? []
