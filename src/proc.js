@@ -11,8 +11,8 @@ export function isChildAlive(child) {
  * fails: the group kill still runs.
  */
 function descendantPids(pid) {
-  // procps refuses -A under a BSD personality.
-  const { PS_PERSONALITY, CMD_ENV, ...env } = process.env;
+  // Each switches procps to BSD option parsing, which refuses -A.
+  const { PS_PERSONALITY, CMD_ENV, I_WANT_A_BROKEN_PS, ...env } = process.env;
   let stdout;
   try {
     stdout = execFileSync("ps", ["-A", "-o", "pid=,ppid="], {

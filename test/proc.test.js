@@ -239,21 +239,24 @@ test("a ps that ignores SIGTERM does not hold the kill past its timeout", posixO
   }
 });
 
-test("the descendant walk does not depend on the user's ps personality", posixOnly, async () => {
-  const { child, grandchildPid } = await startTree("own-session");
-  const personality = process.env.PS_PERSONALITY;
-  process.env.PS_PERSONALITY = "bsd";
-  try {
-    await treeKill(child.pid, { childAlive: true });
-    await until(() => !pidAlive(grandchildPid), 10_000, "grandchild survived the kill");
-  } finally {
-    if (personality === undefined) delete process.env.PS_PERSONALITY;
-    else process.env.PS_PERSONALITY = personality;
+// procps reads each of these as a request for BSD option parsing, which refuses -A.
+for (const [name, value] of [["PS_PERSONALITY", "bsd"], ["CMD_ENV", "bsd"], ["I_WANT_A_BROKEN_PS", "1"]]) {
+  test(`the descendant walk does not depend on the user's ps personality (${name})`, posixOnly, async () => {
+    const { child, grandchildPid } = await startTree("own-session");
+    const saved = process.env[name];
+    process.env[name] = value;
     try {
-      process.kill(grandchildPid, "SIGKILL");
-    } catch {}
-  }
-});
+      await treeKill(child.pid, { childAlive: true });
+      await until(() => !pidAlive(grandchildPid), 10_000, "grandchild survived the kill");
+    } finally {
+      if (saved === undefined) delete process.env[name];
+      else process.env[name] = saved;
+      try {
+        process.kill(grandchildPid, "SIGKILL");
+      } catch {}
+    }
+  });
+}
 
 const win32Only = { skip: process.platform === "win32" ? false : "windows taskkill" };
 
