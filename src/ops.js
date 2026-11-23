@@ -18,8 +18,8 @@ class OperationRegistry {
   #byThread = new Map();
   #closed = false;
 
-  /** @param {{ threadId?: string | null, cancel?: Function }} [options] */
-  acquire({ threadId = null, cancel } = {}) {
+  /** @param {{ id?: string, threadId?: string | null, cancel?: Function }} [options] An MCP task passes its task id as `id`. */
+  acquire({ id, threadId = null, cancel } = {}) {
     if (typeof cancel !== "function") throw new TypeError("cancel must be a function");
     if (this.#closed) {
       const err = /** @type {Error & { code?: string }} */ (
@@ -29,7 +29,8 @@ class OperationRegistry {
       throw err;
     }
 
-    const delegationId = randomUUID();
+    const delegationId = id ?? randomUUID();
+    if (this.#active.has(delegationId)) throw new Error(`Delegation ${delegationId} is already running.`);
     const record = {
       delegationId,
       threadId: threadId || null,

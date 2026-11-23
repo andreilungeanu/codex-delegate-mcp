@@ -22,6 +22,23 @@ test("every delegation gets a distinct id, available before it runs", () => {
   b.release();
 });
 
+test("a delegation runs under the id its caller gives, and cancel reaches it by that id", async () => {
+  const reg = createOperationRegistry();
+  let cancelled = 0;
+  const lease = reg.acquire({ id: "task-1", cancel: async () => void cancelled++ });
+  assert.equal(lease.delegationId, "task-1");
+  const result = await reg.cancel({ id: "task-1" });
+  assert.equal(result.status, "cancelled");
+  assert.equal(cancelled, 1);
+  lease.release();
+});
+
+test("an id already running is refused, so a release cannot drop the other run", () => {
+  const reg = createOperationRegistry();
+  reg.acquire({ id: "task-1", cancel: async () => {} });
+  assert.throws(() => reg.acquire({ id: "task-1", cancel: async () => {} }), /already running/);
+});
+
 test("cancel returns nothing-active when idle", async () => {
   const reg = createOperationRegistry();
   const result = await reg.cancel({});

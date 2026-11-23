@@ -287,6 +287,96 @@ async function recordingCodex() {
   };
 }
 
+/** A real Codex stand-in that starts the thread `threadId` and runs until it is killed. */
+async function hangingCodex(threadId) {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-hang-"));
+  const script = path.join(dir, "codex.js");
+  await writeFile(
+    script,
+    `console.log(JSON.stringify({ type: "thread.started", thread_id: ${JSON.stringify(threadId)} })); setInterval(() => {}, 1000);`,
+    "utf8"
+  );
+  return () => ({ command: process.execPath, commandArgs: [script], version: "0.171.0", warnings: [] });
+}
+
+/** @param {Promise<any>} promise @param {string} what */
+function within10s(promise, what) {
+  let timer;
+  const late = new Promise((_, reject) => (timer = setTimeout(() => reject(new Error(`${what} never came`)), 10_000)));
+  return Promise.race([promise, late]).finally(() => clearTimeout(timer));
+}
+
+test("a delegation runs under the id its caller gives, and names its thread as it starts", async () => {
+  const registry = createOperationRegistry();
+  let started;
+  const threadStarted = new Promise((resolve) => (started = resolve));
+  const run = executeDelegate(
+    { spec: "x", mode: "ask", workspace: process.cwd() },
+    {
+      ...delegateOptions("unused"),
+      operationRegistry: registry,
+      resolve: await hangingCodex("thread-live"),
+      runProcess: undefined,
+      delegationId: "task-1",
+      onThreadStarted: (threadId, resumeNote) => started({ threadId, resumeNote }),
+    }
+  );
+  try {
+    assert.deepEqual(await within10s(threadStarted, "the thread start"), { threadId: "thread-live", resumeNote: undefined });
+    const cancel = await registry.cancel({ id: "task-1" });
+    assert.equal(cancel.status, "cancelled");
+    const result = await run;
+    assert.equal(result.status, "interrupted");
+    assert.equal(result.threadId, "thread-live");
+  } finally {
+    await registry.cancel({});
+  }
+});
+
+test("a resume that came back on another thread says so as the thread starts", async () => {
+  const registry = createOperationRegistry();
+  let started;
+  const threadStarted = new Promise((resolve) => (started = resolve));
+  const run = executeDelegate(
+    { spec: "x", mode: "ask", workspace: process.cwd(), resumeThreadId: "thread-old" },
+    {
+      ...delegateOptions("unused"),
+      operationRegistry: registry,
+      resolve: await hangingCodex("thread-new"),
+      runProcess: undefined,
+      onThreadStarted: (threadId, resumeNote) => started({ threadId, resumeNote }),
+    }
+  );
+  let threadId, resumeNote;
+  try {
+    ({ threadId, resumeNote } = await within10s(threadStarted, "the thread start"));
+  } finally {
+    await registry.cancel({});
+    await run;
+  }
+  assert.equal(threadId, "thread-new");
+  assert.match(resumeNote, /thread-new/);
+  assert.match(resumeNote, /thread-old/);
+});
+
+test("Codex's exit and an escaped kill reach the delegation's caller", async () => {
+  const seen = [];
+  await executeDelegate(
+    { spec: "x", mode: "ask", workspace: process.cwd() },
+    {
+      ...delegateOptions("t-hooks"),
+      runProcess: async (options) => {
+        options.onExit();
+        options.onUnseenExit("still running");
+        return { status: "completed", exitCode: 0, threadId: "t-hooks", result: "done", warnings: [], filesReportedByEditTools: [] };
+      },
+      onRunDecided: () => seen.push("decided"),
+      onUnseenExit: (note) => seen.push(note),
+    }
+  );
+  assert.deepEqual(seen, ["decided", "still running"]);
+});
+
 test("a cancel during the model check keeps Codex from starting", async () => {
   const codex = await recordingCodex();
   try {

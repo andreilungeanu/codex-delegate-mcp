@@ -247,6 +247,67 @@ test("a kill that never reaps the tree still settles the delegation", async () =
   assert.ok(result.warnings.some((w) => /did not exit within 40ms/.test(w)));
 });
 
+test("an escaped kill is reported the moment the deadline gives up, with the warning's text", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-unseen-"));
+  const notes = [];
+  const result = await runCodexProcess({
+    command: "codex",
+    args: ["exec"],
+    cwd: dir,
+    resultFile: path.join(dir, "last.txt"),
+    spawnImpl: () => {
+      const child = new EventEmitter();
+      child.pid = 777;
+      child.stdout = new Readable({ read() {} });
+      child.stderr = new Readable({ read() {} });
+      child.exitCode = null;
+      child.signalCode = null;
+      return child;
+    },
+    treeKillImpl: async () => {},
+    platform: "linux",
+    startupMs: 20,
+    heartbeatMs: 0,
+    killDeadlineMs: 40,
+    timeoutMs: 10_000,
+    onUnseenExit: (note) => notes.push(note),
+  });
+  assert.equal(notes.length, 1);
+  assert.ok(result.warnings.includes(notes[0]), notes[0]);
+});
+
+// The grandchild holds Codex's stdout open past its exit, so the run settles a drain later.
+test("onExit fires when Codex exits, not when the run settles after the drain", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-on-exit-"));
+  const resultFile = path.join(dir, "last.txt");
+  const script = path.join(dir, "codex.js");
+  await writeFile(
+    script,
+    [
+      "const { spawn } = require('node:child_process');",
+      "spawn(process.execPath, ['-e', 'setTimeout(() => {}, 1500)'], { stdio: ['ignore', 1, 'ignore'], detached: true }).unref();",
+      `require('node:fs').writeFileSync(${JSON.stringify(resultFile)}, 'done');`,
+      "console.log(JSON.stringify({ type: 'turn.completed', usage: {} }));",
+    ].join("\n")
+  );
+  let exitedAt;
+  let calls = 0;
+  const result = await runCodexProcess({
+    command: process.execPath,
+    args: [script],
+    resultFile,
+    heartbeatMs: 0,
+    onExit: () => {
+      calls++;
+      exitedAt = Date.now();
+    },
+  });
+  const settledAt = Date.now();
+  assert.equal(result.status, "completed");
+  assert.equal(calls, 1);
+  assert.ok(settledAt - exitedAt >= 500, `onExit came ${settledAt - exitedAt}ms before the run settled`);
+});
+
 test("a kill deadline that fires settles without inventing an exit code", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-killcode-"));
   const resultFile = path.join(dir, "last.txt");

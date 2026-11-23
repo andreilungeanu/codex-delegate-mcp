@@ -32,6 +32,20 @@ import { preflightReviewTarget } from "./git-preflight.js";
  */
 const MODEL_CHECK_MS = 1000;
 
+/**
+ * The MCP task layer passes delegationId (its task id) and the three hooks: the thread start, after
+ * which the request is answered with the task; Codex's exit, after which a cancel changes nothing;
+ * and a kill that escaped its deadline.
+ *
+ * @param {any} rawArgs
+ * @param {{
+ *   delegationId?: string,
+ *   onThreadStarted?: (threadId: string, resumeNote?: string) => void,
+ *   onRunDecided?: () => void,
+ *   onUnseenExit?: (note: string) => void,
+ *   [option: string]: any,
+ * }} [options]
+ */
 export async function executeDelegate(rawArgs, options = {}) {
   const {
     cwd = process.cwd(),
@@ -44,6 +58,10 @@ export async function executeDelegate(rawArgs, options = {}) {
     preflight = preflightReviewTarget,
     readCatalog = readModelCatalog,
     catalog = null,
+    delegationId: requestedId,
+    onThreadStarted,
+    onRunDecided,
+    onUnseenExit,
   } = options;
 
   if (env.CODEX_DELEGATE_DEPTH && String(env.CODEX_DELEGATE_DEPTH).trim() !== "") {
@@ -70,6 +88,7 @@ export async function executeDelegate(rawArgs, options = {}) {
   // Acquired before the preflight, so a cancel or shutdown during the review or model check
   // reaches the run before Codex starts.
   const lease = operationRegistry.acquire({
+    id: requestedId,
     threadId: request.resumeThreadId || null,
     cancel: async () => {
       controller.abort(new Error("cancelled"));
@@ -148,7 +167,15 @@ export async function executeDelegate(rawArgs, options = {}) {
         startupMs: envMs(env.CODEX_DELEGATE_STARTUP_MS, DEFAULT_STARTUP_MS),
         heartbeatMs: envMs(env.CODEX_DELEGATE_HEARTBEAT_MS, DEFAULT_HEARTBEAT_MS),
         onProgress,
-        onThreadId: (id) => lease.updateThreadId(id),
+        onThreadId: (id) => {
+          lease.updateThreadId(id);
+          const resumeNote = request.resumeThreadId && id !== request.resumeThreadId
+            ? `Codex started thread ${id} instead of resuming ${request.resumeThreadId}, so the earlier context did not carry over.`
+            : undefined;
+          onThreadStarted?.(id, resumeNote);
+        },
+        onExit: onRunDecided,
+        onUnseenExit,
       });
     } finally {
       // Removed before markSettled(): a shutdown exits as soon as its cancel settles.

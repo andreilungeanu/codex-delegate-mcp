@@ -43,6 +43,8 @@ export function cancelledBeforeSpawn() {
  *   signal?: AbortSignal,
  *   onProgress?: (message: string) => void,
  *   onThreadId?: (threadId: string) => void,
+ *   onExit?: () => void,
+ *   onUnseenExit?: (note: string) => void,
  *   timeoutMs?: number,
  *   startupMs?: number,
  *   heartbeatMs?: number,
@@ -63,6 +65,8 @@ export async function runCodexProcess({
   signal,
   onProgress,
   onThreadId,
+  onExit,
+  onUnseenExit,
   timeoutMs = DEFAULT_HARD_CAP_MS,
   startupMs = DEFAULT_STARTUP_MS,
   heartbeatMs = DEFAULT_HEARTBEAT_MS,
@@ -156,6 +160,9 @@ export async function runCodexProcess({
     if (exitObserved || killTimer || killDeadlineMs <= 0) return;
     killTimer = setTimeout(() => {
       killEscaped = true;
+      try {
+        onUnseenExit?.(killEscapedWarning(killDeadlineMs));
+      } catch {}
       settleExit(null);
     }, killDeadlineMs);
   };
@@ -258,6 +265,9 @@ export async function runCodexProcess({
     // status/reason carry the truthful explanation.
     exitCode = await exited;
     exitObserved = true;
+    try {
+      onExit?.();
+    } catch {}
     // Read once, here, rather than after the drain below: `interrupted` discards the
     // final-message file, so a cancel landing in the drain window would throw away an
     // answer the child had already finished writing. A cancel that caused this exit
@@ -342,6 +352,11 @@ export async function runCodexProcess({
     warnings,
     filesReportedByEditTools: [...events.reportedPaths],
   };
+}
+
+/** @param {number} killDeadlineMs */
+function killEscapedWarning(killDeadlineMs) {
+  return `Codex did not exit within ${killDeadlineMs}ms of being killed; a process may still be running. Check for stray codex processes.`;
 }
 
 /**
@@ -560,9 +575,7 @@ function buildRunWarnings({
   // the two that matter most — a reroute, a deprecation — land on runs that completed.
   for (const notice of notices) warnings.push(`Codex notice: ${notice}`);
   if (killEscaped) {
-    warnings.push(
-      `Codex did not exit within ${killDeadlineMs}ms of being killed; a process may still be running. Check for stray codex processes.`
-    );
+    warnings.push(killEscapedWarning(killDeadlineMs));
   } else if (drainEscaped) {
     warnings.push(
       `Codex exited but something it started still holds its output open after ${drainMs}ms.`
