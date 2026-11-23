@@ -87,7 +87,7 @@ test("Claude plugin launches bundled code and bootstraps its runtime dependencie
 test("Cursor plugin launches the published package and points at a committed logo", () => {
   // Cursor runs no SessionStart hook, so a plugin cache it clones never gets the
   // dependency install the Claude manifest relies on: `node src/server.js` there dies
-  // on `Cannot find package '@modelcontextprotocol/sdk'`. npx carries its own tree.
+  // on `Cannot find package '@modelcontextprotocol/server'`. npx carries its own tree.
   const manifest = read(".cursor-plugin/plugin.json");
   assert.equal(manifest.name, pluginName);
   const server = manifest.mcpServers[serverName];
@@ -181,7 +181,7 @@ test("no host auto-discovery leak configs at conventional paths", () => {
 // paths it ships against, and resolves them from local directories so the install is
 // offline and fast. An empty dependency set cannot tell a working hook from one that
 // exits 0 having installed nothing — npm writes a lockfile either way.
-const FIXTURES = { "@modelcontextprotocol/sdk": "sdk", zod: "zod" };
+const FIXTURES = { "@modelcontextprotocol/server": "sdk", zod: "zod" };
 
 const buildProbe = async (prepare) => {
   const root = await mkdtemp(join(tmpdir(), "cdm-plugin-"));
@@ -260,7 +260,7 @@ test("the dependency sentinel repairs every incomplete install", async () => {
   // The SDK is only one of the dependencies the server imports; an install that dies
   // after it and before zod satisfies a check that names the SDK alone.
   const partialTree = await buildProbe(async (root) => {
-    await placeDep(root, "@modelcontextprotocol/sdk", true);
+    await placeDep(root, "@modelcontextprotocol/server", true);
   });
   await runHook(partialTree);
   assert.ok(installRan(partialTree), "a dependency missing beside the SDK must still install");
@@ -269,10 +269,10 @@ test("the dependency sentinel repairs every incomplete install", async () => {
   // npm extracts into the package directory, so an interrupted unpack leaves the
   // directory present and its package.json absent.
   const partialPackage = await buildProbe(async (root) => {
-    await placeDep(root, "@modelcontextprotocol/sdk", false);
+    await placeDep(root, "@modelcontextprotocol/server", false);
     await placeDep(root, "zod", true);
   });
   await runHook(partialPackage);
   assert.ok(installRan(partialPackage), "a half-extracted dependency must still install");
-  assert.ok(importable(partialPackage, "@modelcontextprotocol/sdk"), "the repair must complete the extraction");
+  assert.ok(importable(partialPackage, "@modelcontextprotocol/server"), "the repair must complete the extraction");
 });

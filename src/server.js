@@ -3,8 +3,8 @@ import process from "node:process";
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { McpServer, CLIENT_CAPABILITIES_META_KEY, CLIENT_INFO_META_KEY } from "@modelcontextprotocol/server";
+import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { z } from "zod";
 import {
   DEFAULT_MODEL,
@@ -128,24 +128,24 @@ export async function runCancelTool({ args = {}, operationRegistry }) {
 
 export async function runDelegateTool({
   args,
-  extra,
+  ctx,
   execute = executeDelegateDefault,
   operationRegistry,
 }) {
-  const progressToken = extra?._meta?.progressToken;
+  const progressToken = ctx?.mcpReq?._meta?.progressToken;
   /** @type {(message: string) => void} */
   let onProgress = () => {};
   if (progressToken != null) {
     let progress = 0;
     onProgress = (message) => {
-      // sendNotification is async: a rejection settles outside this try, and an
+      // notify is async: a rejection settles outside this try, and an
       // unhandled one exits the process — taking every concurrent delegation with
       // it. A host that drops mid-run is the trigger, and the heartbeat drives this
       // path all turn. The try stays for a sync throw, which lands while the call
       // is still being made and so before Promise.resolve can wrap it.
       try {
         Promise.resolve(
-          extra.sendNotification({
+          ctx.mcpReq.notify({
             method: "notifications/progress",
             params: { progressToken, progress: ++progress, message },
           })
@@ -158,7 +158,7 @@ export async function runDelegateTool({
     const result = await execute(args, {
       operationRegistry,
       onProgress,
-      signal: extra?.signal,
+      signal: ctx?.mcpReq?.signal,
     });
     return {
       content: [{ type: /** @type {"text"} */ ("text"), text: JSON.stringify(result) }],
@@ -331,10 +331,10 @@ export function buildServer({
         openWorldHint: true,
       },
     },
-    async (args, extra) =>
+    async (args, ctx) =>
       runDelegateTool({
         args,
-        extra,
+        ctx,
         // The same snapshot the description names, so a model it offers is not read again.
         execute: (input, options) => executeDelegate(input, { ...options, catalog }),
         operationRegistry,
@@ -382,14 +382,11 @@ export function buildServer({
         openWorldHint: false,
       },
     },
-    async ({ deep, workspace }) => {
+    async ({ deep, workspace }, ctx) => {
       const out = await doctorRunner({
         deep,
         workspace: workspace || process.cwd(),
-        getClientInfo: () => ({
-          capabilities: server.server.getClientCapabilities(),
-          version: server.server.getClientVersion(),
-        }),
+        getClientInfo: () => clientInfoOf(server, ctx),
       });
       return {
         content: [{ type: /** @type {"text"} */ ("text"), text: JSON.stringify(out) }],
@@ -398,6 +395,21 @@ export function buildServer({
   );
 
   return server;
+}
+
+/**
+ * A 2025-era host declares itself once, in initialize, which the server's getters return; a
+ * 2026-07-28 host sends its identity with each request. initialize wins where there was one.
+ *
+ * @param {McpServer} server
+ * @param {any} ctx
+ */
+export function clientInfoOf(server, ctx) {
+  const envelope = ctx?.mcpReq?.envelope;
+  return {
+    capabilities: server.server.getClientCapabilities() ?? envelope?.[CLIENT_CAPABILITIES_META_KEY],
+    version: server.server.getClientVersion() ?? envelope?.[CLIENT_INFO_META_KEY],
+  };
 }
 
 /**
@@ -547,7 +559,9 @@ if (isMain) {
   } else {
     const operationRegistry = createOperationRegistry();
     installSignalCleanup(operationRegistry);
-    const server = buildServer({ operationRegistry, catalog: await readStartupCatalog() });
-    await server.connect(new StdioServerTransport());
+    const catalog = await readStartupCatalog();
+    // One factory serves both protocol eras, and may build more than one server: the registry
+    // and catalog are shared, so a cancel reaches every run and the catalog is read once.
+    serveStdio(() => buildServer({ operationRegistry, catalog }));
   }
 }

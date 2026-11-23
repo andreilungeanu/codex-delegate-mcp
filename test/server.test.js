@@ -6,8 +6,9 @@ import { mkdtemp } from "./fixtures/temp-dir.mjs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { z } from "zod";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { Client } from "@modelcontextprotocol/client";
+import { InMemoryTransport, CLIENT_CAPABILITIES_META_KEY, CLIENT_INFO_META_KEY } from "@modelcontextprotocol/server";
+import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import {
   buildServer,
   runDelegateTool,
@@ -20,6 +21,79 @@ import {
 import { DEFAULT_MODEL, DEFAULT_REASONING_EFFORT } from "../src/command.js";
 import { createOperationRegistry } from "../src/ops.js";
 import { executeDelegate } from "../src/delegate.js";
+
+// Through serveStdio, the production entry, in each MCP era it serves: a 2025-era host opens with
+// initialize; a 2026-07-28 one sends its identity and capabilities with every request.
+const ERAS = [["2025", undefined], ["2026-07-28", { mode: { pin: "2026-07-28" } }]];
+async function connectEra(versionNegotiation, serverOpts) {
+  const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair();
+  const served = serveStdio(() => buildServer(serverOpts), { transport: serverTransport });
+  const client = new Client(
+    { name: "era-host", version: "3" },
+    { capabilities: { elicitation: { form: {} } }, ...(versionNegotiation ? { versionNegotiation } : {}) }
+  );
+  await client.connect(clientTransport);
+  return { client, close: async () => { await client.close(); await served.close(); } };
+}
+const payloadOf = (result) => JSON.parse(result.content[0].text);
+
+for (const [era, versionNegotiation] of ERAS) {
+  test(`doctor reports the host's identity on a ${era}-era connection`, async () => {
+    const doctorRunner = async ({ getClientInfo }) => getClientInfo();
+    const { client, close } = await connectEra(versionNegotiation, { doctorRunner });
+    try {
+      const info = payloadOf(await client.callTool({ name: "doctor", arguments: {} }));
+      assert.equal(info.version?.name, "era-host");
+      assert.deepEqual(info.capabilities?.elicitation, { form: {} });
+    } finally {
+      await close();
+    }
+  });
+
+  if (era === "2025") {
+    test("on a 2025-era connection initialize names the host, not envelope keys a request carries", async () => {
+      const doctorRunner = async ({ getClientInfo }) => getClientInfo();
+      const { client, close } = await connectEra(versionNegotiation, { doctorRunner });
+      try {
+        const _meta = {
+          [CLIENT_INFO_META_KEY]: { name: "envelope-host", version: "9" },
+          [CLIENT_CAPABILITIES_META_KEY]: { sampling: {} },
+        };
+        const info = payloadOf(await client.callTool({ name: "doctor", arguments: {}, _meta }));
+        assert.equal(info.version?.name, "era-host");
+        assert.deepEqual(info.capabilities, { elicitation: { form: {} } });
+      } finally {
+        await close();
+      }
+    });
+  }
+
+  test(`delegate sends progress and sees the host's cancellation on a ${era}-era connection`, async () => {
+    let aborted;
+    const executeDelegate = async (_args, { onProgress, signal }) => {
+      onProgress("tick");
+      aborted = new Promise((resolve) => signal.addEventListener("abort", () => resolve(true), { once: true }));
+      await aborted;
+      return { result: "", status: "interrupted", reason: "cancelled", workspace: process.cwd() };
+    };
+    const { client, close } = await connectEra(versionNegotiation, { executeDelegate });
+    try {
+      const host = new AbortController();
+      let ticked;
+      const tick = new Promise((resolve) => (ticked = resolve));
+      const call = client.callTool(
+        { name: "delegate", arguments: { workspace: process.cwd(), spec: "x" } },
+        { signal: host.signal, onprogress: (p) => p.message === "tick" && ticked() }
+      );
+      await tick;
+      host.abort();
+      await assert.rejects(call);
+      assert.equal(await aborted, true, "the host's cancellation must reach the delegation's signal");
+    } finally {
+      await close();
+    }
+  });
+}
 
 test("buildServer registers delegate, cancel, doctor", () => {
   const server = buildServer({
@@ -112,7 +186,7 @@ test("runDelegateTool returns the result as its only payload on success", async 
   const registry = createOperationRegistry();
   const response = await runDelegateTool({
     args: { spec: "hi" },
-    extra: {},
+    ctx: {},
     operationRegistry: registry,
     execute: async () => ({
       result: "done",
@@ -138,7 +212,7 @@ test("a result is returned once, as one compact JSON block", async () => {
   };
   const response = await runDelegateTool({
     args: { spec: "hi" },
-    extra: {},
+    ctx: {},
     operationRegistry: createOperationRegistry(),
     execute: async () => payload,
   });
@@ -158,7 +232,7 @@ test("runDelegateTool returns isError payload on failure", async () => {
   err.code = "delegate_failed";
   const response = await runDelegateTool({
     args: { spec: "hi" },
-    extra: {},
+    ctx: {},
     operationRegistry: createOperationRegistry(),
     execute: async () => {
       throw err;
@@ -387,7 +461,7 @@ test("the serialized delegation result never contains resultSource", async () =>
   for (const payload of outcomes) {
     const response = await runDelegateTool({
       args: { spec: "hi" },
-      extra: {},
+      ctx: {},
       operationRegistry: createOperationRegistry(),
       execute: async () => payload,
     });
@@ -406,13 +480,15 @@ const progressResult = {
   warnings: [],
 };
 
-test("runDelegateTool survives a sendNotification that throws synchronously", async () => {
+test("runDelegateTool survives a notify that throws synchronously", async () => {
   const response = await runDelegateTool({
     args: { spec: "hi" },
-    extra: {
-      _meta: { progressToken: 1 },
-      sendNotification: () => {
-        throw new Error("Not connected");
+    ctx: {
+      mcpReq: {
+        _meta: { progressToken: 1 },
+        notify: () => {
+          throw new Error("Not connected");
+        },
       },
     },
     operationRegistry: createOperationRegistry(),
@@ -425,21 +501,23 @@ test("runDelegateTool survives a sendNotification that throws synchronously", as
 });
 
 // The synchronous stub above never reaches the path that actually breaks: the SDK
-// declares sendNotification async, so its rejection settles after the handler has
+// declares notify async, so its rejection settles after the handler has
 // already returned. The assertion is the absence of an unhandled rejection — the
 // tool result is ok either way, which is what makes a result-only test pass against
 // code that exits the process in production.
-test("runDelegateTool survives a sendNotification that rejects asynchronously", async () => {
+test("runDelegateTool survives a notify that rejects asynchronously", async () => {
   const rejections = [];
   const onUnhandled = (err) => rejections.push(err);
   process.on("unhandledRejection", onUnhandled);
   try {
     const response = await runDelegateTool({
       args: { spec: "hi" },
-      extra: {
-        _meta: { progressToken: 1 },
-        sendNotification: async () => {
-          throw new Error("Not connected");
+      ctx: {
+        mcpReq: {
+          _meta: { progressToken: 1 },
+          notify: async () => {
+            throw new Error("Not connected");
+          },
         },
       },
       operationRegistry: createOperationRegistry(),
