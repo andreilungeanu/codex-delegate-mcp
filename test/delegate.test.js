@@ -287,6 +287,42 @@ async function recordingCodex() {
   };
 }
 
+test("a cancel during the model check keeps Codex from starting", async () => {
+  const codex = await recordingCodex();
+  try {
+    const registry = createOperationRegistry();
+    let catalogAsked;
+    const asked = new Promise((resolve) => (catalogAsked = resolve));
+    let releaseCatalog;
+    const held = new Promise((resolve) => (releaseCatalog = resolve));
+    // A model outside the startup catalog, so the catalog is read again before the spawn.
+    const run = executeDelegate(
+      { spec: "x", mode: "ask", workspace: process.cwd(), model: "gpt-6-sol" },
+      {
+        env: {},
+        operationRegistry: registry,
+        resolve: codex.resolve,
+        readCatalog: async () => {
+          catalogAsked();
+          await held;
+          return CATALOG;
+        },
+        runProcess: (opts) => runCodexProcess({ ...opts, heartbeatMs: 0, drainMs: 60 }),
+      }
+    );
+    await asked;
+    const cancel = registry.cancel({});
+    releaseCatalog();
+    const [result, cancelled] = await Promise.all([run, cancel]);
+    assert.equal(cancelled.status, "cancelled");
+    assert.equal(result.status, "interrupted");
+    assert.equal(result.reason, "cancelled");
+    assert.equal(codex.started(), false, "Codex started after the cancel");
+  } finally {
+    await rm(codex.dir, { recursive: true, force: true });
+  }
+});
+
 test("a delegation that arrives once shutdown began starts no Codex", async () => {
   const codex = await recordingCodex();
   try {

@@ -56,64 +56,62 @@ export async function executeDelegate(rawArgs, options = {}) {
   }
 
   const request = validateDelegateInput(rawArgs, { cwd });
-  if (request.mode === "review") {
-    await preflight({ workspace: request.workspace, reviewTarget: request.reviewTarget });
+
+  const controller = new AbortController();
+  // Aborting only *requests* the kill. Resolving cancel on the abort alone
+  // reported "cancelled" while codex was still alive; waiting for the run to
+  // settle makes the answer true. runCodexProcess bounds this with its kill
+  // deadline, so a tree that refuses to die cannot hang the cancel either.
+  let markSettled;
+  const settled = new Promise((resolve) => {
+    markSettled = resolve;
+  });
+  // Acquired before the preflight, so a cancel or shutdown during the review or model check
+  // reaches the run before Codex starts.
+  const lease = operationRegistry.acquire({
+    threadId: request.resumeThreadId || null,
+    cancel: async () => {
+      controller.abort(new Error("cancelled"));
+      await settled;
+    },
+  });
+  const delegationId = lease.delegationId;
+  const forward = () => controller.abort(outerSignal?.reason);
+  if (outerSignal) {
+    if (outerSignal.aborted) controller.abort(outerSignal.reason);
+    else outerSignal.addEventListener("abort", forward, { once: true });
   }
-  // Resolver notes describe the setup, not this run — doctor reports them.
-  const codex = resolve({ env });
-  const commandArgs = codex.commandArgs ?? [];
-  const trusted = await assertKnownModel(request.model, { command: codex.command, commandArgs, readCatalog, catalog });
-  const warnings = [];
-  const effortNote = effortWarning(request, trusted);
-  if (effortNote) warnings.push(effortNote);
 
-  // Created before the work that can throw, so every exit path has to clean it up.
-  const tmp = await mkdtemp(path.join(tmpdir(), "codex-delegate-"));
+  /** @type {any} */
+  let codex;
+  /** @type {any} */
   let processResult;
-  let delegationId;
+  const warnings = [];
   try {
-    const resultFile = path.join(tmp, "last-message.txt");
-    let outputSchemaFile = null;
-    if (request.mode === "plan") {
-      outputSchemaFile = path.join(tmp, "plan.schema.json");
-      await writeFile(outputSchemaFile, JSON.stringify(PLAN_SCHEMA), "utf8");
+    // Announced first: the only handle on a run that wedges before Codex names a thread.
+    // Inside the try, so a throwing progress sink still releases the lease.
+    onProgress?.(`delegation id: ${delegationId}`);
+    if (request.mode === "review") {
+      await preflight({ workspace: request.workspace, reviewTarget: request.reviewTarget });
     }
+    // Resolver notes describe the setup, not this run — doctor reports them.
+    codex = resolve({ env });
+    const commandArgs = codex.commandArgs ?? [];
+    const trusted = await assertKnownModel(request.model, { command: codex.command, commandArgs, readCatalog, catalog });
+    const effortNote = effortWarning(request, trusted);
+    if (effortNote) warnings.push(effortNote);
 
-    const built = buildCodexArgs(request, { resultFile, outputSchemaFile });
-
-    const controller = new AbortController();
-    const forward = () => controller.abort(outerSignal?.reason);
-    if (outerSignal) {
-      if (outerSignal.aborted) controller.abort(outerSignal.reason);
-      else outerSignal.addEventListener("abort", forward, { once: true });
-    }
-
-    // Aborting only *requests* the kill. Resolving cancel on the abort alone
-    // reported "cancelled" while codex was still alive; waiting for the run to
-    // settle makes the answer true. runCodexProcess bounds this with its kill
-    // deadline, so a tree that refuses to die cannot hang the cancel either.
-    let markSettled;
-    const settled = new Promise((resolve) => {
-      markSettled = resolve;
-    });
-
-    const lease = operationRegistry.acquire({
-      threadId: request.resumeThreadId || null,
-      cancel: async () => {
-        controller.abort(new Error("cancelled"));
-        await settled;
-      },
-    });
-    // Announced before the spawn, and before Codex has a thread id to announce:
-    // this is the only handle a caller has for cancelling a run that wedges during
-    // startup, and it arrives too late to be useful if it waits for the result.
-    // Inside the try on purpose: the server's progress sink never throws, a
-    // library caller's can, and a throw before this block skipped the release —
-    // leaving a record whose cancel waits on `settled` forever.
-    delegationId = lease.delegationId;
-
+    const tmp = await mkdtemp(path.join(tmpdir(), "codex-delegate-"));
     try {
-      onProgress?.(`delegation id: ${lease.delegationId}`);
+      const resultFile = path.join(tmp, "last-message.txt");
+      let outputSchemaFile = null;
+      if (request.mode === "plan") {
+        outputSchemaFile = path.join(tmp, "plan.schema.json");
+        await writeFile(outputSchemaFile, JSON.stringify(PLAN_SCHEMA), "utf8");
+      }
+
+      const built = buildCodexArgs(request, { resultFile, outputSchemaFile });
+
       processResult = await runProcess({
         command: codex.command,
         args: [...commandArgs, ...built.args],
@@ -131,13 +129,11 @@ export async function executeDelegate(rawArgs, options = {}) {
     } finally {
       // Removed before markSettled(): a shutdown exits as soon as its cancel settles.
       await rm(tmp, { recursive: true, force: true }).catch(() => {});
-      markSettled();
-      lease.release();
-      if (outerSignal) outerSignal.removeEventListener("abort", forward);
     }
   } finally {
-    // For a throw before the run started; a folder already removed is a no-op.
-    await rm(tmp, { recursive: true, force: true }).catch(() => {});
+    markSettled();
+    lease.release();
+    if (outerSignal) outerSignal.removeEventListener("abort", forward);
   }
 
   warnings.push(...(processResult.warnings || []));
