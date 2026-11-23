@@ -649,21 +649,21 @@ test("resolver setup notes stay out of the per-run warnings", async () => {
   assert.equal(result.warnings, undefined);
 });
 
-test("the temp directory is removed when argv construction throws", async () => {
+// E2BIG: a review brief past the OS limit on Linux or macOS, where the bridge sets no cap of its own.
+test("the temp directory is removed when Codex cannot be spawned", async () => {
   const before = (await readdir(tmpdir())).filter((n) => n.startsWith("codex-delegate-")).length;
   await assert.rejects(
     executeDelegate(
+      { spec: "x", mode: "review", reviewTarget: { kind: "uncommitted" }, workspace: process.cwd() },
       {
-        // Only review still builds the brief into argv, so it is the only mode left
-        // that can fail this way.
-        spec: "x".repeat(40_000),
-        mode: "review",
-        reviewTarget: { kind: "uncommitted" },
-        workspace: process.cwd(),
-      },
-      { ...delegateOptions("tid-big"), preflight: async () => {} }
+        ...delegateOptions("tid-big"),
+        preflight: async () => {},
+        runProcess: async () => {
+          throw Object.assign(new Error("spawn E2BIG"), { code: "E2BIG" });
+        },
+      }
     ),
-    /argv is too long/
+    /E2BIG/
   );
   const after = (await readdir(tmpdir())).filter((n) => n.startsWith("codex-delegate-")).length;
   assert.equal(after, before);
