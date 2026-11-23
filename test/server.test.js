@@ -492,6 +492,7 @@ async function fireSignal(registry) {
   for (const listener of added) listener();
   process.removeAllListeners("SIGINT");
   process.removeAllListeners("SIGTERM");
+  process.removeAllListeners("SIGHUP");
   for (const listener of before) process.on("SIGINT", listener);
   // The exit rides the kills' settlement, one clean loop turn later; flush the
   // microtasks and drain the turn so callers observe the exited process.
@@ -526,6 +527,7 @@ test("a shutdown signal dispatches the kill before the process exits", async () 
   added[0]();
   process.removeAllListeners("SIGINT");
   process.removeAllListeners("SIGTERM");
+  process.removeAllListeners("SIGHUP");
   for (const listener of before) process.on("SIGINT", listener);
   // Still inside the handler's aftermath: the kill is dispatched, the exit is not.
   assert.deepEqual(order, ["kill-dispatched"]);
@@ -605,12 +607,88 @@ test("stdin closing dispatches the kill before the process exits", async () => {
   stdin.emit("end");
   process.removeAllListeners("SIGINT");
   process.removeAllListeners("SIGTERM");
+  process.removeAllListeners("SIGHUP");
   for (const listener of before) process.on("SIGINT", listener);
   await new Promise((resolve) => setImmediate(resolve));
   for (const fn of scheduled.splice(0)) fn();
 
   assert.deepEqual(order, ["kill-dispatched", "exit"]);
   assert.deepEqual(exits, [0], "a host that closed the pipe is a clean shutdown");
+});
+
+/** Install the shutdown handlers, run `drive` with a way to fire each one, then remove them. */
+async function driveShutdown(drive) {
+  const { EventEmitter } = await import("node:events");
+  const world = { cancels: 0, exits: [], codes: [], scheduled: [], stdin: new EventEmitter() };
+  const signals = ["SIGINT", "SIGTERM", "SIGHUP"];
+  const before = Object.fromEntries(signals.map((s) => [s, process.listeners(s).slice()]));
+  installSignalCleanup(
+    { cancel: async () => void world.cancels++ },
+    {
+      exit: (code) => world.exits.push(code),
+      setExitCode: (code) => world.codes.push(code),
+      armExitBelt: () => {},
+      schedule: (fn) => world.scheduled.push(fn),
+      stdin: world.stdin,
+    }
+  );
+  const fire = (signal) => {
+    for (const listener of process.listeners(signal)) if (!before[signal].includes(listener)) listener();
+  };
+  try {
+    await drive({ world, fire, eof: () => world.stdin.emit("end") });
+  } finally {
+    for (const s of signals) {
+      for (const listener of process.listeners(s)) if (!before[s].includes(listener)) process.off(s, listener);
+    }
+  }
+  return world;
+}
+
+const settle = async (world) => {
+  await new Promise((resolve) => setImmediate(resolve));
+  for (const fn of world.scheduled.splice(0)) fn();
+};
+
+test("SIGHUP stops the delegations and exits 129", async () => {
+  const world = await driveShutdown(async ({ world, fire }) => {
+    fire("SIGHUP");
+    assert.equal(world.cancels, 1);
+    await settle(world);
+  });
+  assert.deepEqual(world.exits, [129]);
+});
+
+test("a signal after the stdin close sets its exit code and still waits for the kills", async () => {
+  const world = await driveShutdown(async ({ world, fire, eof }) => {
+    eof();
+    fire("SIGTERM");
+    assert.deepEqual(world.exits, [], "one signal must not cut the wait short");
+    assert.equal(world.codes.at(-1), 143);
+    await settle(world);
+  });
+  assert.equal(world.cancels, 1);
+  assert.deepEqual(world.exits, [143]);
+});
+
+test("the stdin close after a signal keeps the signal's exit code and the wait", async () => {
+  const world = await driveShutdown(async ({ world, fire, eof }) => {
+    fire("SIGHUP");
+    eof();
+    assert.deepEqual(world.exits, []);
+    await settle(world);
+  });
+  assert.deepEqual(world.exits, [129]);
+});
+
+test("a second signal exits at once, also after the stdin close", async () => {
+  const world = await driveShutdown(async ({ world, fire, eof }) => {
+    eof();
+    fire("SIGTERM");
+    fire("SIGINT");
+    assert.deepEqual(world.exits, [130]);
+  });
+  assert.equal(world.cancels, 1);
 });
 
 test("the exit leaves the signal path, but the exit code and belt do not wait", async () => {
@@ -638,6 +716,7 @@ test("the exit leaves the signal path, but the exit code and belt do not wait", 
   added[0]();
   process.removeAllListeners("SIGINT");
   process.removeAllListeners("SIGTERM");
+  process.removeAllListeners("SIGHUP");
   for (const listener of before) process.on("SIGINT", listener);
 
   assert.deepEqual(exitCodes, [130], "exit code is recorded in the handler");
@@ -705,20 +784,19 @@ test("an armed belt does not hold an otherwise idle process open", { timeout: 30
   assert.ok(elapsed < 10_000, `the belt held the process open (${elapsed}ms)`);
 });
 
-// The only test here that runs the actual entrypoint against a real worker. Every
-// test above injects an exit and a registry, and none of them would notice that
-// nothing is listening for EOF. An idle server would not either: with no delegation
-// holding the loop open it exits on its own the moment stdin ends, whatever the
-// handlers do. So this one has to be busy to mean anything.
-test("a real server kills its worker and exits when its stdin closes", { timeout: 60_000 }, async () => {
+// The only tests here that run the actual entrypoint against a real worker. Every test above
+// injects an exit and a registry, and none of them would notice that nothing is listening for
+// EOF or a signal. An idle server would not either: with no delegation holding the loop open it
+// exits on its own the moment stdin ends, whatever the handlers do. So these have to be busy.
+async function shutDownBusyServer(name, shutDown) {
   const { spawn } = await import("node:child_process");
   const { fileURLToPath } = await import("node:url");
-  const { readFileSync, existsSync } = await import("node:fs");
+  const { readFileSync, existsSync, readdirSync } = await import("node:fs");
   const serverPath = fileURLToPath(new URL("../src/server.js", import.meta.url));
 
   // Stand in for the Codex binary: `node` launched against a file called `exec`,
   // which is the first argument the bridge always passes. It reports a pid and hangs.
-  const dir = await mkdtemp(path.join(tmpdir(), "cdm-eof-"));
+  const dir = await mkdtemp(path.join(tmpdir(), `cdm-${name}-`));
   const pidFile = path.join(dir, "worker.pid");
   await writeFile(
     path.join(dir, "exec"),
@@ -731,7 +809,7 @@ test("a real server kills its worker and exits when its stdin closes", { timeout
   // inherited through this spread: the server would then refuse its own delegate call
   // and this test would wait out the whole spawn deadline for a worker that never came.
   // The server's own temp folder, so the delegation's folder can be looked for after the exit.
-  const serverTmp = await mkdtemp(path.join(tmpdir(), "cdm-eof-tmp-"));
+  const serverTmp = await mkdtemp(path.join(tmpdir(), `cdm-${name}-tmp-`));
   const env = { ...process.env, CODEX_DELEGATE_COMMAND: process.execPath, TEMP: serverTmp, TMP: serverTmp, TMPDIR: serverTmp };
   delete env.CODEX_DELEGATE_DEPTH;
 
@@ -739,6 +817,7 @@ test("a real server kills its worker and exits when its stdin closes", { timeout
     stdio: ["pipe", "pipe", "pipe"],
     env,
   });
+  const exited = new Promise((resolve) => child.on("exit", (code, signal) => resolve({ code, signal })));
   const alive = (pid) => {
     try {
       process.kill(pid, 0);
@@ -781,19 +860,17 @@ test("a real server kills its worker and exits when its stdin closes", { timeout
       await new Promise((r) => setTimeout(r, 50));
     }
     workerPid = Number(readFileSync(pidFile, "utf8").trim());
-    assert.ok(alive(workerPid), "the worker must be running before the pipe closes");
+    assert.ok(alive(workerPid), "the worker must be running before the shutdown");
 
-    child.stdin.end();
-
-    const exitCode = await new Promise((resolve) => child.on("exit", resolve));
-    assert.equal(exitCode, 0, "a host that closed the pipe is a clean shutdown");
+    shutDown(child);
+    const exit = await exited;
 
     const until = Date.now() + 20_000;
     while (Date.now() < until && alive(workerPid)) await new Promise((r) => setTimeout(r, 50));
-    assert.equal(alive(workerPid), false, "the worker outlived the host that closed the pipe");
-    const { readdirSync } = await import("node:fs");
-    assert.deepEqual(readdirSync(serverTmp).filter((name) => name.startsWith("codex-delegate-")), [],
+    assert.equal(alive(workerPid), false, "the worker outlived the server");
+    assert.deepEqual(readdirSync(serverTmp).filter((entry) => entry.startsWith("codex-delegate-")), [],
       "the delegation's temp folder outlived the shutdown");
+    return exit;
   } finally {
     if (child.exitCode === null) child.kill();
     if (workerPid && alive(workerPid)) {
@@ -802,6 +879,27 @@ test("a real server kills its worker and exits when its stdin closes", { timeout
       } catch {}
     }
   }
+}
+
+test("a real server kills its worker and exits when its stdin closes", { timeout: 60_000 }, async () => {
+  const exit = await shutDownBusyServer("eof", (child) => child.stdin.end());
+  assert.deepEqual(exit, { code: 0, signal: null }, "a host that closed the pipe is a clean shutdown");
+});
+
+// On Windows kill() ends the child without running its signal handlers.
+const posixSignals = { skip: process.platform === "win32" ? "POSIX signals" : false, timeout: 60_000 };
+
+test("a real server kills its worker and exits 129 on SIGHUP", posixSignals, async () => {
+  const exit = await shutDownBusyServer("hup", (child) => child.kill("SIGHUP"));
+  assert.deepEqual(exit, { code: 129, signal: null });
+});
+
+test("a real server given SIGTERM right after its stdin closes still kills its worker, and exits 143", posixSignals, async () => {
+  const exit = await shutDownBusyServer("eof-term", (child) => {
+    child.stdin.end();
+    child.kill("SIGTERM");
+  });
+  assert.deepEqual(exit, { code: 143, signal: null });
 });
 
 test("a real server describes the models its CLI lists, read before the first tools/list", { timeout: 60_000 }, async () => {

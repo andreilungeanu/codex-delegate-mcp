@@ -444,13 +444,24 @@ export function installSignalCleanup(
   } = {}
 ) {
   let shuttingDown = false;
+  let signalsSeen = 0;
+  // A signal's code, even when the signal follows the stdin EOF.
+  let exitCode = 0;
 
-  const shutdown = (code) => {
-    // Registering a handler replaces Node's default exit, so every path here has to
-    // reach `exit`: a server that swallows Ctrl-C is a worse bug than the tree it
-    // would have leaked. A second signal skips straight to it.
-    if (shuttingDown) return exit(code);
+  const shutdown = (code, fromSignal = false) => {
+    if (fromSignal) signalsSeen++;
+    if (shuttingDown) {
+      // Only a second signal skips the wait: a hangup closes stdin and sends SIGHUP, in either order.
+      if (fromSignal && signalsSeen === 1) {
+        exitCode = code;
+        setExitCode(code);
+      }
+      // Registering a handler replaces Node's default exit, so a second signal has to reach it.
+      if (signalsSeen >= 2) exit(code);
+      return;
+    }
     shuttingDown = true;
+    exitCode = code;
     // exitCode is set in the handler itself so that even a naturally draining loop
     // dies with the right code if the scheduled exit below never gets to run.
     setExitCode(code);
@@ -462,18 +473,20 @@ export function installSignalCleanup(
     try {
       Promise.resolve(operationRegistry.cancel({ cause: "shutdown" }))
         .catch(() => {})
-        .then(() => schedule(() => exit(code)))
+        .then(() => schedule(() => exit(exitCode)))
         .catch(() => {});
     } catch {
-      schedule(() => exit(code));
+      schedule(() => exit(exitCode));
     }
   };
 
+  // SIGHUP is a closed terminal; its default would end the server and leave Codex running.
   const signals = /** @type {[NodeJS.Signals, number][]} */ ([
     ["SIGINT", 130],
     ["SIGTERM", 143],
+    ["SIGHUP", 129],
   ]);
-  for (const [signal, code] of signals) process.on(signal, () => shutdown(code));
+  for (const [signal, code] of signals) process.on(signal, () => shutdown(code, true));
 
   // Closing the server's stdin is how the stdio transport is shut down, and it is
   // what a host reaches for before it resorts to a signal. The SDK transport does not
