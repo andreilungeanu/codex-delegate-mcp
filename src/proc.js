@@ -71,6 +71,12 @@ export async function treeKill(pid, { childAlive = true } = {}) {
   }
   // Codex starts each shell command in a session of its own (measured on Linux, CLI 0.170), out
   // of the group's reach, so the tree is walked while Codex is alive to hold its parent links.
+  // Stopped first, so Codex starts no command the listing would miss.
+  if (childAlive) {
+    try {
+      process.kill(-pid, "SIGSTOP");
+    } catch {}
+  }
   const descendants = childAlive ? descendantPids(pid) : [];
   try {
     process.kill(-pid, "SIGKILL");

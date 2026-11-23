@@ -2,7 +2,7 @@
 // ignores SIGTERM, reports that pid, and then either exits or lingers. The orphan
 // case is the point — the leader is gone while the work it started is not.
 import { spawn } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 
 const [pidFile, mode] = process.argv.slice(2);
 
@@ -28,4 +28,14 @@ writeFileSync(pidFile, `${grandchild.pid}\n`);
 
 // "leader-exits" leaves the grandchild in the group with no live leader.
 if (mode === "leader-exits") process.exit(0);
+// "spawn-on-trigger" starts one more command in a session of its own once <pidFile>.trigger exists,
+// and reports its pid in <pidFile>.late.
+if (mode === "spawn-on-trigger") {
+  const watch = setInterval(() => {
+    if (!existsSync(`${pidFile}.trigger`)) return;
+    clearInterval(watch);
+    const late = spawn(process.execPath, ["-e", "setInterval(() => {}, 1 << 30);"], { stdio: "ignore", detached: true });
+    writeFileSync(`${pidFile}.late`, `${late.pid}\n`);
+  }, 5);
+}
 setInterval(() => {}, 1 << 30);

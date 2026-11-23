@@ -47,6 +47,7 @@ test("the bare pid is only signalled while the child is alive", posixOnly, async
   // gone — that signal would land on somebody else's process.
   const calls = await recordKills(4242, { childAlive: true });
   assert.deepEqual(calls, [
+    { target: -4242, signal: "SIGSTOP" },
     { target: -4242, signal: "SIGKILL" },
     { target: 4242, signal: "SIGKILL" },
   ]);
@@ -151,6 +152,46 @@ test("the kill reaches a grandchild in a session of its own while the leader is 
     try {
       process.kill(grandchildPid, "SIGKILL");
     } catch {}
+  }
+});
+
+/** Run `fn` with a `ps` on PATH that runs `body` (sh) in place of the real one at `$REAL_PS`. */
+async function withPs(body, fn) {
+  const { writeFileSync, chmodSync } = await import("node:fs");
+  const { execFileSync } = await import("node:child_process");
+  const dir = await mkdtemp(join(tmpdir(), "cdm-ps-"));
+  const realPs = execFileSync("sh", ["-c", "command -v ps"], { encoding: "utf8" }).trim();
+  writeFileSync(join(dir, "ps"), `#!/bin/sh\nREAL_PS=${realPs}\n${body}\n`);
+  chmodSync(join(dir, "ps"), 0o755);
+  const path = process.env.PATH;
+  process.env.PATH = `${dir}:${path}`;
+  try {
+    return await fn();
+  } finally {
+    process.env.PATH = path;
+  }
+}
+
+test("a command Codex starts while its tree is listed is killed too", posixOnly, async () => {
+  const { child, grandchildPid } = await startTree("spawn-on-trigger");
+  const pidFile = child.spawnargs[2];
+  let latePid;
+  try {
+    // The listing is taken before the trigger, so a command started on it is not in the listing.
+    await withPs(`out=$("$REAL_PS" "$@")\ntouch "${pidFile}.trigger"\nsleep 0.5\nprintf '%s\\n' "$out"`, () =>
+      treeKill(child.pid, { childAlive: true })
+    );
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    if (existsSync(`${pidFile}.late`)) {
+      latePid = Number(readFileSync(`${pidFile}.late`, "utf8").trim());
+      await until(() => !pidAlive(latePid), 5_000, "a command started during the listing survived the kill");
+    }
+  } finally {
+    for (const pid of [grandchildPid, latePid]) {
+      try {
+        if (pid) process.kill(pid, "SIGKILL");
+      } catch {}
+    }
   }
 });
 
