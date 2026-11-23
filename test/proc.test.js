@@ -195,6 +195,36 @@ test("a command Codex starts while its tree is listed is killed too", posixOnly,
   }
 });
 
+test("a ps that ignores SIGTERM does not hold the kill past its timeout", posixOnly, async () => {
+  const { child, grandchildPid } = await startTree("lingers");
+  try {
+    const startedAt = Date.now();
+    await withPs("trap '' TERM\nexec sleep 30", () => treeKill(child.pid, { childAlive: true }));
+    assert.ok(Date.now() - startedAt < 10_000, `the kill waited ${Date.now() - startedAt}ms on ps`);
+    await until(() => !isChildAlive(child), 10_000, "leader survived the kill");
+  } finally {
+    try {
+      process.kill(grandchildPid, "SIGKILL");
+    } catch {}
+  }
+});
+
+test("the descendant walk does not depend on the user's ps personality", posixOnly, async () => {
+  const { child, grandchildPid } = await startTree("own-session");
+  const personality = process.env.PS_PERSONALITY;
+  process.env.PS_PERSONALITY = "bsd";
+  try {
+    await treeKill(child.pid, { childAlive: true });
+    await until(() => !pidAlive(grandchildPid), 10_000, "grandchild survived the kill");
+  } finally {
+    if (personality === undefined) delete process.env.PS_PERSONALITY;
+    else process.env.PS_PERSONALITY = personality;
+    try {
+      process.kill(grandchildPid, "SIGKILL");
+    } catch {}
+  }
+});
+
 const win32Only = { skip: process.platform === "win32" ? false : "windows taskkill" };
 
 // POSIX gates the bare-pid kill on childAlive because a reaped pid can be recycled.

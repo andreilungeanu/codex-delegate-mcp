@@ -11,11 +11,16 @@ export function isChildAlive(child) {
  * fails: the group kill still runs.
  */
 function descendantPids(pid) {
+  // procps refuses -A under a BSD personality.
+  const { PS_PERSONALITY, CMD_ENV, ...env } = process.env;
   let stdout;
   try {
     stdout = execFileSync("ps", ["-A", "-o", "pid=,ppid="], {
       encoding: "utf8",
+      env,
+      // SIGKILL: a ps wrapper can ignore SIGTERM, and this blocks the loop until it exits.
       timeout: 3000,
+      killSignal: "SIGKILL",
       stdio: ["ignore", "pipe", "ignore"],
     });
   } catch {
