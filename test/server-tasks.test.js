@@ -326,3 +326,40 @@ test("a host that closes stdin mid-task leaves no Codex process behind", { timeo
     await server.cleanup();
   }
 });
+
+// Codex has exited and a process it started holds its stdout, so the run is in its drain.
+test("tasks/cancel after Codex exited keeps the result and still stops what Codex left running", { skip: process.platform === "win32" ? "POSIX process groups" : false, timeout: 60_000 }, async () => {
+  const server = await rawServer(
+    "task-drain-cancel",
+    `fs.writeFileSync(argv[argv.indexOf("--output-last-message") + 1], "done");
+     const held = require("child_process").spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: ["ignore", "inherit", "inherit"] });
+     fs.writeFileSync("held.pid", String(held.pid));
+     held.unref();
+     console.log(JSON.stringify({ type: "turn.completed", usage: {} }));`
+  );
+  let heldPid;
+  try {
+    await server.send("server/discover");
+    const call = await server.send("tools/call", { name: "delegate", arguments: { workspace: server.dir, spec: "x" } });
+    assert.equal(call.result.resultType, "task", JSON.stringify(call));
+    const workerPid = server.workerPid();
+    const exited = Date.now() + 10_000;
+    while (Date.now() < exited && alive(workerPid)) await new Promise((r) => setTimeout(r, 20));
+    heldPid = Number(readFileSync(path.join(server.dir, "held.pid"), "utf8"));
+    assert.ok(alive(heldPid), "the held process should be running when the cancel arrives");
+    await server.send("tasks/cancel", { taskId: call.result.taskId });
+    const gone = Date.now() + 10_000;
+    while (Date.now() < gone && alive(heldPid)) await new Promise((r) => setTimeout(r, 50));
+    assert.equal(alive(heldPid), false, "the process Codex left running outlived the cancel");
+    let task;
+    do task = (await server.send("tasks/get", { taskId: call.result.taskId })).result;
+    while (task.status === "working");
+    assert.equal(task.status, "completed");
+    assert.equal(payloadOf(task.result).result, "done");
+  } finally {
+    if (heldPid && alive(heldPid)) process.kill(heldPid, "SIGKILL");
+    server.child.stdin.end();
+    await server.exited;
+    await server.cleanup();
+  }
+});

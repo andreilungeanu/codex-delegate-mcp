@@ -85,13 +85,14 @@ test("a task cancelled before Codex started a thread names no thread to resume",
   assert.equal(store.view(task).statusMessage, "cancelled");
 });
 
-test("a cancel after Codex exited leaves the decided result alone", () => {
+test("a cancel after Codex exited leaves the decided result and still stops the run's processes", () => {
   const { store } = clockedStore();
   const task = store.create();
   store.add(task);
   task.runDecided = true;
   store.cancel(task);
-  assert.equal(task.ac.signal.aborted, false);
+  assert.equal(task.ac.signal.aborted, true);
+  assert.equal(store.view(task).status, "working");
   store.finish(task, { result: { content: [{ type: "text", text: "done" }] } });
   assert.equal(store.view(task).status, "completed");
 });

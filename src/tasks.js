@@ -75,10 +75,12 @@ export function createTaskStore({ now = Date.now, retainMs = RETAIN_MS, maxFinis
       }
       prune();
     },
-    // Once Codex has exited the result is decided, so a cancel leaves it, as the cancel tool does.
+    // Once Codex has exited the result is decided, so a cancel leaves it and only stops what Codex
+    // left running, as the cancel tool does.
     /** @param {Task} task */
     cancel(task) {
-      if (task.status !== "working" || task.runDecided) return;
+      if (task.status !== "working") return;
+      if (task.runDecided) return task.ac.abort();
       task.status = "cancelled";
       task.statusMessage = task.threadId ? `cancelled; resume with resumeThreadId ${task.threadId}` : "cancelled";
       if (task.resumeNote) note(task, task.resumeNote);
