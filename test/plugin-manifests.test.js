@@ -224,6 +224,14 @@ test("the SessionStart hook can spawn npm on this platform", async () => {
   }
 });
 
+// Claude Code shows Claude no stderr from a SessionStart hook that exits 0, so npm's summary goes there.
+test("the SessionStart hook keeps npm's output off stdout", async () => {
+  const root = await buildProbe();
+  const { stdout, stderr } = await runHook(root);
+  assert.equal(stdout, "", "nothing from the install may reach the session context");
+  assert.match(stderr, /added \d+ packages?/, "npm's summary is still there to diagnose from");
+});
+
 test("the dependency sentinel repairs every incomplete install", async () => {
   // A half-finished install leaves directories behind. Skipping on their bare
   // existence keeps the plugin broken on every later session, with the server still
