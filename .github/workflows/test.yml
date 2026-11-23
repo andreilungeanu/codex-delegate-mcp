@@ -18,6 +18,9 @@ jobs:
         include:
           - os: ubuntu-latest
             node-version: 24
+          # Node 24 is the first to warn DEP0190, which the SessionStart hook test checks on Windows.
+          - os: windows-latest
+            node-version: 24
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
