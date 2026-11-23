@@ -1979,8 +1979,9 @@ test("teardown still reaches the group once the direct child has exited", async 
 test("a hard cap that fires during the drain does not contradict a finished run", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-drain-timer-"));
   const resultFile = path.join(dir, "last.txt");
-  // A long gap between exit and close, and a cap short enough to land inside it.
-  const { child } = exitThenClose({ resultFile, gapMs: 300 });
+  // A long gap between exit and close, and a cap short enough to land inside it, with room for the
+  // result write before the exit on a loaded machine.
+  const { child } = exitThenClose({ resultFile, gapMs: 1000 });
 
   const out = await runCodexProcess({
     command: "/bin/codex",
@@ -1988,7 +1989,7 @@ test("a hard cap that fires during the drain does not contradict a finished run"
     resultFile,
     spawnImpl: () => child,
     treeKillImpl: async () => {},
-    timeoutMs: 120,
+    timeoutMs: 500,
     heartbeatMs: 0,
   });
 
