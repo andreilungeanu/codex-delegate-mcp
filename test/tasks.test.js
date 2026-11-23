@@ -11,16 +11,13 @@ function clockedStore(opts) {
 }
 
 test("a task's thread is still found by its id once the task itself is dropped", () => {
-  const { store, advance } = clockedStore({ maxFinished: 1 });
+  const { store, advance } = clockedStore();
   const first = store.create();
   first.threadId = "thread-first";
   store.add(first);
   store.finish(first, { result: {} });
   assert.equal(store.threadOf(first.taskId), "thread-first");
-  advance(1);
-  const second = store.create();
-  store.add(second);
-  store.finish(second, { result: {} });
+  advance(HOUR + 1);
   assert.equal(store.get(first.taskId), undefined);
   assert.equal(store.threadOf(first.taskId), "thread-first");
   assert.equal(store.threadOf("not-a-task"), undefined);
@@ -43,16 +40,11 @@ test("a finished task is kept for an hour after it ends and a working one is nev
   assert.equal(store.get(working.taskId)?.status, "working");
 });
 
-test("past the cap, the earliest finished tasks are dropped first", () => {
-  const { store, advance } = clockedStore({ maxFinished: 2 });
-  const tasks = [0, 1, 2].map(() => { const task = store.create(); store.add(task); return task; });
-  const running = store.create();
-  store.add(running);
-  for (const task of [tasks[1], tasks[0], tasks[2]]) { advance(1); store.finish(task, { result: {} }); }
-  assert.equal(store.get(tasks[1].taskId), undefined);
-  assert.ok(store.get(tasks[0].taskId));
-  assert.ok(store.get(tasks[2].taskId));
-  assert.ok(store.get(running.taskId));
+test("every task finished within the hour is kept, however many finished", () => {
+  const { store, advance } = clockedStore();
+  const tasks = Array.from({ length: 150 }, () => { const task = store.create(); store.add(task); return task; });
+  for (const task of tasks) { advance(1); store.finish(task, { result: {} }); }
+  assert.deepEqual(tasks.filter((task) => !store.get(task.taskId)), []);
 });
 
 test("a task's ttlMs is null while it works and counts from its creation once it ends", () => {

@@ -188,22 +188,23 @@ test("resumeThreadId takes a task id and resumes the task's thread", async () =>
 });
 
 test("resumeThreadId takes the id of a task the store has already dropped", async () => {
-  const threads = ["thread-a", "thread-b", "thread-c"];
+  const threads = ["thread-a", "thread-b"];
   const seen = [];
   const executeDelegate = async (args, options) => {
     seen.push(args.resumeThreadId);
     options.onThreadStarted?.(threads[seen.length - 1]);
     return { status: "completed", result: "done" };
   };
-  const raw = await connectRaw({ executeDelegate, tasks: createTaskStore({ maxFinished: 1 }) });
+  let now = Date.now();
+  const raw = await connectRaw({ executeDelegate, tasks: createTaskStore({ now: () => now }) });
   try {
     const first = await raw.delegate();
     await waitForTask(raw, first.result.taskId);
-    await waitForTask(raw, (await raw.delegate()).result.taskId);
+    now += 60 * 60 * 1000 + 1;
     const dropped = await raw.send("tasks/get", { taskId: first.result.taskId });
     assert.ok(dropped.error, "the first task should have been dropped");
     await raw.delegate({ resumeThreadId: first.result.taskId });
-    assert.equal(seen[2], "thread-a");
+    assert.equal(seen[1], "thread-a");
   } finally {
     await raw.close();
   }

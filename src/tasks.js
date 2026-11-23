@@ -6,7 +6,6 @@ import { CLIENT_CAPABILITIES_META_KEY, MissingRequiredClientCapabilityError, Pro
 export const TASKS_EXTENSION = "io.modelcontextprotocol/tasks";
 
 const RETAIN_MS = 60 * 60 * 1000;
-const MAX_FINISHED = 100;
 const FAST_POLL_MS = 3000;
 const SLOW_POLL_MS = 10000;
 const FAST_POLL_FOR_MS = 60 * 1000;
@@ -26,8 +25,8 @@ export function listsTasks(ctx) {
  * }} Task
  */
 
-/** @param {{ now?: () => number, retainMs?: number, maxFinished?: number }} [opts] */
-export function createTaskStore({ now = Date.now, retainMs = RETAIN_MS, maxFinished = MAX_FINISHED } = {}) {
+/** @param {{ now?: () => number, retainMs?: number }} [opts] */
+export function createTaskStore({ now = Date.now, retainMs = RETAIN_MS } = {}) {
   /** @type {Map<string, Task>} */
   const tasks = new Map();
   // A dropped task's thread, so its id still resumes it: the host shows the model only the task id.
@@ -41,11 +40,7 @@ export function createTaskStore({ now = Date.now, retainMs = RETAIN_MS, maxFinis
   // A running task is never dropped: its id is the host's only handle on the run.
   const prune = () => {
     const t = now();
-    const finished = [...tasks.values()].filter((task) => task.endedAt !== undefined);
-    for (const task of finished) if (t - /** @type {number} */ (task.endedAt) > retainMs) drop(task);
-    const kept = finished.filter((task) => tasks.has(task.taskId))
-      .sort((a, b) => /** @type {number} */ (a.endedAt) - /** @type {number} */ (b.endedAt));
-    for (const task of kept.slice(0, Math.max(0, kept.length - maxFinished))) drop(task);
+    for (const task of tasks.values()) if (task.endedAt !== undefined && t - task.endedAt > retainMs) drop(task);
   };
   // A fact that changes what to do after a cancel, such as a process tree the kill did not end.
   /** @param {Task} task @param {string} text */
