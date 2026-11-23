@@ -16,10 +16,18 @@ class OperationRegistry {
   #active = new Map();
   /** @type {Map<string, Set<string>>} */
   #byThread = new Map();
+  #closed = false;
 
   /** @param {{ threadId?: string | null, cancel?: Function }} [options] */
   acquire({ threadId = null, cancel } = {}) {
     if (typeof cancel !== "function") throw new TypeError("cancel must be a function");
+    if (this.#closed) {
+      const err = /** @type {Error & { code?: string }} */ (
+        new Error("The server is shutting down, so Codex was not started.")
+      );
+      err.code = "shutting_down";
+      throw err;
+    }
 
     const delegationId = randomUUID();
     const record = {
@@ -55,12 +63,14 @@ class OperationRegistry {
   /**
    * `id` names either a delegation id or a Codex thread id; a thread id cancels
    * every delegation running on it. Omitting it cancels everything active: with
-   * several running there is no defensible way to pick one.
+   * several running there is no defensible way to pick one. Cause `shutdown` also
+   * refuses every later acquire, so no delegation starts Codex past the server's exit.
    *
    * @param {{ id?: string | null, threadId?: string | null, cause?: string }} [options]
    */
   async cancel({ id = null, threadId = null, cause = "user" } = {}) {
     const wanted = id || threadId || null;
+    if (cause === "shutdown") this.#closed = true;
 
     if (!wanted) {
       if (this.#active.size === 0) return { status: "nothing-active" };

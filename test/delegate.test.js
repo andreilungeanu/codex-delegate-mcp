@@ -263,6 +263,53 @@ test("a pre-aborted outer signal interrupts before the run", async () => {
   assert.equal(result.status, "interrupted");
 });
 
+/** A real Codex stand-in that records each `exec` it receives in `exec.started` and completes. */
+async function recordingCodex() {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-gate-"));
+  const marker = path.join(dir, "exec.started");
+  const script = path.join(dir, "codex.js");
+  await writeFile(
+    script,
+    [
+      "const fs = require('node:fs');",
+      "const argv = process.argv.slice(2);",
+      `fs.writeFileSync(${JSON.stringify(marker)}, argv.join(' '));`,
+      "fs.writeFileSync(argv[argv.indexOf('--output-last-message') + 1], 'done');",
+      "console.log(JSON.stringify({ type: 'turn.completed', usage: {} }));",
+    ].join("\n"),
+    "utf8"
+  );
+  const { existsSync } = await import("node:fs");
+  return {
+    dir,
+    started: () => existsSync(marker),
+    resolve: () => ({ command: process.execPath, commandArgs: [script], version: "0.171.0", warnings: [] }),
+  };
+}
+
+test("a delegation that arrives once shutdown began starts no Codex", async () => {
+  const codex = await recordingCodex();
+  try {
+    const registry = createOperationRegistry();
+    await registry.cancel({ cause: "shutdown" });
+    await assert.rejects(
+      executeDelegate(
+        { spec: "x", mode: "ask", workspace: process.cwd() },
+        {
+          env: {},
+          operationRegistry: registry,
+          resolve: codex.resolve,
+          runProcess: (opts) => runCodexProcess({ ...opts, heartbeatMs: 0, drainMs: 60 }),
+        }
+      ),
+      { code: "shutting_down" }
+    );
+    assert.equal(codex.started(), false, "Codex started after shutdown began");
+  } finally {
+    await rm(codex.dir, { recursive: true, force: true });
+  }
+});
+
 test("executeDelegate reports a resume only when the observed thread matches", async () => {
   const result = await executeDelegate(
     { spec: "continue", resumeThreadId: "thread-existing", workspace: process.cwd() },
