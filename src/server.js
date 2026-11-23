@@ -374,7 +374,7 @@ export function buildServer({
     },
     async (args, ctx) => {
       // Claude Code shows the model a task's id and never its thread id, even after a stop.
-      const resumeThreadId = tasks.get(args.resumeThreadId?.trim())?.threadId ?? args.resumeThreadId;
+      const resumeThreadId = tasks.threadOf(args.resumeThreadId?.trim()) ?? args.resumeThreadId;
       /** @param {Record<string, any>} [over] */
       const run = (over) =>
         runDelegateTool({

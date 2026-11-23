@@ -10,6 +10,23 @@ function clockedStore(opts) {
   return { store, advance: (ms) => { t += ms; } };
 }
 
+test("a task's thread is still found by its id once the task itself is dropped", () => {
+  const { store, advance } = clockedStore({ maxFinished: 1 });
+  const first = store.create();
+  first.threadId = "thread-first";
+  store.add(first);
+  store.finish(first, { result: {} });
+  assert.equal(store.threadOf(first.taskId), "thread-first");
+  advance(1);
+  const second = store.create();
+  store.add(second);
+  store.finish(second, { result: {} });
+  assert.equal(store.get(first.taskId), undefined);
+  assert.equal(store.threadOf(first.taskId), "thread-first");
+  assert.equal(store.threadOf("not-a-task"), undefined);
+  assert.equal(store.threadOf(undefined), undefined);
+});
+
 test("a finished task is kept for an hour after it ends and a working one is never dropped", () => {
   const { store, advance } = clockedStore();
   const working = store.create();

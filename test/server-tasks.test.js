@@ -187,6 +187,28 @@ test("resumeThreadId takes a task id and resumes the task's thread", async () =>
   }
 });
 
+test("resumeThreadId takes the id of a task the store has already dropped", async () => {
+  const threads = ["thread-a", "thread-b", "thread-c"];
+  const seen = [];
+  const executeDelegate = async (args, options) => {
+    seen.push(args.resumeThreadId);
+    options.onThreadStarted?.(threads[seen.length - 1]);
+    return { status: "completed", result: "done" };
+  };
+  const raw = await connectRaw({ executeDelegate, tasks: createTaskStore({ maxFinished: 1 }) });
+  try {
+    const first = await raw.delegate();
+    await waitForTask(raw, first.result.taskId);
+    await waitForTask(raw, (await raw.delegate()).result.taskId);
+    const dropped = await raw.send("tasks/get", { taskId: first.result.taskId });
+    assert.ok(dropped.error, "the first task should have been dropped");
+    await raw.delegate({ resumeThreadId: first.result.taskId });
+    assert.equal(seen[2], "thread-a");
+  } finally {
+    await raw.close();
+  }
+});
+
 test("cancel reaches a task's run by its task id", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-task-cancel-"));
   const script = path.join(dir, "codex.js");
