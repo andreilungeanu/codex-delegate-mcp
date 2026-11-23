@@ -16,7 +16,9 @@ const grandchild = spawn(
   // Ignoring SIGTERM matters: the group kill is SIGKILL, and a grandchild that dies
   // on a polite signal would pass even if the kill never reached the group.
   ["-e", "process.on('SIGTERM', () => {}); setInterval(() => {}, 1 << 30);"],
-  { stdio: "ignore" }
+  // "own-session" starts it in a session of its own, outside this process group, as Codex 0.170 starts
+  // each shell command on Linux.
+  { stdio: "ignore", detached: mode === "own-session" }
 );
 
 // Enough JSONL to look like a healthy run, so a startup deadline is not what ends it.

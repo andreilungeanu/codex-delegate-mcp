@@ -1,8 +1,45 @@
 import process from "node:process";
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 
 export function isChildAlive(child) {
   return child && child.exitCode === null && child.signalCode === null;
+}
+
+/**
+ * Every process below pid, from one `ps` snapshot (Linux and macOS both take -A -o pid=,ppid=).
+ * Synchronous, so a kill is still dispatched before the caller's first await. Empty when ps
+ * fails: the group kill still runs.
+ */
+function descendantPids(pid) {
+  let stdout;
+  try {
+    stdout = execFileSync("ps", ["-A", "-o", "pid=,ppid="], {
+      encoding: "utf8",
+      timeout: 3000,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+  } catch {
+    return [];
+  }
+  /** @type {Map<number, number[]>} */
+  const byParent = new Map();
+  for (const line of stdout.split("\n")) {
+    const [p, pp] = line.trim().split(/\s+/).map(Number);
+    if (!p || !Number.isFinite(pp)) continue;
+    if (!byParent.has(pp)) byParent.set(pp, []);
+    byParent.get(pp)?.push(p);
+  }
+  const out = [];
+  const queue = [pid];
+  while (queue.length) {
+    for (const c of byParent.get(/** @type {number} */ (queue.shift())) ?? []) {
+      if (!out.includes(c)) {
+        out.push(c);
+        queue.push(c);
+      }
+    }
+  }
+  return out;
 }
 
 /**
@@ -32,12 +69,24 @@ export async function treeKill(pid, { childAlive = true } = {}) {
     );
     return;
   }
+  // Codex starts each shell command in a session of its own (measured on Linux, CLI 0.170), out
+  // of the group's reach, so the tree is walked while Codex is alive to hold its parent links.
+  const descendants = childAlive ? descendantPids(pid) : [];
   try {
     process.kill(-pid, "SIGKILL");
   } catch {
-    if (!childAlive) return;
+    if (childAlive) {
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {}
+    }
+  }
+  for (const d of descendants) {
     try {
-      process.kill(pid, "SIGKILL");
+      process.kill(-d, "SIGKILL");
+    } catch {}
+    try {
+      process.kill(d, "SIGKILL");
     } catch {}
   }
 }

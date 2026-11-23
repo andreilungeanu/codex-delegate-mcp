@@ -142,6 +142,18 @@ test("the kill reaches a grandchild while the leader is still running", async ()
   }
 });
 
+test("the kill reaches a grandchild in a session of its own while the leader is running", posixOnly, async () => {
+  const { child, grandchildPid } = await startTree("own-session");
+  try {
+    await treeKill(child.pid, { childAlive: true });
+    await until(() => !pidAlive(grandchildPid), 10_000, "grandchild survived the kill");
+  } finally {
+    try {
+      process.kill(grandchildPid, "SIGKILL");
+    } catch {}
+  }
+});
+
 const win32Only = { skip: process.platform === "win32" ? false : "windows taskkill" };
 
 // POSIX gates the bare-pid kill on childAlive because a reaped pid can be recycled.
