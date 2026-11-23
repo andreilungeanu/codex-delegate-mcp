@@ -7,7 +7,7 @@ This package is an MCP stdio server that delegates coding work to `codex exec`. 
 | Module | Ownership |
 |---|---|
 | `src/server.js` | Starts the stdio MCP server, registers `delegate`, `cancel`, and `doctor`, defines their input schemas, sends progress notifications, and serializes each tool response as compact JSON text. Exports `delegateOutputShape` as the in-repository delegate-result contract. |
-| `src/delegate.js` | Validates a delegation, performs review preflight checks, creates temporary result/schema files, acquires and releases an operation lease, runs Codex, normalizes the result, and parses plan-mode output. |
+| `src/delegate.js` | Validates a delegation, acquires and releases an operation lease, performs review and model preflight checks, creates temporary result/schema files, runs Codex, normalizes the result, and parses plan-mode output. |
 | `src/command.js` | Defines modes and defaults, validates delegate input, and builds the `codex exec` argument vector and stdin prompt for initial, resumed, and review runs. |
 | `src/run-codex.js` | Spawns Codex, consumes its JSONL output, reports progress, collects thread, usage, and edit-tool metadata, reads the final-message file, and classifies the completed process result. |
 | `src/proc.js` | Tests child-process liveness and terminates a process tree. |

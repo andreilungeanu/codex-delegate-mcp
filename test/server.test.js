@@ -117,8 +117,7 @@ test("server advertises SEP-973 icons on initialize", async () => {
   const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "icons-test-client", version: "1.0" });
 
-  // Assert on the initialize result as sent. What the client hands back is its own SDK's
-  // parse of it, and the 1.22.0 icon schema keeps src, mimeType and sizes only.
+  // Assert on the initialize result as sent, not on the client SDK's parse of it.
   const sent = [];
   const send = serverTransport.send.bind(serverTransport);
   serverTransport.send = (message, options) => {
