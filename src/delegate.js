@@ -14,7 +14,6 @@ import {
   runCodexProcess,
   cancelledBeforeSpawn,
   DEFAULT_HARD_CAP_MS,
-  DEFAULT_HEARTBEAT_MS,
   DEFAULT_STARTUP_MS,
 } from "./run-codex.js";
 import { normalizeEditToolFiles } from "./edit-tool-files.js";
@@ -165,7 +164,6 @@ export async function executeDelegate(rawArgs, options = {}) {
         signal: controller.signal,
         timeoutMs: request.timeoutMs ?? envMs(env.CODEX_DELEGATE_HARD_CAP_MS, DEFAULT_HARD_CAP_MS),
         startupMs: envMs(env.CODEX_DELEGATE_STARTUP_MS, DEFAULT_STARTUP_MS),
-        heartbeatMs: envMs(env.CODEX_DELEGATE_HEARTBEAT_MS, DEFAULT_HEARTBEAT_MS),
         onProgress,
         onThreadId: (id) => {
           lease.updateThreadId(id);
@@ -246,16 +244,11 @@ function toExitCode(value) {
   return Number.isInteger(value) ? value : undefined;
 }
 
-/**
- * An invalid or overflowing knob falls back to its default rather than arming a
- * deadline that fails every call. Explicit 0 disables the guard it belongs to.
- */
+// A malformed or non-positive value falls back to the default, so a blank var (Number("") is 0)
+// cannot arm a zero-length deadline. Node turns delays above 2^31-1 ms into 1 ms timers.
 export function envMs(raw, fallback) {
-  if (raw == null || String(raw).trim() === "") return fallback;
   const value = Number(raw);
-  // Node turns larger delays into 1ms timers.
-  if (!Number.isInteger(value) || value < 0 || value > 2_147_483_647) return fallback;
-  return value;
+  return Number.isInteger(value) && value > 0 && value <= 2_147_483_647 ? value : fallback;
 }
 
 function isValidPlanShape(value) {

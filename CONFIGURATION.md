@@ -18,9 +18,10 @@ Everything here is optional. Environment timer values must be integers from `0` 
 | Variable | Default | Purpose |
 |---|---|---|
 | `CODEX_DELEGATE_COMMAND` | auto | Absolute path to a Codex binary, skipping resolution. |
-| `CODEX_DELEGATE_STARTUP_MS` | `60000` | Spawn to first JSONL event. `0` disables. |
-| `CODEX_DELEGATE_HARD_CAP_MS` | `21600000` | Whole run; a per-call `timeoutMs` overrides it. `0` disables. |
-| `CODEX_DELEGATE_HEARTBEAT_MS` | `30000` | Progress heartbeat while quiet. `0` disables. |
+| `CODEX_DELEGATE_STARTUP_MS` | `60000` | Spawn to first JSONL event. |
+| `CODEX_DELEGATE_HARD_CAP_MS` | `21600000` | Whole run; a per-call `timeoutMs` overrides it. |
+
+A non-positive or malformed `_MS` value falls back to the default.
 
 `CODEX_DELEGATE_DEPTH` is set on the child process as a recursion marker. If it is already set
 when `delegate` is called, the call is refused — a delegated agent must not spawn another one.

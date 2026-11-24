@@ -887,9 +887,9 @@ test("a malformed timeout knob falls back instead of arming a broken deadline", 
   for (const raw of ["2147483648", "2592000000", "1e100", "Infinity"]) {
     assert.equal(envMs(raw, 5000), 5000);
   }
-  // A real value wins, and an explicit 0 disables its guard rather than defaulting.
+  // A real value wins; 0 falls back like any non-positive value.
   assert.equal(envMs("250", 5000), 250);
-  assert.equal(envMs("0", 5000), 0);
+  assert.equal(envMs("0", 5000), 5000);
 });
 
 test("the delegation id is announced before the run and returned with it", async () => {
@@ -958,8 +958,7 @@ test("a delegation gets a 6h hard cap unless the call or the environment says ot
   assert.equal(await capFor({}, {}), 21_600_000);
   assert.equal(await capFor({}, { CODEX_DELEGATE_HARD_CAP_MS: "90000" }), 90_000);
   assert.equal(await capFor({ timeoutMs: 120_000 }, { CODEX_DELEGATE_HARD_CAP_MS: "90000" }), 120_000);
-  // 0 reaches the runner as "no cap", not as the default.
-  assert.equal(await capFor({}, { CODEX_DELEGATE_HARD_CAP_MS: "0" }), 0);
+  assert.equal(await capFor({}, { CODEX_DELEGATE_HARD_CAP_MS: "0" }), 21_600_000);
 });
 
 test("an unadvertised model is checked before the worker is spawned", async () => {
