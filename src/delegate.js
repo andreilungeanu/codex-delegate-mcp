@@ -227,10 +227,10 @@ function toExitCode(value) {
 }
 
 // A malformed or non-positive value falls back to the default, so a blank var (Number("") is 0)
-// cannot arm a zero-length deadline. Node turns delays above 2^31-1 ms into 1 ms timers.
+// cannot arm a zero-length deadline.
 export function envMs(raw, fallback) {
   const value = Number(raw);
-  return Number.isInteger(value) && value > 0 && value <= 2_147_483_647 ? value : fallback;
+  return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
 /**

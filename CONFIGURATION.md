@@ -1,7 +1,6 @@
 # Configuration
 
-Everything here is optional. Environment timer values must be integers from `0` through
-`2147483647` milliseconds. Malformed, negative, or larger values fall back to their defaults.
+Everything here is optional.
 
 ## Defaults
 
@@ -57,7 +56,7 @@ stuck run** and mid-turn silence is never timed out. Only two guards bound a run
 - a **60s spawn-to-first-output deadline** — silence here does mean a wedged launcher;
 - a **6h hard cap** on the whole run.
 
-If a task legitimately runs longer, raise `timeoutMs` on the call rather than disabling a guard.
+If a task legitimately runs longer, raise `timeoutMs` on the call.
 
 ## Codex resolution
 

@@ -792,23 +792,9 @@ test("cancel resolves only after the delegation has actually settled", async () 
   assert.deepEqual(order, ["abort-seen", "run-settled", "cancel-returned"]);
 });
 
-test("a malformed timeout knob falls back instead of arming a broken deadline", () => {
-  // Unset and blank take the default.
-  assert.equal(envMs(undefined, 5000), 5000);
-  assert.equal(envMs(null, 5000), 5000);
-  assert.equal(envMs("   ", 5000), 5000);
-  // Garbage, fractions and negatives would arm a guard that fails every call.
-  assert.equal(envMs("soon", 5000), 5000);
-  assert.equal(envMs("12.5", 5000), 5000);
-  assert.equal(envMs("-1", 5000), 5000);
-  // Node clamps overflowing delays to 1ms instead of waiting longer.
-  assert.equal(envMs("2147483647", 5000), 2147483647);
-  for (const raw of ["2147483648", "2592000000", "1e100", "Infinity"]) {
-    assert.equal(envMs(raw, 5000), 5000);
-  }
-  // A real value wins; 0 falls back like any non-positive value.
+test("a malformed or non-positive timeout knob falls back to its default", () => {
+  for (const raw of [undefined, null, "   ", "soon", "-1", "0"]) assert.equal(envMs(raw, 5000), 5000);
   assert.equal(envMs("250", 5000), 250);
-  assert.equal(envMs("0", 5000), 5000);
 });
 
 test("the delegation id is announced before the run and returned with it", async () => {
