@@ -442,60 +442,6 @@ test("a cancel during the review preflight runs no Codex probe after it", async 
   assert.equal(resolved, 0, "Codex was resolved after the cancel");
 });
 
-test("a cancel stops a git probe the review preflight has in flight", async () => {
-  const { preflightReviewTarget } = await import("../src/git-preflight.js");
-  const { execFile } = await import("node:child_process");
-  const { promisify } = await import("node:util");
-  const registry = createOperationRegistry();
-  let probing;
-  const started = new Promise((resolve) => (probing = resolve));
-  // A git that never answers, as one waiting on a lock or a network mount does.
-  const hangingGit = (_command, _args, options) => {
-    probing();
-    return promisify(execFile)(process.execPath, ["-e", "setTimeout(() => {}, 60000)"], options);
-  };
-  const run = executeDelegate(
-    { spec: "x", mode: "review", workspace: process.cwd(), reviewTarget: { kind: "uncommitted" } },
-    {
-      ...delegateOptions("t-git"),
-      operationRegistry: registry,
-      preflight: (opts) => preflightReviewTarget({ ...opts, execFileImpl: hangingGit }),
-    }
-  );
-  await started;
-  const startedAt = Date.now();
-  const [result] = await Promise.all([run, registry.cancel({})]);
-  assert.ok(Date.now() - startedAt < 4_000, "the cancel waited out git's timeout");
-  assert.equal(result.status, "interrupted");
-  assert.equal(result.reason, "cancelled");
-});
-
-test("a cancel during the check of an unknown model reports the cancel, not the model", async () => {
-  const registry = createOperationRegistry();
-  let catalogAsked;
-  const asked = new Promise((resolve) => (catalogAsked = resolve));
-  let releaseCatalog;
-  const held = new Promise((resolve) => (releaseCatalog = resolve));
-  const run = executeDelegate(
-    { spec: "x", mode: "ask", workspace: process.cwd(), model: "gpt-unknown" },
-    {
-      ...delegateOptions("t-unknown"),
-      operationRegistry: registry,
-      readCatalog: async () => {
-        catalogAsked();
-        await held;
-        return CATALOG;
-      },
-    }
-  );
-  await asked;
-  const cancel = registry.cancel({});
-  releaseCatalog();
-  const [result] = await Promise.all([run, cancel]);
-  assert.equal(result.status, "interrupted");
-  assert.equal(result.reason, "cancelled");
-});
-
 test("a delegation that arrives once shutdown began starts no Codex", async () => {
   const codex = await recordingCodex();
   try {

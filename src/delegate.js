@@ -114,28 +114,15 @@ export async function executeDelegate(rawArgs, options = {}) {
     if (outerSignal) outerSignal.removeEventListener("abort", forward);
   }
 
-  // A cancel during the preflight ends the run there: no further probe, and no answer from one.
+  // A cancel during setup ends the run before the next step. Each probe is bounded.
   async function setUpAndRun() {
     const cancelled = () => controller.signal.aborted;
-    if (request.mode === "review") {
-      try {
-        await preflight({ workspace: request.workspace, reviewTarget: request.reviewTarget, signal: controller.signal });
-      } catch (err) {
-        if (cancelled()) return cancelledBeforeSpawn();
-        throw err;
-      }
-    }
+    if (request.mode === "review") await preflight({ workspace: request.workspace, reviewTarget: request.reviewTarget });
     if (cancelled()) return cancelledBeforeSpawn();
     // Resolver notes describe the setup, not this run — doctor reports them.
     codex = resolve({ env });
     const commandArgs = codex.commandArgs ?? [];
-    let trusted;
-    try {
-      trusted = await assertKnownModel(request.model, { command: codex.command, commandArgs, readCatalog, catalog, signal: controller.signal });
-    } catch (err) {
-      if (cancelled()) return cancelledBeforeSpawn();
-      throw err;
-    }
+    const trusted = await assertKnownModel(request.model, { command: codex.command, commandArgs, readCatalog, catalog });
     if (cancelled()) return cancelledBeforeSpawn();
     const effortNote = effortWarning(request, trusted);
     if (effortNote) warnings.push(effortNote);
@@ -280,9 +267,9 @@ function isValidPlanShape(value) {
  * Returns the catalog it trusted — the startup snapshot, or the read it made — so the
  * reasoning level is checked against the same answer without a second process.
  */
-async function assertKnownModel(model, { command, commandArgs, readCatalog, catalog, signal }) {
+async function assertKnownModel(model, { command, commandArgs, readCatalog, catalog }) {
   if (model === DEFAULT_MODEL || catalogSlugs(catalog).includes(model)) return catalog;
-  const models = await readCatalog({ command, commandArgs, timeoutMs: MODEL_CHECK_MS, signal });
+  const models = await readCatalog({ command, commandArgs, timeoutMs: MODEL_CHECK_MS });
   const slugs = catalogSlugs(models);
   if (slugs.length === 0 || slugs.includes(model)) return models;
   const offered = listedSlugs(models);

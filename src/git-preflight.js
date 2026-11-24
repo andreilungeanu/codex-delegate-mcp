@@ -18,17 +18,15 @@ const execFileAsync = promisify(execFile);
  *   workspace?: string,
  *   reviewTarget?: any,
  *   execFileImpl?: any,
- *   signal?: AbortSignal,
  * }} [options]
  */
 export async function preflightReviewTarget({
   workspace,
   reviewTarget,
   execFileImpl = execFileAsync,
-  signal,
 } = {}) {
   if (!reviewTarget || !workspace) return;
-  const git = gitRunner(workspace, execFileImpl, signal);
+  const git = gitRunner(workspace, execFileImpl);
 
   const repo = await git(["rev-parse", "--git-dir"]);
   if (repo.status === "unknown") return;
@@ -89,12 +87,9 @@ export async function isGitRepo(workspace, execFileImpl = execFileAsync) {
   return status === "unknown" ? null : status === "yes";
 }
 
-/** @param {string} workspace @param {any} execFileImpl @param {AbortSignal} [signal] */
-function gitRunner(workspace, execFileImpl, signal) {
+/** @param {string} workspace @param {any} execFileImpl */
+function gitRunner(workspace, execFileImpl) {
   return async (args) => {
-    // A cancel ends the preflight: an aborted probe is not git saying no, and Node spawns git even
-    // for a signal already aborted.
-    signal?.throwIfAborted();
     try {
       // GIT_TERMINAL_PROMPT=0 refuses a prompt on stdin that is not there.
       // SIGKILL: SIGTERM is catchable and would outlive the timeout.
@@ -105,13 +100,11 @@ function gitRunner(workspace, execFileImpl, signal) {
         env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
         timeout: 5000,
         killSignal: "SIGKILL",
-        signal,
         windowsHide: true,
         shell: false,
       });
       return { status: "yes", stdout: String(stdout ?? "") };
     } catch (err) {
-      if (signal?.aborted) throw err;
       // No git binary is "cannot say"; anything else is git saying no.
       return { status: err?.code === "ENOENT" ? "unknown" : "no", stdout: "" };
     }
