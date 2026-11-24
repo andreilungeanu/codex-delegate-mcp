@@ -212,36 +212,6 @@ test("runCodexProcess trips the startup deadline when Codex never speaks", async
   assert.ok(result.warnings.some((w) => /no output within 30ms/.test(w)));
 });
 
-test("a kill that never reaps the tree still settles the delegation", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "cdm-kill-"));
-  const resultFile = path.join(dir, "last.txt");
-
-  const result = await runCodexProcess({
-    command: "codex",
-    args: ["exec"],
-    cwd: dir,
-    resultFile,
-    spawnImpl: () => {
-      const child = new EventEmitter();
-      child.pid = 777;
-      child.stdout = new Readable({ read() {} });
-      child.stderr = new Readable({ read() {} });
-      child.exitCode = null;
-      child.signalCode = null;
-      return child;
-    },
-    // The stop sees no exit, so the close never arrives.
-    stopImpl: async () => false,
-    startupMs: 20,
-    heartbeatMs: 0,
-    timeoutMs: 10_000,
-  });
-
-  assert.equal(result.status, "interrupted");
-  assert.equal(result.reason, "startup-timeout");
-  assert.ok(result.warnings.some((w) => /could not confirm that Codex and its processes exited/.test(w)));
-});
-
 // The grandchild holds Codex's stdout open past its exit, so the run settles a drain later.
 test("onExit fires when Codex exits, not when the run settles after the drain", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-on-exit-"));
@@ -274,7 +244,7 @@ test("onExit fires when Codex exits, not when the run settles after the drain", 
   assert.ok(settledAt - exitedAt >= 500, `onExit came ${settledAt - exitedAt}ms before the run settled`);
 });
 
-test("a stop that sees no exit settles without inventing an exit code", async () => {
+test("a stop that cannot confirm the exit settles without inventing an exit code", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-killcode-"));
   const resultFile = path.join(dir, "last.txt");
   const edited = path.join(dir, "important.ts");

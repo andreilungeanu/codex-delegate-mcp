@@ -72,10 +72,7 @@ export async function executeDelegate(rawArgs, options = {}) {
   const request = validateDelegateInput(rawArgs, { cwd });
 
   const controller = new AbortController();
-  // Aborting only *requests* the kill. Resolving cancel on the abort alone
-  // reported "cancelled" while codex was still alive; waiting for the run to
-  // settle makes the answer true. runCodexProcess bounds this with its kill
-  // deadline, so a tree that refuses to die cannot hang the cancel either.
+  // A cancel waits for the run to settle, so "cancelled" means Codex has stopped. The stop is bounded.
   let markSettled;
   const settled = new Promise((resolve) => {
     markSettled = resolve;

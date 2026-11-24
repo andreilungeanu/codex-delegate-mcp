@@ -45,7 +45,7 @@ Delegated work runs on the **OpenAI Codex CLI** and its own usage — separate f
 - 📦 **One result you can review** — a compact JSON block: the final answer, `status`, the files Codex's edit tools reported changing, cumulative thread token counts, and the `threadId` to continue from. Fields that carry no signal are omitted.
 - 📋 **Plan first, then build it on the same thread** — `plan` returns schema-validated steps for you to approve, and `agent` implements them. `ask` answers questions. `review` runs Codex's own reviewer over uncommitted work, a base branch, or a single commit.
 - 🧵 **Resume** — continue a Codex thread with `resumeThreadId`. `resumed: false` tells you the context did not carry over.
-- 🧑‍🤝‍🧑 **Run several, cancel cleanly** — the same question across models, or independent workers on independent directories. `cancel` waits for the exit and warns when a process outlives the kill deadline.
+- 🧑‍🤝‍🧑 **Run several, cancel cleanly** — the same question across models, or independent workers on independent directories. `cancel` waits for the exit and warns when it cannot confirm one.
 - 🤝 **One-command install** — Claude Code, Google Antigravity, GitHub Copilot CLI, Cursor and VS Code take it as a plugin, with a skill that teaches your agent how to delegate well. Cursor and VS Code install the server in one click; JetBrains, Devin Desktop (Windsurf), Visual Studio and the rest add the stdio server in settings.
 - 🩺 **`doctor`** — tells you exactly what's missing if setup isn't right.
 

@@ -148,7 +148,7 @@ export async function runCodexProcess({
     stopping ??= stopImpl(child).catch(() => false).then((confirmed) => {
       if (confirmed) return;
       stopUnconfirmed = true;
-      // An exit the stop did not see would hold the run for good.
+      // With the exit unconfirmed, no 'exit' event may come to settle the run.
       settleExit(null);
     });
   };

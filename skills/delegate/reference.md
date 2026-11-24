@@ -77,8 +77,8 @@ To cancel: `delegationId` cancels one run, `threadId` cancels every delegation o
 and passing neither cancels all of them. `cancel` waits for the processes to end rather than
 returning on the kill request, with a status of `cancelled`, `nothing-active` or `not-found`.
 `not-found` means no active run has this ID — the run already finished, or the id never
-belonged to one; either way there is nothing to cancel. A tree that outlives the kill deadline
-returns anyway and says so in `warnings`.
+belonged to one; either way there is nothing to cancel. A stop that cannot confirm Codex and its
+processes exited returns anyway and says so in `warnings`.
 
 ## Timeouts
 
