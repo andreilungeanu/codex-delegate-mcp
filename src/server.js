@@ -30,6 +30,14 @@ const SERVER_ICONS = [
   { src: `${ICON_BASE}/logo-light.png`, mimeType: "image/png", sizes: ["1024x1024"], theme: "light" },
   { src: `${ICON_BASE}/logo-dark.png`, mimeType: "image/png", sizes: ["1024x1024"], theme: "dark" },
 ];
+const SERVER_INFO = {
+  name: "codex-delegate-mcp",
+  title: "Codex Delegate",
+  description: "Bridge AI coding hosts to the OpenAI Codex CLI for delegated implementation.",
+  version: VERSION,
+  websiteUrl: "https://github.com/andreilungeanu/codex-delegate-mcp",
+  icons: SERVER_ICONS,
+};
 
 const nodeMajor = Number(process.versions.node.split(".")[0]);
 if (nodeMajor < 20) {
@@ -250,17 +258,14 @@ export function buildServer({
 } = {}) {
   // Tasks only on a 2026-07-28 instance: the SDK also lifts envelope keys off 2025-era requests.
   const servesTasks = era === "modern";
-  const server = new McpServer(
-    { name: "codex-delegate-mcp", version: VERSION, icons: SERVER_ICONS },
-    {
-      instructions: SERVER_INSTRUCTIONS,
-      capabilities: {
-        // The tool list never changes, and the SDK advertises listChanged unless told otherwise.
-        tools: { listChanged: false },
-        ...(servesTasks ? { extensions: { [TASKS_EXTENSION]: {} } } : {}),
-      },
-    }
-  );
+  const server = new McpServer(SERVER_INFO, {
+    instructions: SERVER_INSTRUCTIONS,
+    capabilities: {
+      // The tool list never changes, and the SDK advertises listChanged unless told otherwise.
+      tools: { listChanged: false },
+      ...(servesTasks ? { extensions: { [TASKS_EXTENSION]: {} } } : {}),
+    },
+  });
   if (servesTasks) registerTaskHandlers(server, tasks);
 
   server.registerTool(
@@ -314,6 +319,7 @@ export function buildServer({
           .optional()
           .describe("Required in review; forbidden otherwise: uncommitted, base branch, or commit."),
       }).strict(),
+      title: "Delegate coding task to Codex",
       annotations: {
         title: "Delegate coding task to Codex",
         readOnlyHint: false,
@@ -353,6 +359,7 @@ export function buildServer({
           threadId: z.string().optional(),
         })
         .strict(),
+      title: "Cancel Codex delegation",
       annotations: {
         title: "Cancel Codex delegation",
         readOnlyHint: false,
@@ -375,6 +382,7 @@ export function buildServer({
           workspace: z.string().optional(),
         })
         .strict(),
+      title: "Diagnose Codex delegation setup",
       annotations: {
         title: "Diagnose Codex delegation setup",
         readOnlyHint: true,

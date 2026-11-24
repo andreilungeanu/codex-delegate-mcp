@@ -111,7 +111,7 @@ test("buildServer registers delegate, cancel, doctor", () => {
   assert.ok(server);
 });
 
-test("server advertises SEP-973 icons on initialize", async () => {
+test("server identifies itself on initialize as its registry listing does", async () => {
   const server = buildServer();
   const [serverTransport, clientTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "icons-test-client", version: "1.0" });
@@ -126,12 +126,15 @@ test("server advertises SEP-973 icons on initialize", async () => {
 
   await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
   try {
-    // SEP-973 icons on initialize must match the registry listing — HTTPS URLs, not file://.
+    // Icons must match the registry listing — HTTPS URLs, not file://.
     const registry = JSON.parse(readFileSync(new URL("../server.json", import.meta.url), "utf8"));
     const initialize = sent.find((message) => message.result?.serverInfo);
     assert.deepEqual(initialize.result.serverInfo, {
       name: "codex-delegate-mcp",
+      title: registry.title,
+      description: registry.description,
       version: registry.version,
+      websiteUrl: registry.websiteUrl,
       icons: registry.icons,
     });
   } finally {
@@ -896,3 +899,15 @@ for (const [era, versionNegotiation] of ERAS) {
     }
   });
 }
+
+test("every tool carries its display name as title and in annotations", async () => {
+  const { client, close } = await connectEra(undefined, {});
+  try {
+    for (const tool of (await client.listTools()).tools) {
+      assert.ok(tool.title, `${tool.name} has no title`);
+      assert.equal(tool.annotations?.title, tool.title, tool.name);
+    }
+  } finally {
+    await close();
+  }
+});
