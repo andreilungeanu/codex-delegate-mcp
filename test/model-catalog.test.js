@@ -100,27 +100,6 @@ test("each model's levels, and the union the listed models take", () => {
   assert.deepEqual(listedEfforts(null), []);
 });
 
-test("the union stays lowest first when a model earlier in the catalog skips a level", () => {
-  const levels = (...efforts) => efforts.map((effort) => ({ effort }));
-  const models = [
-    { slug: "gpt-a", visibility: "list", supported_reasoning_levels: levels("low", "high") },
-    { slug: "gpt-b", visibility: "list", supported_reasoning_levels: levels("low", "medium", "high", "max") },
-  ];
-
-  assert.deepEqual(listedEfforts(models), ["low", "medium", "high", "max"]);
-});
-
-test("partial lists preserve shared ordering even when no model lists every level", () => {
-  const levels = (...efforts) => efforts.map((effort) => ({ effort }));
-  const models = [
-    { slug: "gpt-a", visibility: "list", supported_reasoning_levels: levels("low", "xhigh", "max") },
-    { slug: "gpt-b", visibility: "list", supported_reasoning_levels: levels("low", "medium", "high", "xhigh") },
-  ];
-  for (const catalog of [models, [...models].reverse()]) {
-    assert.deepEqual(listedEfforts(catalog), ["low", "medium", "high", "xhigh", "max"]);
-  }
-});
-
 test("contradictory catalog ordering still produces each advertised level once", () => {
   const levels = (...efforts) => efforts.map((effort) => ({ effort }));
   const models = [

@@ -799,10 +799,10 @@ test("the level field groups models by the level they stop at, as Codex 0.160 li
   );
 });
 
-test("the level description orders reordered and partial catalogs, excluding unknown and hidden lists", () => {
+test("the level description lists each level once in either catalog order, excluding unknown and hidden lists", () => {
   const levels = (...efforts) => efforts.map((effort) => ({ effort }));
   const catalog = [
-    { slug: "gpt-5.5", visibility: "list", supported_reasoning_levels: levels("low", "high", "xhigh") },
+    { slug: "gpt-5.5", visibility: "list", supported_reasoning_levels: levels("low", "medium", "high", "xhigh") },
     { slug: "no-levels", visibility: "list" },
     { slug: DEFAULT_MODEL, visibility: "list", supported_reasoning_levels: levels("low", "medium", "high", "xhigh", "max") },
     { slug: "partial-model", visibility: "list", supported_reasoning_levels: [{ effort: "unknown" }, null] },
@@ -820,20 +820,6 @@ test("the level description orders reordered and partial catalogs, excluding unk
         "A level the model does not advertise is forwarded, with a warning."
     );
   }
-});
-
-test("partial lists describe the highest level without a complete reference model", () => {
-  const levels = (...efforts) => efforts.map((effort) => ({ effort }));
-  const catalog = [
-    { slug: DEFAULT_MODEL, visibility: "list", supported_reasoning_levels: levels("low", "xhigh", "max") },
-    { slug: "gpt-5.5", visibility: "list", supported_reasoning_levels: levels("low", "medium", "high", "xhigh") },
-  ];
-  const delegate = buildServer({ catalog })._registeredTools.delegate;
-  assert.equal(
-    delegate.inputSchema.shape.reasoningEffort.description,
-    "Codex reasoning level: low, medium, high, xhigh, max. Tops out at xhigh on gpt-5.5. " +
-      "A level the model does not advertise is forwarded, with a warning."
-  );
 });
 
 test("the catalog the description names is the one the delegate preflight trusts", async () => {

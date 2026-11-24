@@ -69,34 +69,11 @@ export function modelEfforts(models, slug) {
   return efforts.length ? efforts : null;
 }
 
-/**
- * Every advertised level, each once, preserving the ordering within each model's list.
- * Shared levels connect partial lists. Unrelated levels keep the order first seen;
- * contradictory lists fall back to that order for the levels left unresolved.
- */
+/** Every advertised level, each once, in the order first seen. */
 export function listedEfforts(models) {
-  /** @type {Map<string, Set<string>>} */
-  const next = new Map();
+  const efforts = new Set();
   for (const model of models || []) {
-    if (model?.visibility !== "list") continue;
-    const efforts = modelEfforts([model], model.slug) || [];
-    efforts.forEach((effort, index) => {
-      if (!next.has(effort)) next.set(effort, new Set());
-      if (index > 0 && efforts[index - 1] !== effort) next.get(efforts[index - 1]).add(effort);
-    });
+    if (model?.visibility === "list") for (const effort of modelEfforts([model], model.slug) || []) efforts.add(effort);
   }
-  const pending = new Map([...next.keys()].map((effort) => [effort, 0]));
-  for (const successors of next.values()) {
-    for (const effort of successors) pending.set(effort, pending.get(effort) + 1);
-  }
-  const ordered = [];
-  while (pending.size) {
-    const ready = [...pending].find(([, predecessors]) => predecessors === 0);
-    if (!ready) return [...ordered, ...pending.keys()];
-    const [effort] = ready;
-    ordered.push(effort);
-    pending.delete(effort);
-    for (const successor of next.get(effort)) pending.set(successor, pending.get(successor) - 1);
-  }
-  return ordered;
+  return [...efforts];
 }
