@@ -1,11 +1,12 @@
 import process from "node:process";
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
+import { StringDecoder } from "node:string_decoder";
 import { readFile, unlink } from "node:fs/promises";
 import { DETACHED, stopChild, withDeadline } from "./proc.js";
 import { pathsFromFileChangeItem } from "./edit-tool-files.js";
 
-const DEFAULT_STDERR_BYTES = 64 * 1024;
+const STDERR_CAP = 64 * 1024;
 const STDERR_TAIL_CHARS = 2000;
 const DRAIN_MS = 2000;
 /** Spawn to first JSONL event. Silence here does mean a wedged launcher. */
@@ -84,7 +85,9 @@ export async function runCodexProcess({
   };
 
   const { state: events, handleLine } = createEventReducer({ emit, onThreadId });
-  const stderrBuffer = createStderrTail(DEFAULT_STDERR_BYTES);
+  let stderrText = "";
+  // Keeps a UTF-8 character split across reads whole.
+  const stderrDecoder = new StringDecoder("utf8");
 
   const childEnv = { ...env };
   // Recursion marker for nested delegate detection by the parent server.
@@ -214,7 +217,8 @@ export async function runCodexProcess({
 
   child.stderr.on("data", (chunk) => {
     noteActivity();
-    stderrBuffer.push(chunk);
+    // A rolling tail: the diagnosis is the last thing a dying process writes.
+    stderrText = (stderrText + stderrDecoder.write(chunk)).slice(-STDERR_CAP);
   });
 
   let exitCode;
@@ -285,7 +289,7 @@ export async function runCodexProcess({
 
   const result = final.result;
 
-  const stderrTail = meaningfulStderr(stderrBuffer.text()).slice(-STDERR_TAIL_CHARS);
+  const stderrTail = meaningfulStderr(stderrText).slice(-STDERR_TAIL_CHARS);
 
   // A notice the run got past is not its error. A turn that completed after a
   // reconnect used to answer with "Codex error: Reconnecting..." for a problem Codex
@@ -448,38 +452,6 @@ function createEventReducer({ emit, onThreadId }) {
   };
 
   return { state, handleLine };
-}
-
-/**
- * A rolling tail, not the first 64 KB: the diagnosis is the last thing a dying
- * process writes, and the warning then takes the tail of whatever this kept. Keep
- * the head and a megabyte of noise buries the one line that says why.
- */
-function createStderrTail(maxBytes) {
-  const chunks = [];
-  let bytes = 0;
-  return {
-    push(chunk) {
-      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-      if (!buffer.length) return;
-      chunks.push(buffer);
-      bytes += buffer.length;
-      while (bytes > maxBytes) {
-        const excess = bytes - maxBytes;
-        const oldest = chunks[0];
-        if (oldest.length <= excess) {
-          chunks.shift();
-          bytes -= oldest.length;
-        } else {
-          chunks[0] = oldest.subarray(excess);
-          bytes -= excess;
-        }
-      }
-    },
-    text() {
-      return Buffer.concat(chunks, bytes).toString("utf8");
-    },
-  };
 }
 
 /**
