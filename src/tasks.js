@@ -42,7 +42,7 @@ export function createTaskStore({ now = Date.now, retainMs = RETAIN_MS } = {}) {
     const t = now();
     for (const task of tasks.values()) if (task.endedAt !== undefined && t - task.endedAt > retainMs) drop(task);
   };
-  // A fact that changes what to do after a cancel, such as a process tree the kill did not end.
+  // A fact that changes what to do after a cancel: a resume that started a fresh thread.
   /** @param {Task} task @param {string} text */
   const note = (task, text) => {
     if (task.status !== "cancelled") return;
@@ -52,7 +52,6 @@ export function createTaskStore({ now = Date.now, retainMs = RETAIN_MS } = {}) {
   };
   return {
     now,
-    note,
     /** @returns {Task} */
     create() {
       const t = now();
@@ -127,7 +126,7 @@ export function createTaskStore({ now = Date.now, retainMs = RETAIN_MS } = {}) {
  *   run: (over: {
  *     signal: AbortSignal, delegationId: string, onProgress: (m: string) => void,
  *     onThreadStarted: (threadId: string, resumeNote?: string) => void,
- *     onUnseenExit: (note: string) => void, onRunDecided: () => void,
+ *     onRunDecided: () => void,
  *   }) => Promise<any>,
  *   signal?: AbortSignal, notify?: (message: string) => void, store: ReturnType<typeof createTaskStore>,
  * }} opts
@@ -154,7 +153,6 @@ export async function runAsTask({ run, signal, notify = () => {}, store }) {
       if (!answered) notify(message);
     },
     onThreadStarted: (threadId, resumeNote) => { task.threadId = threadId; task.resumeNote = resumeNote; markStarted(); },
-    onUnseenExit: (note) => store.note(task, note),
     onRunDecided: () => { task.runDecided = true; },
   }).then((result) => ({ result }), (error) => ({ error }));
   const first = await Promise.race([started, outcome]);

@@ -32,16 +32,14 @@ import { preflightReviewTarget } from "./git-preflight.js";
 const MODEL_CHECK_MS = 1000;
 
 /**
- * The MCP task layer passes delegationId (its task id) and the three hooks: the thread start, after
- * which the request is answered with the task; Codex's exit, after which a cancel changes nothing;
- * and a kill that escaped its deadline.
+ * The MCP task layer passes delegationId (its task id) and two hooks: the thread start, after which
+ * the request is answered with the task, and Codex's exit, after which a cancel changes nothing.
  *
  * @param {any} rawArgs
  * @param {{
  *   delegationId?: string,
  *   onThreadStarted?: (threadId: string, resumeNote?: string) => void,
  *   onRunDecided?: () => void,
- *   onUnseenExit?: (note: string) => void,
  *   [option: string]: any,
  * }} [options]
  */
@@ -60,7 +58,6 @@ export async function executeDelegate(rawArgs, options = {}) {
     delegationId: requestedId,
     onThreadStarted,
     onRunDecided,
-    onUnseenExit,
   } = options;
 
   if (env.CODEX_DELEGATE_DEPTH && String(env.CODEX_DELEGATE_DEPTH).trim() !== "") {
@@ -173,7 +170,6 @@ export async function executeDelegate(rawArgs, options = {}) {
           onThreadStarted?.(id, resumeNote);
         },
         onExit: onRunDecided,
-        onUnseenExit,
       });
     } finally {
       // Removed before markSettled(): a shutdown exits as soon as its cancel settles.

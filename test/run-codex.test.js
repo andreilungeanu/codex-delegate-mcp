@@ -242,33 +242,6 @@ test("a kill that never reaps the tree still settles the delegation", async () =
   assert.ok(result.warnings.some((w) => /could not confirm that Codex and its processes exited/.test(w)));
 });
 
-test("an unconfirmed stop is reported as it ends, with the warning's text", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "cdm-unseen-"));
-  const notes = [];
-  const result = await runCodexProcess({
-    command: "codex",
-    args: ["exec"],
-    cwd: dir,
-    resultFile: path.join(dir, "last.txt"),
-    spawnImpl: () => {
-      const child = new EventEmitter();
-      child.pid = 777;
-      child.stdout = new Readable({ read() {} });
-      child.stderr = new Readable({ read() {} });
-      child.exitCode = null;
-      child.signalCode = null;
-      return child;
-    },
-    stopImpl: async () => false,
-    startupMs: 20,
-    heartbeatMs: 0,
-    timeoutMs: 10_000,
-    onUnseenExit: (note) => notes.push(note),
-  });
-  assert.equal(notes.length, 1);
-  assert.ok(result.warnings.includes(notes[0]), notes[0]);
-});
-
 // The grandchild holds Codex's stdout open past its exit, so the run settles a drain later.
 test("onExit fires when Codex exits, not when the run settles after the drain", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-on-exit-"));
@@ -1960,7 +1933,6 @@ for (const script of ["process.exit(1)"]) {
 
       const dir = await mkdtemp(path.join(tmpdir(), "cdm-taskkill-fails-"));
       const controller = new AbortController();
-      const notes = [];
       let child;
       const run = runCodexProcess({
         command: process.execPath,
@@ -1972,7 +1944,6 @@ for (const script of ["process.exit(1)"]) {
         heartbeatMs: 0,
         startupMs: 15_000,
         timeoutMs: 30_000,
-        onUnseenExit: (note) => notes.push(note),
       });
       try {
         await new Promise((r) => setTimeout(r, 500));
@@ -1986,7 +1957,6 @@ for (const script of ["process.exit(1)"]) {
           out.warnings.some((w) => /could not confirm that Codex and its processes exited/.test(w)),
           JSON.stringify(out.warnings)
         );
-        assert.equal(notes.length, 1, JSON.stringify(notes));
       } finally {
         cp.execFile = execFile;
         syncBuiltinESMExports();

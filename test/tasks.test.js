@@ -128,16 +128,13 @@ test("a cancel after Codex exited leaves the decided result and still stops the 
   assert.equal(store.view(task).status, "completed");
 });
 
-test("a cancelled task names a resume that started a fresh thread and a tree the kill did not end, not the run's result", async () => {
+test("a cancelled task names a resume that started a fresh thread, not the run's result", async () => {
   const store = createTaskStore();
   const fresh = "resuming tid-old started a fresh thread; none of its earlier context carried over.";
-  const unseen = "Codex did not exit within 10000ms of being killed; a process may still be running.";
   let end;
-  let reportUnseen = (_note) => {};
   const answer = await runAsTask({
-    run: ({ onThreadStarted, onUnseenExit }) => {
+    run: ({ onThreadStarted }) => {
       onThreadStarted("tid-new", fresh);
-      reportUnseen = onUnseenExit;
       return new Promise((resolve) => { end = resolve; });
     },
     store,
@@ -145,10 +142,9 @@ test("a cancelled task names a resume that started a fresh thread and a tree the
   const task = store.get(answer.taskId);
   store.cancel(task);
   assert.equal(task.statusMessage, `cancelled; resume with resumeThreadId tid-new. Note: ${fresh}`);
-  reportUnseen(unseen);
   end({ content: [{ type: "text", text: JSON.stringify({ status: "interrupted", reason: "cancelled" }) }] });
   await new Promise((r) => setImmediate(r));
-  assert.equal(store.view(task).statusMessage, `cancelled; resume with resumeThreadId tid-new. Note: ${fresh} Note: ${unseen}`);
+  assert.equal(store.view(task).statusMessage, `cancelled; resume with resumeThreadId tid-new. Note: ${fresh}`);
 });
 
 test("a run that fails before Codex starts a thread rejects runAsTask instead of creating a task", async () => {

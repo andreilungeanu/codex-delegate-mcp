@@ -359,7 +359,7 @@ test("a resume that came back on another thread says so as the thread starts", a
   assert.match(resumeNote, /thread-old/);
 });
 
-test("Codex's exit and an escaped kill reach the delegation's caller", async () => {
+test("Codex's exit reaches the delegation's caller", async () => {
   const seen = [];
   await executeDelegate(
     { spec: "x", mode: "ask", workspace: process.cwd() },
@@ -367,14 +367,12 @@ test("Codex's exit and an escaped kill reach the delegation's caller", async () 
       ...delegateOptions("t-hooks"),
       runProcess: async (options) => {
         options.onExit();
-        options.onUnseenExit("still running");
         return { status: "completed", exitCode: 0, threadId: "t-hooks", result: "done", warnings: [], filesReportedByEditTools: [] };
       },
       onRunDecided: () => seen.push("decided"),
-      onUnseenExit: (note) => seen.push(note),
     }
   );
-  assert.deepEqual(seen, ["decided", "still running"]);
+  assert.deepEqual(seen, ["decided"]);
 });
 
 test("a cancel during the model check keeps Codex from starting", async () => {

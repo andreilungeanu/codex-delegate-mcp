@@ -42,7 +42,6 @@ export function cancelledBeforeSpawn() {
  *   onProgress?: (message: string) => void,
  *   onThreadId?: (threadId: string) => void,
  *   onExit?: () => void,
- *   onUnseenExit?: (note: string) => void,
  *   timeoutMs?: number,
  *   startupMs?: number,
  *   heartbeatMs?: number,
@@ -62,7 +61,6 @@ export async function runCodexProcess({
   onProgress,
   onThreadId,
   onExit,
-  onUnseenExit,
   timeoutMs = DEFAULT_HARD_CAP_MS,
   startupMs = DEFAULT_STARTUP_MS,
   heartbeatMs = DEFAULT_HEARTBEAT_MS,
@@ -147,9 +145,6 @@ export async function runCodexProcess({
     stopping ??= stopImpl(child).catch(() => false).then((confirmed) => {
       if (confirmed) return;
       stopUnconfirmed = true;
-      try {
-        onUnseenExit?.(unconfirmedStop(child.pid));
-      } catch {}
       // An exit the stop did not see would hold the run for good.
       settleExit(null);
     });
