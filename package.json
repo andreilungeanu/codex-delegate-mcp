@@ -48,11 +48,11 @@
     "start": "node src/server.js"
   },
   "dependencies": {
-    "@modelcontextprotocol/server": "^2.4.0",
+    "@modelcontextprotocol/server": "2.4.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@modelcontextprotocol/client": "^2.4.0",
+    "@modelcontextprotocol/client": "2.4.0",
     "@types/node": "^26.1.2",
     "typescript": "^7.0.2"
   }
