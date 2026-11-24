@@ -1,6 +1,7 @@
 import process from "node:process";
 import path from "node:path";
 import { statSync } from "node:fs";
+import { z } from "zod";
 
 /** @type {readonly [string, ...string[]]} */
 export const MODES = Object.freeze(["agent", "plan", "ask", "review"]);
@@ -31,26 +32,14 @@ export const MAX_REVIEW_ARGV_CHARS = 28_000;
  */
 const STDIN_PROMPT = "-";
 
-export const PLAN_SCHEMA = Object.freeze({
-  type: "object",
-  additionalProperties: false,
-  required: ["overview", "steps"],
-  properties: {
-    overview: { type: "string" },
-    steps: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["title", "detail"],
-        properties: {
-          title: { type: "string" },
-          detail: { type: "string" },
-        },
-      },
-    },
-  },
-});
+// The plan mode result. Codex gets it as JSON Schema through --output-schema; the reply is checked
+// against it.
+export const planSchema = z.object({
+  overview: z.string(),
+  steps: z.array(z.object({ title: z.string(), detail: z.string() }).strict()),
+}).strict();
+const { $schema: _dialect, ...planJsonSchema } = z.toJSONSchema(planSchema);
+export const PLAN_SCHEMA = Object.freeze(planJsonSchema);
 
 /**
  * Build argv for one `codex exec` invocation.

@@ -6,6 +6,7 @@ import {
   buildCodexArgs,
   validateDelegateInput,
   PLAN_SCHEMA,
+  planSchema,
   DEFAULT_MODEL,
 } from "./command.js";
 import { readModelCatalog, catalogSlugs, listedSlugs, modelEfforts } from "./model-catalog.js";
@@ -181,7 +182,7 @@ export async function executeDelegate(rawArgs, options = {}) {
     try {
       parsed = JSON.parse(result);
     } catch {}
-    if (parsed && isValidPlanShape(parsed)) {
+    if (planSchema.safeParse(parsed).success) {
       plan = parsed;
       planResult = parsed.overview;
     } else {
@@ -232,22 +233,6 @@ function toExitCode(value) {
 export function envMs(raw, fallback) {
   const value = Number(raw);
   return Number.isInteger(value) && value > 0 && value <= 2_147_483_647 ? value : fallback;
-}
-
-function isValidPlanShape(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  if (Object.keys(value).some((key) => !Object.hasOwn(PLAN_SCHEMA.properties, key))) return false;
-  if (typeof value.overview !== "string") return false;
-  if (!Array.isArray(value.steps)) return false;
-  return value.steps.every(
-    (step) =>
-      step &&
-      typeof step === "object" &&
-      !Array.isArray(step) &&
-      Object.keys(step).every((key) => Object.hasOwn(PLAN_SCHEMA.properties.steps.items.properties, key)) &&
-      typeof step.title === "string" &&
-      typeof step.detail === "string"
-  );
 }
 
 /**

@@ -452,7 +452,26 @@ test("build plan args include output schema", () => {
   assert.ok(args.includes("--output-schema"));
   assert.ok(args.includes("/tmp/schema.json"));
   assert.ok(args.includes("--dangerously-bypass-approvals-and-sandbox"));
-  assert.ok(PLAN_SCHEMA.required.includes("overview"));
+});
+
+test("the plan schema Codex is given is closed and requires every field", () => {
+  assert.deepEqual(PLAN_SCHEMA, {
+    type: "object",
+    additionalProperties: false,
+    required: ["overview", "steps"],
+    properties: {
+      overview: { type: "string" },
+      steps: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["title", "detail"],
+          properties: { title: { type: "string" }, detail: { type: "string" } },
+        },
+      },
+    },
+  });
 });
 
 test("build review args use developer_instructions and target flags", () => {
