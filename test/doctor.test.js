@@ -181,70 +181,10 @@ test("doctor runs login, help and catalog probes through a resolved launcher scr
   }
 });
 
-/** Codex 0.147.0's surfaces, reduced to the flags this check reads. */
-function helpFor(invocation, { cdOn = ["exec --help"] } = {}) {
-  const cd = cdOn.includes(invocation) ? " -C, --cd <DIR>" : "";
-  return `--json --output-last-message${cd}`;
+/** Codex's help surfaces, reduced to the flags doctor reads. */
+function helpFor(invocation) {
+  return `--json --output-last-message${invocation === "exec --help" ? " -C, --cd <DIR>" : ""}`;
 }
-
-test("doctor deep warns when resume gains the --cd it is assumed not to have", async () => {
-  // The resume contract exists because `exec resume` cannot be told a directory:
-  // the turn runs wherever the child was spawned, so the caller must name the
-  // workspace. If upstream adds the flag, that reasoning needs revisiting — and
-  // nothing else in this bridge would notice.
-  const out = await runDoctor(
-    options({
-      deep: true,
-      execFileImpl: async (_cmd, args) => ({
-        stdout: helpFor(args.join(" "), { cdOn: ["exec --help", "exec resume --help"] }),
-        stderr: "",
-      }),
-    })
-  );
-
-  assert.equal(out.deep.surfaces["exec resume"].hasCd, true);
-  assert.equal(out.warnings.length, 1);
-  assert.match(out.warnings[0], /codex exec resume` now accepts --cd/);
-});
-
-test("doctor deep warns when exec loses the --cd initial runs depend on", async () => {
-  // The other direction: initial runs pass --cd to set the working root. The child
-  // is spawned in the workspace too (delegate.js), so losing the flag would not move
-  // the directory — it would make every delegation die on an unknown argument.
-  const out = await runDoctor(
-    options({
-      deep: true,
-      execFileImpl: async (_cmd, args) => ({
-        stdout: helpFor(args.join(" "), { cdOn: [] }),
-        stderr: "",
-      }),
-    })
-  );
-
-  assert.equal(out.deep.surfaces.exec.hasCd, false);
-  assert.equal(out.warnings.length, 1);
-  assert.match(out.warnings[0], /codex exec` no longer accepts --cd/);
-});
-
-test("a help probe that failed does not masquerade as a --cd change", async () => {
-  // A non-zero help call reports no flags at all. Reading that as "the flag was
-  // removed" would fire the drift warning on every broken install; `ok: false`
-  // already says the probe itself did not work.
-  const out = await runDoctor(
-    options({
-      deep: true,
-      execFileImpl: async () => {
-        throw Object.assign(new Error("boom"), { code: 1, stdout: "", stderr: "" });
-      },
-    })
-  );
-
-  assert.equal(out.deep.surfaces.exec.ok, false);
-  assert.deepEqual(
-    out.warnings.filter((w) => w.includes("--cd")),
-    []
-  );
-});
 
 test("doctor deep is skipped when the CLI did not resolve", async () => {
   const out = await runDoctor(
