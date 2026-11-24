@@ -188,7 +188,6 @@ async function runDeepSmoke({ codex, execFileImpl = execFileAsync, warnings = []
       exitCode,
       hasJson: /--json/.test(help),
       hasOutputLastMessage: /--output-last-message/.test(help),
-      hasCd: /--cd\b/.test(help),
     };
   }
   return {

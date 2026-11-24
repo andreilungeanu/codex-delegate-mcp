@@ -4,6 +4,9 @@ import { runDoctor } from "../src/doctor.js";
 import { DEFAULT_MODEL, DEFAULT_REASONING_EFFORT } from "../src/command.js";
 import { VERSION } from "../src/version.js";
 
+// Codex's help surfaces, reduced to the flags doctor reads.
+const HELP = "--json --output-last-message";
+
 const resolved = {
   command: "/bin/codex",
   source: "standalone",
@@ -127,7 +130,7 @@ test("doctor deep probes the exec surfaces it depends on", async () => {
       deep: true,
       execFileImpl: async (_cmd, args) => {
         seen.push(args.join(" "));
-        return { stdout: helpFor(args.join(" ")), stderr: "" };
+        return { stdout: HELP, stderr: "" };
       },
     })
   );
@@ -139,10 +142,6 @@ test("doctor deep probes the exec surfaces it depends on", async () => {
     assert.equal(surface.hasJson, true);
     assert.equal(surface.hasOutputLastMessage, true);
   }
-  // The shape the bridge is built on: only an initial run can be given --cd.
-  assert.equal(out.deep.surfaces.exec.hasCd, true);
-  assert.equal(out.deep.surfaces["exec review"].hasCd, false);
-  assert.equal(out.deep.surfaces["exec resume"].hasCd, false);
   assert.deepEqual(out.warnings, [], "a CLI matching the assumptions warns about nothing");
   assert.ok(seen.includes("exec review --help"));
 });
@@ -180,11 +179,6 @@ test("doctor runs login, help and catalog probes through a resolved launcher scr
     await rm(dir, { recursive: true, force: true });
   }
 });
-
-/** Codex's help surfaces, reduced to the flags doctor reads. */
-function helpFor(invocation) {
-  return `--json --output-last-message${invocation === "exec --help" ? " -C, --cd <DIR>" : ""}`;
-}
 
 test("doctor deep is skipped when the CLI did not resolve", async () => {
   const out = await runDoctor(
@@ -239,7 +233,7 @@ function catalogJson(models) {
 function deepExec({ catalog, onDebug } = {}) {
   return async (_cmd, args) => {
     const invocation = args.join(" ");
-    if (invocation !== "debug models") return { stdout: helpFor(invocation), stderr: "" };
+    if (invocation !== "debug models") return { stdout: HELP, stderr: "" };
     if (onDebug) return onDebug();
     return { stdout: catalog, stderr: "" };
   };
