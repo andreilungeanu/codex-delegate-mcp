@@ -2062,60 +2062,66 @@ test("cancelling a live run kills the tree Codex started, not just Codex", async
   }
 });
 
-// taskkill stands in as a process that exits 1, as when it cannot end a process.
-test(
-  "a cancel whose taskkill fails kills Codex by its handle and warns of the commands it started",
-  { skip: process.platform === "win32" ? false : "windows taskkill" },
-  async () => {
-    const { spawn } = await import("node:child_process");
-    const { createRequire, syncBuiltinESMExports } = await import("node:module");
-    const cp = createRequire(import.meta.url)("node:child_process");
-    const execFile = cp.execFile;
-    cp.execFile = (file, args, opts, cb) =>
-      file === "taskkill"
-        ? execFile(process.execPath, ["-e", "process.exit(1)"], opts, cb)
-        : execFile(file, args, opts, cb);
-    syncBuiltinESMExports();
-
-    const dir = await mkdtemp(path.join(tmpdir(), "cdm-taskkill-fails-"));
-    const controller = new AbortController();
-    const notes = [];
-    let child;
-    const run = runCodexProcess({
-      command: process.execPath,
-      args: ["-e", "setInterval(() => {}, 1000)"],
-      cwd: dir,
-      resultFile: path.join(dir, "last.txt"),
-      signal: controller.signal,
-      spawnImpl: (...args) => (child = spawn(...args)),
-      heartbeatMs: 0,
-      startupMs: 15_000,
-      timeoutMs: 30_000,
-      killDeadlineMs: 8000,
-      onUnseenExit: (note) => notes.push(note),
-    });
-    try {
-      await new Promise((r) => setTimeout(r, 500));
-      const started = Date.now();
-      controller.abort();
-      const out = await run;
-      assert.ok(Date.now() - started < 6000, `the run took ${Date.now() - started} ms to settle`);
-      assert.equal(out.status, "interrupted");
-      assert.notEqual(child.exitCode ?? child.signalCode, null, "Codex outlived the cancel");
-      assert.ok(
-        out.warnings.some((w) => /taskkill could not end Codex's process tree/.test(w)),
-        JSON.stringify(out.warnings)
-      );
-      assert.equal(notes.length, 1, JSON.stringify(notes));
-    } finally {
-      cp.execFile = execFile;
+// taskkill stands in as a process that exits 1: at once, killing nothing, or after killing Codex,
+// as when it ends Codex and fails on a process Codex started, so Codex's exit is seen first.
+for (const [name, script] of [
+  ["fails", "process.exit(1)"],
+  ["ends Codex but fails on another process", "process.kill(Number(process.argv[1])); setTimeout(() => process.exit(1), 1500)"],
+]) {
+  test(
+    `a cancel whose taskkill ${name} ends Codex and warns of the commands it started`,
+    { skip: process.platform === "win32" ? false : "windows taskkill" },
+    async () => {
+      const { spawn } = await import("node:child_process");
+      const { createRequire, syncBuiltinESMExports } = await import("node:module");
+      const cp = createRequire(import.meta.url)("node:child_process");
+      const execFile = cp.execFile;
+      cp.execFile = (file, args, opts, cb) =>
+        file === "taskkill"
+          ? execFile(process.execPath, ["-e", script, args[1]], opts, cb)
+          : execFile(file, args, opts, cb);
       syncBuiltinESMExports();
+
+      const dir = await mkdtemp(path.join(tmpdir(), "cdm-taskkill-fails-"));
+      const controller = new AbortController();
+      const notes = [];
+      let child;
+      const run = runCodexProcess({
+        command: process.execPath,
+        args: ["-e", "setInterval(() => {}, 1000)"],
+        cwd: dir,
+        resultFile: path.join(dir, "last.txt"),
+        signal: controller.signal,
+        spawnImpl: (...args) => (child = spawn(...args)),
+        heartbeatMs: 0,
+        startupMs: 15_000,
+        timeoutMs: 30_000,
+        killDeadlineMs: 8000,
+        onUnseenExit: (note) => notes.push(note),
+      });
       try {
-        child?.kill("SIGKILL");
-      } catch {}
+        await new Promise((r) => setTimeout(r, 500));
+        const started = Date.now();
+        controller.abort();
+        const out = await run;
+        assert.ok(Date.now() - started < 6000, `the run took ${Date.now() - started} ms to settle`);
+        assert.equal(out.status, "interrupted");
+        assert.notEqual(child.exitCode ?? child.signalCode, null, "Codex outlived the cancel");
+        assert.ok(
+          out.warnings.some((w) => /taskkill failed or stalled on Codex's process tree/.test(w)),
+          JSON.stringify(out.warnings)
+        );
+        assert.equal(notes.length, 1, JSON.stringify(notes));
+      } finally {
+        cp.execFile = execFile;
+        syncBuiltinESMExports();
+        try {
+          child?.kill("SIGKILL");
+        } catch {}
+      }
     }
-  }
-);
+  );
+}
 
 // The startup deadline is the only guard on a launcher that never gets going, and
 // "output" is not the same fact as "a JSONL event". A wedged Codex that writes one

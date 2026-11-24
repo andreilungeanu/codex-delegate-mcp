@@ -147,6 +147,8 @@ export async function runCodexProcess({
   let killTimer;
   let killEscaped = false;
   let treeKillFailed = false;
+  /** @type {Promise<void>[]} */
+  const kills = [];
   // Set the moment the exit arrives. The kill deadline bounds a process that will
   // not die, so past that point it has nothing left to bound: one armed by a cancel
   // landing in the drain window would fire against a process that is already gone
@@ -192,7 +194,7 @@ export async function runCodexProcess({
   };
 
   const onAbort = () => {
-    abort({ userCancel: true }).catch(() => {});
+    kills.push(abort({ userCancel: true }).catch(() => {}));
   };
 
   const hardCapMs = timeoutMs > 0 ? timeoutMs : 0;
@@ -218,7 +220,7 @@ export async function runCodexProcess({
     if (timedOut || cancelled) return;
     timedOut = true;
     timeoutReason = reason;
-    abort({ userCancel: false }).catch(() => {});
+    kills.push(abort({ userCancel: false }).catch(() => {}));
   };
 
   // No mid-turn idle guard: Codex emits nothing for the body of a shell command
@@ -295,6 +297,8 @@ export async function runCodexProcess({
     // may hold it open for its own lifetime, and waiting on that would wedge this
     // delegation for exactly that long.
     drainEscaped = !(await withDeadline(Promise.all([pipesClosed, drained]), drainMs));
+    // A taskkill that ended Codex can still be failing on a process it started.
+    await withDeadline(Promise.all(kills), killDeadlineMs);
   } finally {
     // Again, because the clear above is inside the try: a spawn that errors rejects
     // `exited` and skips straight to here with every timer still armed.
@@ -368,7 +372,7 @@ export async function runCodexProcess({
 }
 
 const TREE_KILL_FAILED =
-  "taskkill could not end Codex's process tree, so Codex was killed alone; a command it started may still be running.";
+  "taskkill failed or stalled on Codex's process tree; a command Codex started may still be running.";
 
 /** @param {number} killDeadlineMs */
 function killEscapedWarning(killDeadlineMs) {
