@@ -2,6 +2,7 @@ import process from "node:process";
 import path from "node:path";
 import { statSync } from "node:fs";
 import { z } from "zod";
+import { codedError } from "./errors.js";
 
 /** @type {readonly [string, ...string[]]} */
 export const MODES = Object.freeze(["agent", "plan", "ask", "review"]);
@@ -111,13 +112,10 @@ export function estimateArgvChars(args) {
 function assertReviewArgvLength(args) {
   const chars = estimateArgvChars(args);
   if (chars <= MAX_REVIEW_ARGV_CHARS) return;
-  const err = /** @type {Error & { code?: string }} */ (
-    new Error(
-      `Codex argv is too long (${chars} chars; limit ${MAX_REVIEW_ARGV_CHARS}). Shorten the spec brief: review cannot send it on stdin.`
-    )
+  throw codedError(
+    "argv_too_long",
+    `Codex argv is too long (${chars} chars; limit ${MAX_REVIEW_ARGV_CHARS}). Shorten the spec brief: review cannot send it on stdin.`
   );
-  err.code = "argv_too_long";
-  throw err;
 }
 
 function buildInitialArgs(request, { resultFile, outputSchemaFile }) {
@@ -220,17 +218,17 @@ function tomlString(value) {
 }
 
 export function validateDelegateInput(raw, { cwd = process.cwd() } = {}) {
-  if (!raw || typeof raw !== "object") throw bad("invalid_input", "delegate args must be an object");
+  if (!raw || typeof raw !== "object") throw codedError("invalid_input", "delegate args must be an object");
   const spec = String(raw.spec ?? "").trim();
-  if (!spec) throw bad("invalid_spec", "spec is required");
+  if (!spec) throw codedError("invalid_spec", "spec is required");
 
   const mode = raw.mode ?? "agent";
-  if (!MODES.includes(mode)) throw bad("invalid_mode", `mode must be one of ${MODES.join(", ")}`);
+  if (!MODES.includes(mode)) throw codedError("invalid_mode", `mode must be one of ${MODES.join(", ")}`);
 
   // Required: an omitted workspace used to mean this server's directory (npx cache
   // or $HOME), and the run completed against a tree nobody asked about.
   if (!raw.workspace || !String(raw.workspace).trim()) {
-    throw bad(
+    throw codedError(
       "invalid_workspace",
       "workspace is required: name the directory Codex should work in"
     );
@@ -241,10 +239,10 @@ export function validateDelegateInput(raw, { cwd = process.cwd() } = {}) {
   try {
     workspaceStat = statSync(workspace);
   } catch {
-    throw bad("invalid_workspace", `workspace does not exist: ${workspace}`);
+    throw codedError("invalid_workspace", `workspace does not exist: ${workspace}`);
   }
   if (!workspaceStat.isDirectory()) {
-    throw bad("invalid_workspace", `workspace is not a directory: ${workspace}`);
+    throw codedError("invalid_workspace", `workspace is not a directory: ${workspace}`);
   }
 
   // Live web search is on unless the caller opts out.
@@ -253,9 +251,9 @@ export function validateDelegateInput(raw, { cwd = process.cwd() } = {}) {
   let resumeThreadId;
   if (raw.resumeThreadId != null && String(raw.resumeThreadId).trim()) {
     resumeThreadId = String(raw.resumeThreadId).trim();
-    if (mode === "review") throw bad("invalid_resume", "resumeThreadId is not allowed with review");
+    if (mode === "review") throw codedError("invalid_resume", "resumeThreadId is not allowed with review");
     if (resumeThreadId.startsWith("-")) {
-      throw bad("invalid_resume", "resumeThreadId must be a thread identifier, not a CLI option");
+      throw codedError("invalid_resume", "resumeThreadId must be a thread identifier, not a CLI option");
     }
   }
 
@@ -263,13 +261,13 @@ export function validateDelegateInput(raw, { cwd = process.cwd() } = {}) {
   if (mode === "review") {
     reviewTarget = normalizeReviewTarget(raw.reviewTarget);
   } else if (raw.reviewTarget != null) {
-    throw bad("invalid_review_target", "reviewTarget is only valid in review mode");
+    throw codedError("invalid_review_target", "reviewTarget is only valid in review mode");
   }
 
   let timeoutMs = raw.timeoutMs;
   if (timeoutMs != null) {
     if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 86_400_000) {
-      throw bad("invalid_timeout", "timeoutMs must be an integer from 1000 to 86400000");
+      throw codedError("invalid_timeout", "timeoutMs must be an integer from 1000 to 86400000");
     }
   }
 
@@ -278,7 +276,7 @@ export function validateDelegateInput(raw, { cwd = process.cwd() } = {}) {
     model = DEFAULT_MODEL;
   } else {
     const trimmed = String(raw.model).trim();
-    if (!trimmed) throw bad("invalid_model", "model must be a non-empty string when provided");
+    if (!trimmed) throw codedError("invalid_model", "model must be a non-empty string when provided");
     model = trimmed;
   }
 
@@ -309,24 +307,18 @@ function normalizeOptionalText(value) {
 
 function normalizeReviewTarget(value) {
   if (!value || typeof value !== "object") {
-    throw bad("invalid_review_target", "review mode requires reviewTarget");
+    throw codedError("invalid_review_target", "review mode requires reviewTarget");
   }
   if (value.kind === "uncommitted") return { kind: "uncommitted" };
   if (value.kind === "base") {
     const branch = String(value.branch || "").trim();
-    if (!branch) throw bad("invalid_review_target", "reviewTarget.branch required");
+    if (!branch) throw codedError("invalid_review_target", "reviewTarget.branch required");
     return { kind: "base", branch };
   }
   if (value.kind === "commit") {
     const sha = String(value.sha || "").trim();
-    if (!sha) throw bad("invalid_review_target", "reviewTarget.sha required");
+    if (!sha) throw codedError("invalid_review_target", "reviewTarget.sha required");
     return { kind: "commit", sha };
   }
-  throw bad("invalid_review_target", "reviewTarget.kind must be uncommitted|base|commit");
-}
-
-function bad(code, message) {
-  const err = /** @type {Error & { code?: string }} */ (new Error(message));
-  err.code = code;
-  return err;
+  throw codedError("invalid_review_target", "reviewTarget.kind must be uncommitted|base|commit");
 }

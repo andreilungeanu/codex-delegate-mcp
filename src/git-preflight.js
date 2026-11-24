@@ -1,6 +1,7 @@
 import process from "node:process";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { codedError } from "./errors.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -31,7 +32,7 @@ export async function preflightReviewTarget({
   const repo = await git(["rev-parse", "--git-dir"]);
   if (repo.status === "unknown") return;
   if (repo.status === "no") {
-    throw bad(
+    throw codedError(
       "invalid_workspace",
       `review needs a git repository, and ${workspace} is not one. Codex would run the review anyway and report that it found nothing to inspect.`
     );
@@ -65,7 +66,7 @@ async function requireResolvableBase(git, workspace, branch) {
     const qualified = `${remote}/${branch}^{commit}`;
     if ((await git(["rev-parse", "--verify", "--quiet", qualified])).status !== "no") return;
   }
-  throw bad(
+  throw codedError(
     "invalid_review_target",
     `reviewTarget.branch "${branch}" does not resolve to a commit in ${workspace}, locally or on any remote.`
   );
@@ -73,7 +74,7 @@ async function requireResolvableBase(git, workspace, branch) {
 
 async function requireResolvable(git, workspace, ref, field) {
   if ((await git(["rev-parse", "--verify", "--quiet", `${ref}^{commit}`])).status === "no") {
-    throw bad(
+    throw codedError(
       "invalid_review_target",
       `reviewTarget.${field} "${ref}" does not resolve to a commit in ${workspace}.`
     );
@@ -109,10 +110,4 @@ function gitRunner(workspace, execFileImpl) {
       return { status: err?.code === "ENOENT" ? "unknown" : "no", stdout: "" };
     }
   };
-}
-
-function bad(code, message) {
-  const err = /** @type {Error & { code?: string }} */ (new Error(message));
-  err.code = code;
-  return err;
 }

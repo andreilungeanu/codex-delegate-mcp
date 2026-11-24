@@ -20,6 +20,7 @@ import {
 import { normalizeEditToolFiles } from "./edit-tool-files.js";
 import { createOperationRegistry } from "./ops.js";
 import { preflightReviewTarget } from "./git-preflight.js";
+import { codedError } from "./errors.js";
 
 /**
  * Deadline for the model preflight. An unknown model costs ~2.5s at the API; this cannot.
@@ -62,13 +63,10 @@ export async function executeDelegate(rawArgs, options = {}) {
   } = options;
 
   if (env.CODEX_DELEGATE_DEPTH && String(env.CODEX_DELEGATE_DEPTH).trim() !== "") {
-    const err = /** @type {Error & { code?: string }} */ (
-      new Error(
-        "Refusing nested delegation (CODEX_DELEGATE_DEPTH is already set). The orchestrator should call this MCP server, not nest workers."
-      )
+    throw codedError(
+      "recursion_refused",
+      "Refusing nested delegation (CODEX_DELEGATE_DEPTH is already set). The orchestrator should call this MCP server, not nest workers."
     );
-    err.code = "recursion_refused";
-    throw err;
   }
 
   const request = validateDelegateInput(rawArgs, { cwd });
@@ -258,18 +256,14 @@ async function assertKnownModel(model, { command, commandArgs, readCatalog, cata
   const slugs = catalogSlugs(models);
   if (slugs.length === 0 || slugs.includes(model)) return models;
   const offered = listedSlugs(models);
-  const err = /** @type {Error & { code?: string }} */ (
-    new Error(
-      // No fallback to every slug: a catalog with nothing listed would name the hidden
-      // ones, which is the one thing this message promises not to do. Refusing without a
-      // suggestion is still an answer; naming an internal model is not.
-      offered.length
-        ? `Unknown model ${JSON.stringify(model)}. This Codex CLI offers: ${offered.join(", ")}.`
-        : `Unknown model ${JSON.stringify(model)}.`
-    )
+  // No fallback to every slug: with nothing listed it would name the hidden models, which this
+  // message promises not to do.
+  throw codedError(
+    "invalid_model",
+    offered.length
+      ? `Unknown model ${JSON.stringify(model)}. This Codex CLI offers: ${offered.join(", ")}.`
+      : `Unknown model ${JSON.stringify(model)}.`
   );
-  err.code = "invalid_model";
-  throw err;
 }
 
 /**

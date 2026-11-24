@@ -18,6 +18,7 @@ This package is an MCP stdio server that delegates coding work to `codex exec`. 
 | `src/doctor.js` | Produces setup diagnostics for the plugin, MCP client, Codex CLI, login state, workspace, runtime, and optional CLI help-surface and model-catalog checks. |
 | `src/model-catalog.js` | Reads the Codex model catalog (`codex debug models`) for the model field's description at startup, the model preflight, and the doctor drift checks. |
 | `src/git-preflight.js` | Checks that a review workspace is a Git repository and validates applicable review targets before Codex is spawned. |
+| `src/errors.js` | Builds the errors a caller tells apart by `code`. |
 | `src/edit-tool-files.js` | Extracts paths from native Codex `file_change` events and normalizes them relative to the workspace. |
 | `src/version.js` | Defines the package version reported by the server and doctor. |
 

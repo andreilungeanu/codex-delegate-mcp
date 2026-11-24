@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { codedError } from "./errors.js";
 
 /**
  * Owns the in-flight delegations. Cancel can run while delegate awaits.
@@ -22,11 +23,7 @@ class OperationRegistry {
   acquire({ id, threadId = null, cancel } = {}) {
     if (typeof cancel !== "function") throw new TypeError("cancel must be a function");
     if (this.#closed) {
-      const err = /** @type {Error & { code?: string }} */ (
-        new Error("The server is shutting down, so Codex was not started.")
-      );
-      err.code = "shutting_down";
-      throw err;
+      throw codedError("shutting_down", "The server is shutting down, so Codex was not started.");
     }
 
     const delegationId = id ?? randomUUID();
