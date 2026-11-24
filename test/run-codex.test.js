@@ -2123,6 +2123,83 @@ for (const [name, script] of [
   );
 }
 
+test("a tree kill that throws counts as failed: Codex is killed by its handle, with the warning", async () => {
+  const { spawn } = await import("node:child_process");
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-treekill-throws-"));
+  const controller = new AbortController();
+  let child;
+  const run = runCodexProcess({
+    command: process.execPath,
+    args: ["-e", "setInterval(() => {}, 1000)"],
+    cwd: dir,
+    resultFile: path.join(dir, "last.txt"),
+    signal: controller.signal,
+    spawnImpl: (...args) => (child = spawn(...args)),
+    treeKillImpl: async () => {
+      throw new Error("tree kill failed");
+    },
+    heartbeatMs: 0,
+    startupMs: 15_000,
+    timeoutMs: 30_000,
+    killDeadlineMs: 8000,
+  });
+  try {
+    await new Promise((r) => setTimeout(r, 300));
+    const started = Date.now();
+    controller.abort();
+    const out = await run;
+    assert.ok(Date.now() - started < 5000, `the run took ${Date.now() - started} ms to settle`);
+    assert.ok(
+      out.warnings.some((w) => /taskkill failed or stalled on Codex's process tree/.test(w)),
+      JSON.stringify(out.warnings)
+    );
+  } finally {
+    try {
+      child?.kill("SIGKILL");
+    } catch {}
+  }
+});
+
+// The startup deadline trips at 200 ms and the cancel lands at 350 ms, while the first kill still runs.
+test("a timeout and a cancel whose tree kills both fail leave one note", async () => {
+  const { spawn } = await import("node:child_process");
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-treekill-twice-"));
+  const controller = new AbortController();
+  const notes = [];
+  let child;
+  const run = runCodexProcess({
+    command: process.execPath,
+    args: ["-e", "setInterval(() => {}, 1000)"],
+    cwd: dir,
+    resultFile: path.join(dir, "last.txt"),
+    signal: controller.signal,
+    spawnImpl: (...args) => (child = spawn(...args)),
+    treeKillImpl: async () => {
+      await new Promise((r) => setTimeout(r, 400));
+      return false;
+    },
+    heartbeatMs: 0,
+    startupMs: 200,
+    timeoutMs: 30_000,
+    killDeadlineMs: 8000,
+    onUnseenExit: (note) => notes.push(note),
+  });
+  const cancel = setTimeout(() => controller.abort(), 350);
+  try {
+    await run;
+    assert.equal(
+      notes.filter((n) => /taskkill failed or stalled/.test(n)).length,
+      1,
+      JSON.stringify(notes)
+    );
+  } finally {
+    clearTimeout(cancel);
+    try {
+      child?.kill("SIGKILL");
+    } catch {}
+  }
+});
+
 // The startup deadline is the only guard on a launcher that never gets going, and
 // "output" is not the same fact as "a JSONL event". A wedged Codex that writes one
 // diagnostic line first used to buy itself the whole hard cap.

@@ -179,15 +179,22 @@ export async function runCodexProcess({
     // make it unrecyclable — it is the same integer either way. What bounds the risk
     // is that this only ever runs inside a live run, so the group is at most one
     // drain old; do not reuse it for a later sweep.
-    const tidy = await treeKillImpl(childPid, { childAlive: isChildAlive(child) });
+    let tidy;
+    try {
+      tidy = await treeKillImpl(childPid, { childAlive: isChildAlive(child) });
+    } catch {
+      tidy = false;
+    }
     if (tidy !== false) return;
     // Codex's own handle still ends it, and no reused pid, but not the commands it started.
-    treeKillFailed = true;
     if (isChildAlive(child)) {
       try {
         child.kill("SIGKILL");
       } catch {}
     }
+    // A timeout and a cancel each run a kill; one note covers both.
+    if (treeKillFailed) return;
+    treeKillFailed = true;
     try {
       onUnseenExit?.(TREE_KILL_FAILED);
     } catch {}
