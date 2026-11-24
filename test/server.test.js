@@ -885,3 +885,14 @@ test("the startup catalog read is bounded, and a CLI that does not resolve reads
   assert.equal(none, null);
   assert.equal(reads, 0);
 });
+
+for (const [era, versionNegotiation] of ERAS) {
+  test(`the tool list is not advertised as changing on a ${era}-era connection`, async () => {
+    const { client, close } = await connectEra(versionNegotiation, {});
+    try {
+      assert.equal(client.getServerCapabilities()?.tools?.listChanged, false);
+    } finally {
+      await close();
+    }
+  });
+}

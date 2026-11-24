@@ -254,7 +254,11 @@ export function buildServer({
     { name: "codex-delegate-mcp", version: VERSION, icons: SERVER_ICONS },
     {
       instructions: SERVER_INSTRUCTIONS,
-      ...(servesTasks ? { capabilities: { extensions: { [TASKS_EXTENSION]: {} } } } : {}),
+      capabilities: {
+        // The tool list never changes, and the SDK advertises listChanged unless told otherwise.
+        tools: { listChanged: false },
+        ...(servesTasks ? { extensions: { [TASKS_EXTENSION]: {} } } : {}),
+      },
     }
   );
   if (servesTasks) registerTaskHandlers(server, tasks);
