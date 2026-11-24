@@ -18,11 +18,11 @@ import {
   buildServer,
   runDelegateTool,
   runCancelTool,
-  delegateOutputShape,
   SERVER_INSTRUCTIONS,
   readStartupCatalog,
 } from "../src/server.js";
 import { DEFAULT_MODEL, DEFAULT_REASONING_EFFORT } from "../src/command.js";
+import { delegateOutputShape } from "./output-shapes.js";
 import { createOperationRegistry } from "../src/ops.js";
 import { executeDelegate } from "../src/delegate.js";
 

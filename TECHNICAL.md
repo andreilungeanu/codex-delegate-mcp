@@ -6,7 +6,7 @@ This package is an MCP stdio server that delegates coding work to `codex exec`. 
 
 | Module | Ownership |
 |---|---|
-| `src/server.js` | Starts the stdio MCP server, registers `delegate`, `cancel`, and `doctor`, defines their input schemas, sends progress notifications, and serializes each tool response as compact JSON text. Exports `delegateOutputShape` as the in-repository delegate-result contract. |
+| `src/server.js` | Starts the stdio MCP server, registers `delegate`, `cancel`, and `doctor`, defines their input schemas, sends progress notifications, and serializes each tool response as compact JSON text. |
 | `src/delegate.js` | Validates a delegation, acquires and releases an operation lease, performs review and model preflight checks, creates temporary result/schema files, runs Codex, normalizes the result, and parses plan-mode output. |
 | `src/command.js` | Defines modes and defaults, validates delegate input, and builds the `codex exec` argument vector and stdin prompt for initial, resumed, and review runs. |
 | `src/run-codex.js` | Spawns Codex, consumes its JSONL output, reports progress, collects thread, usage, and edit-tool metadata, reads the final-message file, and classifies the completed process result. |
@@ -27,7 +27,7 @@ All three tools use strict input schemas. Unknown input fields are rejected.
 
 No tool declares an MCP `outputSchema`, and no tool returns `structuredContent`. Every tool returns exactly one compact JSON text block; a `delegate` answered with an MCP task returns it as the task's result. Declaring an `outputSchema` obliges the server to also send `structuredContent`; a host that reads both it and the text block, including Codex, places the payload in the model context twice.
 
-`src/server.js` exports `delegateOutputShape` as the in-repository contract for a successful delegate result. `test/server.test.js` enforces a strict copy of that shape, so a field added in `src/delegate.js` must also be added to the contract.
+`test/output-shapes.js` holds `delegateOutputShape`, the contract for a successful delegate result. `test/server.test.js` parses results against a strict copy of it, so a field added in `src/delegate.js` must also be added to the contract.
 
 Caller-facing input, result, cancel, and mode semantics live in [skills/delegate/reference.md](skills/delegate/reference.md). Environment knobs, timeouts, and Codex resolution live in [CONFIGURATION.md](CONFIGURATION.md).
 

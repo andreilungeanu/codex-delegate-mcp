@@ -48,60 +48,6 @@ const reviewTargetSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("commit"), sha: z.string() }).strict(),
 ]);
 
-// No tool declares an outputSchema: declaring one obliges the server to also return
-// structuredContent, and a host that reads both it and the text block — Codex does — puts the
-// payload in the model's context twice. Every tool returns one compact JSON text block instead.
-// So this is an in-repo contract, enforced by the .strict() copy in server.test.js, which
-// fails when a field added in delegate.js is forgotten here. cancel's status vocabulary is
-// published in its tool description, which is now its only schema.
-//
-// Types only. What each field means, and what its absence means, is documented once in
-// skills/delegate/reference.md.
-export const delegateOutputShape = {
-  result: z.string(),
-  status: z.enum(["completed", "failed", "interrupted"]),
-  reason: z
-    .enum([
-      "cancelled",
-      "startup-timeout",
-      "hard-cap",
-      "agent-error",
-      "died-mid-turn",
-      "exit-nonzero",
-      "result-unavailable",
-    ])
-    .optional(),
-  threadId: z.string().optional(),
-  delegationId: z.string().optional(),
-  resumed: z.boolean().optional(),
-  workspace: z.string(),
-  cliVersion: z.string().optional(),
-  usage: z
-    .object({
-      scope: z.literal("thread"),
-      inputTokens: z.number().optional(),
-      cachedInputTokens: z.number().optional(),
-      cacheWriteInputTokens: z.number().optional(),
-      outputTokens: z.number().optional(),
-      reasoningOutputTokens: z.number().optional(),
-    })
-    .optional(),
-  filesReportedByEditTools: z.array(z.string()).optional(),
-  plan: z
-    .object({
-      overview: z.string(),
-      steps: z.array(
-        z.object({
-          title: z.string(),
-          detail: z.string(),
-        })
-      ),
-    })
-    .optional(),
-  warnings: z.array(z.string()).optional(),
-  exitCode: z.number().int().optional(),
-};
-
 /** @param {{ args?: any, operationRegistry: any }} params */
 export async function runCancelTool({ args = {}, operationRegistry }) {
   const [delegationId, threadId] = [args?.delegationId, args?.threadId].map((id) =>
