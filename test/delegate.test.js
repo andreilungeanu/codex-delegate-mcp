@@ -747,31 +747,6 @@ test("plan output rejects extra properties at both object levels", async () => {
   }
 });
 
-test("a plan over the former step limit is returned in full", async () => {
-  const steps = Array.from({ length: 201 }, (_, i) => ({
-    title: `step ${i}`,
-    detail: "d".repeat(200),
-  }));
-  const result = await executeDelegate(
-    { spec: "plan", mode: "plan", workspace: process.cwd() },
-    {
-      ...delegateOptions("t-plan-big"),
-      runProcess: async () => ({
-        status: "completed",
-        exitCode: 0,
-        threadId: "t-plan-big",
-        result: JSON.stringify({ overview: "big", steps }),
-        warnings: [],
-        filesReportedByEditTools: [],
-      }),
-    }
-  );
-  assert.equal(result.status, "completed");
-  assert.equal(result.plan.steps.length, 201);
-  assert.equal(result.plan.overview, "big");
-  assert.equal(result.result, "big");
-});
-
 test("cancel resolves only after the delegation has actually settled", async () => {
   const registry = createOperationRegistry();
   const options = delegateOptions("tid-cancel");

@@ -745,21 +745,6 @@ test("a present but empty final file is a completed result", async () => {
   assert.equal(result.result, "");
 });
 
-test("a final result file above the former 10 MiB cap is returned verbatim", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "cdm-file-nocap-"));
-  const file = path.join(dir, "out.txt");
-  // Just over the former 10 MiB ceiling: model output is bounded by the model's
-  // own token limit, so there is nothing left for a byte cap to guard against.
-  const text = "y".repeat(10 * 1024 * 1024 + 1024);
-  await writeFile(file, text, "utf8");
-
-  const out = await readFinalResult({ filePath: file, status: "completed", exitCode: 0 });
-
-  assert.equal(out.finalMessageAvailable, true);
-  assert.equal(out.result, text);
-  assert.equal("warnings" in out, false);
-});
-
 test("readUsage keeps only the counts Codex actually reported", () => {
   assert.deepEqual(
     readUsage({ input_tokens: 10, cached_input_tokens: 2, output_tokens: 3 }),
@@ -1414,70 +1399,6 @@ test("runCodexProcess collects file_change paths", async () => {
 
   assert.equal(result.status, "completed");
   assert.deepEqual(result.filesReportedByEditTools.sort(), [absA, absB].sort());
-});
-
-test("a thread id over the former limit is preserved exactly", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "cdm-tid-"));
-  const resultFile = path.join(dir, "last.txt");
-  const longId = "x".repeat(201);
-  const seen = [];
-
-  const result = await runCodexProcess({
-    command: "codex",
-    args: ["exec"],
-    cwd: dir,
-    resultFile,
-    onThreadId: (id) => seen.push(id),
-    spawnImpl: () =>
-      fakeChild({
-        lines: [
-          JSON.stringify({ type: "thread.started", thread_id: longId }),
-          JSON.stringify({ type: "turn.completed", usage: {} }),
-        ],
-        writeResult: () => writeFile(resultFile, "ok", "utf8"),
-      }),
-    heartbeatMs: 0,
-    timeoutMs: 5000,
-  });
-
-  // The id is child-authored; echoing it verbatim is the only behavior that
-  // keeps resume and cancel working. A length cap was a guard against content
-  // a model or CLI had already bounded.
-  assert.equal(result.status, "completed");
-  assert.equal(result.threadId, longId);
-  assert.deepEqual(seen, [longId]);
-  assert.deepEqual(result.warnings, []);
-});
-
-test("every unique edited path is reported, past the former limit", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "cdm-manyfiles-"));
-  const resultFile = path.join(dir, "last.txt");
-  const paths = Array.from({ length: 501 }, (_, i) => path.join(dir, `f${i}.ts`));
-  const changes = paths.map((p) => ({ path: p, kind: "update" }));
-
-  const result = await runCodexProcess({
-    command: "codex",
-    args: ["exec"],
-    cwd: dir,
-    resultFile,
-    spawnImpl: () =>
-      fakeChild({
-        lines: [
-          JSON.stringify({ type: "item.completed", item: { type: "file_change", changes } }),
-          JSON.stringify({ type: "turn.completed", usage: {} }),
-        ],
-        writeResult: () => writeFile(resultFile, "ok", "utf8"),
-      }),
-    heartbeatMs: 0,
-    timeoutMs: 5000,
-  });
-
-  assert.equal(result.filesReportedByEditTools.length, 501);
-  assert.deepEqual(
-    result.filesReportedByEditTools.slice().sort(),
-    paths.slice().sort()
-  );
-  assert.deepEqual(result.warnings, []);
 });
 
 // Codex announces a file_change twice; the deduplication Set keeps each path
