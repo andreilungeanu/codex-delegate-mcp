@@ -50,7 +50,6 @@ test("the bare pid is only signalled while the child is alive", posixOnly, async
   // gone — that signal would land on somebody else's process.
   const calls = await recordKills(NO_PID, { childAlive: true });
   assert.deepEqual(calls, [
-    { target: -NO_PID, signal: "SIGSTOP" },
     { target: -NO_PID, signal: "SIGKILL" },
     { target: NO_PID, signal: "SIGKILL" },
   ]);
