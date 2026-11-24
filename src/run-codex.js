@@ -10,7 +10,7 @@ const STDERR_TAIL_CHARS = 2000;
 const DRAIN_MS = 2000;
 /** Spawn to first JSONL event. Silence here does mean a wedged launcher. */
 export const DEFAULT_STARTUP_MS = 60_000;
-export const DEFAULT_HEARTBEAT_MS = 30_000;
+const DEFAULT_HEARTBEAT_MS = 30_000;
 export const DEFAULT_HARD_CAP_MS = 21_600_000;
 
 /** The result of a run cancelled before Codex was spawned. */

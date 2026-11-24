@@ -42,14 +42,6 @@ export function createTaskStore({ now = Date.now, retainMs = RETAIN_MS } = {}) {
     const t = now();
     for (const task of tasks.values()) if (task.endedAt !== undefined && t - task.endedAt > retainMs) drop(task);
   };
-  // A fact that changes what to do after a cancel: a resume that started a fresh thread.
-  /** @param {Task} task @param {string} text */
-  const note = (task, text) => {
-    if (task.status !== "cancelled") return;
-    const base = task.statusMessage ?? "cancelled";
-    task.statusMessage = `${base}${base.endsWith(".") ? "" : "."} Note: ${text}`;
-    task.lastUpdatedAt = now();
-  };
   return {
     now,
     /** @returns {Task} */
@@ -94,8 +86,9 @@ export function createTaskStore({ now = Date.now, retainMs = RETAIN_MS } = {}) {
       if (task.status !== "working") return;
       if (task.runDecided) return task.ac.abort();
       task.status = "cancelled";
-      task.statusMessage = task.threadId ? `cancelled; resume with resumeThreadId ${task.threadId}` : "cancelled";
-      if (task.resumeNote) note(task, task.resumeNote);
+      const resume = task.threadId ? `cancelled; resume with resumeThreadId ${task.threadId}` : "cancelled";
+      // A resume that fell back changes what to do next, so it stays on the cancelled task.
+      task.statusMessage = task.resumeNote ? `${resume}. Note: ${task.resumeNote}` : resume;
       task.endedAt = task.lastUpdatedAt = now();
       task.ac.abort();
     },
