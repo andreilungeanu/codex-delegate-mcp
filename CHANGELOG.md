@@ -6,6 +6,57 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-11-24
+
+### Changed
+
+- A stop kills Codex's process tree once and waits up to 5 s for Codex to exit; on Windows
+  `taskkill` first gets up to 5 s of its own. A stop that cannot confirm the exit still ends the
+  run, and the result warns `the bridge stopped Codex (pid <pid>) but could not confirm that Codex
+  and its processes exited; they may still be running.` This replaces the warning that Codex did
+  not exit within 10000ms of being killed.
+- On Linux and macOS a stop lists Codex's processes once, then kills Codex's process group, each
+  listed process and its group, and Codex. It no longer stops each process as the listing finds it
+  and lists again, so a session that a command starts during the listing can outlive the stop. The
+  listing runs with the server's environment, `PS_PERSONALITY`, `CMD_ENV` and
+  `I_WANT_A_BROKEN_PS` included; when it fails, the group kill still runs.
+- Shutdown cancels every delegation, waits for the stops, and exits with the code of whatever
+  triggered it first. A later signal waits for the same stop, where a second signal exited at once.
+  Every stop is bounded, and the 15 s exit timer on a worker thread is removed.
+- A cancel during a review's git preflight ends the delegation once the preflight returns, and a
+  cancel during the model check once that check returns. Each git probe is bounded at 5 s and the
+  model check at 1 s. A cancel aborted them.
+- A stopped task's status message carries a note only when a resume started a new thread. A stop
+  that cannot confirm Codex exited is reported in the delegate result's `warnings`.
+- A timeout knob set to `0`, a negative number or a malformed value falls back to its default, as
+  in the ACP bridges, where `0` turned the guard off. Any other positive number is used as given.
+
+### Removed
+
+- `CODEX_DELEGATE_HEARTBEAT_MS`. The progress heartbeat while Codex is quiet stays at 30 s.
+- doctor's warning when a `codex exec` surface gains or loses `--cd`, and the `hasCd` field of
+  each `deep.surfaces` entry. A lost flag fails every run with an argument error.
+
+### Fixed
+
+- On Windows a `taskkill` that fails or runs past 5 s is followed by a kill of Codex by its
+  handle, and the result warns that Codex's processes may still be running. A failed `taskkill`
+  went unreported.
+- A cancel or timeout builds its result after `taskkill` finishes, so one that ends Codex and
+  fails on a process Codex started still warns.
+
+### Internal
+
+- `src/proc.js` and `src/shutdown.js` are the same in codex-delegate-mcp, cursor-delegate-mcp and
+  agy-delegate-mcp.
+- `npm test` runs without a deadline and takes the arguments ending in `.test.js` as the files to
+  run.
+- A plan reply is checked against a zod schema, which also yields the JSON Schema Codex is given.
+  Coded errors come from one `src/errors.js`, and the delegate result shape the tests check is in
+  `test/output-shapes.js`.
+- Reasoning levels are listed in the order first seen across the catalog's models.
+- Tests of limits and options the code no longer has are removed.
+
 ## [3.0.0] - 2026-11-24
 
 `delegate` no longer holds your agent while Codex works. In an interactive Claude Code CLI session
