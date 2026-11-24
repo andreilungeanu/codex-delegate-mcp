@@ -83,19 +83,24 @@ function stoppedDescendants(pid) {
  * leader no longer has, and what it left behind is either already gone with it or
  * detached and out of reach. So there is nothing for a post-exit kill to reach and
  * a recycled pid for it to hit: the gate is the whole of it.
+ *
+ * Resolves false when taskkill failed or stalled; its 128 is no such process, a
+ * launcher already gone.
  */
 export async function treeKill(pid, { childAlive = true } = {}) {
-  if (!pid) return;
+  if (!pid) return true;
   if (process.platform === "win32") {
-    if (!childAlive) return;
-    await /** @type {Promise<void>} */ (
+    if (!childAlive) return true;
+    return /** @type {Promise<boolean>} */ (
       new Promise((resolve) => {
-        execFile("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true }, () =>
-          resolve()
+        execFile(
+          "taskkill",
+          ["/PID", String(pid), "/T", "/F"],
+          { windowsHide: true, timeout: TASKKILL_MS, killSignal: "SIGKILL" },
+          (err) => resolve(!err || err.code === 128)
         );
       })
     );
-    return;
   }
   // Codex starts each shell command in a session of its own (measured on Linux, CLI 0.170), out
   // of the group's reach, so the tree is walked while Codex is alive to hold its parent links.
@@ -123,4 +128,8 @@ export async function treeKill(pid, { childAlive = true } = {}) {
       process.kill(d, "SIGKILL");
     } catch {}
   }
+  return true;
 }
+
+// Under run-codex's 10 s kill deadline, so a handle kill after a stalled taskkill lands inside it.
+const TASKKILL_MS = 5000;

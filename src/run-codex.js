@@ -146,6 +146,7 @@ export async function runCodexProcess({
 
   let killTimer;
   let killEscaped = false;
+  let treeKillFailed = false;
   // Set the moment the exit arrives. The kill deadline bounds a process that will
   // not die, so past that point it has nothing left to bound: one armed by a cancel
   // landing in the drain window would fire against a process that is already gone
@@ -176,7 +177,18 @@ export async function runCodexProcess({
     // make it unrecyclable — it is the same integer either way. What bounds the risk
     // is that this only ever runs inside a live run, so the group is at most one
     // drain old; do not reuse it for a later sweep.
-    await treeKillImpl(childPid, { childAlive: isChildAlive(child) });
+    const tidy = await treeKillImpl(childPid, { childAlive: isChildAlive(child) });
+    if (tidy !== false) return;
+    // Codex's own handle still ends it, and no reused pid, but not the commands it started.
+    treeKillFailed = true;
+    if (isChildAlive(child)) {
+      try {
+        child.kill("SIGKILL");
+      } catch {}
+    }
+    try {
+      onUnseenExit?.(TREE_KILL_FAILED);
+    } catch {}
   };
 
   const onAbort = () => {
@@ -336,6 +348,7 @@ export async function runCodexProcess({
     notices: events.notices,
     killEscaped,
     killDeadlineMs,
+    treeKillFailed,
     drainEscaped,
     drainMs,
     status,
@@ -353,6 +366,9 @@ export async function runCodexProcess({
     filesReportedByEditTools: [...events.reportedPaths],
   };
 }
+
+const TREE_KILL_FAILED =
+  "taskkill could not end Codex's process tree, so Codex was killed alone; a command it started may still be running.";
 
 /** @param {number} killDeadlineMs */
 function killEscapedWarning(killDeadlineMs) {
@@ -547,6 +563,7 @@ function buildRunWarnings({
   notices = [],
   killEscaped,
   killDeadlineMs,
+  treeKillFailed,
   drainEscaped,
   drainMs,
   status,
@@ -581,6 +598,7 @@ function buildRunWarnings({
       `Codex exited but something it started still holds its output open after ${drainMs}ms.`
     );
   }
+  if (treeKillFailed) warnings.push(TREE_KILL_FAILED);
   if (status !== "completed" && stderrTail.trim()) {
     warnings.push(`stderr: ${stderrTail.trim()}`);
   }

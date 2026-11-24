@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import process from "node:process";
 import { spawn } from "node:child_process";
+import { createRequire, syncBuiltinESMExports } from "node:module";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdtemp } from "./fixtures/temp-dir.mjs";
 import { tmpdir } from "node:os";
@@ -315,5 +316,55 @@ test("the windows kill still fires while the child is alive", win32Only, async (
     try {
       victim.kill();
     } catch {}
+  }
+});
+
+// taskkill replaced by a real process running script, which kills nothing.
+function swapTaskkill(script) {
+  const cp = createRequire(import.meta.url)("node:child_process");
+  const real = cp.execFile;
+  const utilities = [];
+  cp.execFile = (file, args, opts, cb) => {
+    if (file !== "taskkill") return real(file, args, opts, cb);
+    const utility = real(process.execPath, ["-e", script], opts, cb);
+    utilities.push(utility);
+    return utility;
+  };
+  syncBuiltinESMExports();
+  return {
+    utilities,
+    restore: () => {
+      cp.execFile = real;
+      syncBuiltinESMExports();
+      for (const u of utilities) {
+        try {
+          u.kill("SIGKILL");
+        } catch {}
+      }
+    },
+  };
+}
+
+test("treeKill reports a taskkill that failed, and one that found no such process as done", win32Only, async () => {
+  for (const [code, expected] of [[1, false], [128, true]]) {
+    const swap = swapTaskkill(`process.exit(${code})`);
+    try {
+      assert.equal(await treeKill(4242, { childAlive: true }), expected, `taskkill exit ${code}`);
+    } finally {
+      swap.restore();
+    }
+  }
+});
+
+test("a taskkill that stalls is stopped at its bound and reported", win32Only, async () => {
+  const swap = swapTaskkill("setInterval(() => {}, 1000)");
+  const started = Date.now();
+  try {
+    assert.equal(await treeKill(4242, { childAlive: true }), false);
+    assert.ok(Date.now() - started < 9000, `treeKill took ${Date.now() - started} ms`);
+    const [utility] = swap.utilities;
+    assert.notEqual(utility.signalCode ?? utility.exitCode, null, "the stalled taskkill is still running");
+  } finally {
+    swap.restore();
   }
 });
