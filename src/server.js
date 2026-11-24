@@ -2,7 +2,6 @@
 import process from "node:process";
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { Worker } from "node:worker_threads";
 import {
   McpServer,
   CLIENT_CAPABILITIES_META_KEY,
@@ -20,6 +19,7 @@ import { executeDelegate as executeDelegateDefault } from "./delegate.js";
 import { runDoctor as runDoctorDefault } from "./doctor.js";
 import { readModelCatalog, listedSlugs, listedEfforts, modelEfforts } from "./model-catalog.js";
 import { createOperationRegistry } from "./ops.js";
+import { installSignalCleanup } from "./shutdown.js";
 import { resolveCodex } from "./resolve-codex.js";
 import { TASKS_EXTENSION, createTaskStore, listsTasks, registerTaskHandlers, runAsTask } from "./tasks.js";
 import { VERSION } from "./version.js";
@@ -464,132 +464,6 @@ export function clientInfoOf(server, ctx) {
   };
 }
 
-/**
- * Kill what is still running, then exit, on any way the host has of going away.
- *
- * On POSIX the worker is spawned into its own process group so the whole tree can be
- * killed at once, and that same detachment means a Ctrl-C sent to this process no
- * longer reaches Codex. Without this the host goes away and an auto-approved agent
- * keeps writing the workspace with nothing left to stop it.
- *
- * The graceful exit is deliberately not called from inside the signal handler,
- * and not before the kills have settled: on Windows the kill is a separate
- * taskkill process, and a process.exit before it has walked the tree orphans
- * everything below the wrapper (measured in the sibling cursor bridge: its
- * launcher and agent survived the server's exit). So the kills are dispatched
- * synchronously, and the exit is carried by their settlement — bounded by the
- * kill deadline — onto a clean loop turn instead of the handler's stack.
- * `exitCode` is set in the handler so a draining loop still dies with the
- * right code, and a belt on a worker thread bounds the case where no exit
- * ever lands.
- *
- * Installed only from the CLI entrypoint. `buildServer()` is also a library call in
- * tests, and process-wide handlers do not belong to it.
- *
- * @param {any} operationRegistry
- * @param {{
- *   exit?: (code: number) => void,
- *   setExitCode?: (code: number) => void,
- *   schedule?: (fn: () => void) => void,
- *   armExitBelt?: () => void,
- *   stdin?: any,
- * }} [options]
- * @returns {() => void} Shuts down as stdin EOF does, for a host that goes some other way.
- */
-export function installSignalCleanup(
-  operationRegistry,
-  {
-    exit = (code) => process.exit(code),
-    setExitCode = (code) => {
-      process.exitCode = code;
-    },
-    schedule = (fn) => setImmediate(fn),
-    armExitBelt = defaultArmExitBelt,
-    stdin = process.stdin,
-  } = {}
-) {
-  let shuttingDown = false;
-  let signalsSeen = 0;
-  // A signal's code, even when the signal follows the stdin EOF.
-  let exitCode = 0;
-
-  const shutdown = (code, fromSignal = false) => {
-    if (fromSignal) signalsSeen++;
-    if (shuttingDown) {
-      // Only a second signal skips the wait: a hangup closes stdin and sends SIGHUP, in either order.
-      if (fromSignal && signalsSeen === 1) {
-        exitCode = code;
-        setExitCode(code);
-      }
-      // Registering a handler replaces Node's default exit, so a second signal has to reach it.
-      if (signalsSeen >= 2) exit(code);
-      return;
-    }
-    shuttingDown = true;
-    exitCode = code;
-    // exitCode is set in the handler itself so that even a naturally draining loop
-    // dies with the right code if the scheduled exit below never gets to run.
-    setExitCode(code);
-    armExitBelt();
-    // Dispatch, do not await. cancel starts every kill before its first await, so
-    // the tree kill is under way when this handler returns; settlement then carries
-    // the exit (Windows taskkill must finish first; see the JSDoc). Rejections are
-    // observed — an unhandled one exits by itself.
-    try {
-      Promise.resolve(operationRegistry.cancel({ cause: "shutdown" }))
-        .catch(() => {})
-        .then(() => schedule(() => exit(exitCode)))
-        .catch(() => {});
-    } catch {
-      schedule(() => exit(exitCode));
-    }
-  };
-
-  // SIGHUP is a closed terminal; its default would end the server and leave Codex running.
-  const signals = /** @type {[NodeJS.Signals, number][]} */ ([
-    ["SIGINT", 130],
-    ["SIGTERM", 143],
-    ["SIGHUP", 129],
-  ]);
-  for (const [signal, code] of signals) process.on(signal, () => shutdown(code, true));
-
-  // Closing stdin is how a host shuts a stdio server down. The SDK aborts the requests in
-  // flight; this also refuses new runs, waits for the kills, and exits under the belt.
-  stdin.on("end", () => shutdown(0));
-  return () => shutdown(0);
-}
-
-/** Past the kill deadline (10s in run-codex) plus taskkill's own runtime. */
-const EXIT_BELT_MS = 15_000;
-
-/**
- * A timer on the main loop cannot save a main loop that never comes back, so
- * the belt runs on its own thread: a worker keeps its own loop and can still
- * signal the process (verified live, 2026-08-15). The worker is unref'd against
- * this process — the belt never holds it open, and if the graceful exit works
- * the process is gone before the belt fires. The timer inside the worker stays
- * ref'd on purpose: it is the only thing keeping the worker's loop alive to
- * fire it. Best effort — a runtime that cannot start the worker still has the
- * deferred exit as the primary path.
- *
- * Exported, and the delay is a parameter, so a test can arm a real worker on a
- * short delay: the constant is then the only part of this a test does not run.
- *
- * @param {number} [ms]
- */
-export function defaultArmExitBelt(ms = EXIT_BELT_MS) {
-  try {
-    const worker = new Worker(
-      `setTimeout(() => process.kill(process.pid, "SIGKILL"), ${ms});`,
-      { eval: true }
-    );
-    // A Worker 'error' with nothing listening is rethrown as an uncaught exception,
-    // which would take down the shutdown this backs up.
-    worker.on("error", () => {});
-    worker.unref();
-  } catch {}
-}
-
 const __filename = fileURLToPath(import.meta.url);
 let isMain = false;
 if (process.argv[1]) {
@@ -608,7 +482,7 @@ if (isMain) {
     console.log(VERSION);
   } else {
     const operationRegistry = createOperationRegistry();
-    const hostGone = installSignalCleanup(operationRegistry);
+    const hostGone = installSignalCleanup(() => operationRegistry.cancel({ cause: "shutdown" }));
     const catalog = await readStartupCatalog();
     const transport = new StdioServerTransport();
     // One factory serves both protocol eras, and only a 2026-07-28 instance answers with tasks. The

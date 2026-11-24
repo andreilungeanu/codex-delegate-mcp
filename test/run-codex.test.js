@@ -77,7 +77,6 @@ test("runCodexProcess parses thread id and requires final file", async () => {
     cwd: dir,
     resultFile,
     spawnImpl,
-    platform: "linux",
     timeoutMs: 5000,
     onProgress: (m) => progress.push(m),
   });
@@ -124,7 +123,6 @@ test("runCodexProcess announces each item once, on the event that starts it", as
     cwd: dir,
     resultFile,
     spawnImpl,
-    platform: "linux",
     timeoutMs: 5000,
     onProgress: (m) => progress.push(m),
   });
@@ -165,7 +163,6 @@ test("a running command reaches progress on one line and uncut", async () => {
         ],
         writeResult: () => writeFile(resultFile, "ok", "utf8"),
       }),
-    platform: "linux",
     timeoutMs: 5000,
     onProgress: (m) => progress.push(m),
   });
@@ -198,13 +195,13 @@ test("runCodexProcess trips the startup deadline when Codex never speaks", async
     cwd: dir,
     resultFile,
     spawnImpl: silentChild,
-    // A real kill closes the process; this stands in for taskkill succeeding.
-    treeKillImpl: async () => {
+    // A real kill closes the process; this stands in for one that worked.
+    stopImpl: async () => {
       child.exitCode = 1;
       child.stdout.push(null);
       child.emit("close", 1);
+      return true;
     },
-    platform: "linux",
     startupMs: 30,
     heartbeatMs: 0,
     timeoutMs: 10_000,
@@ -233,21 +230,19 @@ test("a kill that never reaps the tree still settles the delegation", async () =
       child.signalCode = null;
       return child;
     },
-    // taskkill reports success and the tree survives — the close never arrives.
-    treeKillImpl: async () => {},
-    platform: "linux",
+    // The stop sees no exit, so the close never arrives.
+    stopImpl: async () => false,
     startupMs: 20,
     heartbeatMs: 0,
-    killDeadlineMs: 40,
     timeoutMs: 10_000,
   });
 
   assert.equal(result.status, "interrupted");
   assert.equal(result.reason, "startup-timeout");
-  assert.ok(result.warnings.some((w) => /did not exit within 40ms/.test(w)));
+  assert.ok(result.warnings.some((w) => /could not confirm that Codex and its processes exited/.test(w)));
 });
 
-test("an escaped kill is reported the moment the deadline gives up, with the warning's text", async () => {
+test("an unconfirmed stop is reported as it ends, with the warning's text", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-unseen-"));
   const notes = [];
   const result = await runCodexProcess({
@@ -264,11 +259,9 @@ test("an escaped kill is reported the moment the deadline gives up, with the war
       child.signalCode = null;
       return child;
     },
-    treeKillImpl: async () => {},
-    platform: "linux",
+    stopImpl: async () => false,
     startupMs: 20,
     heartbeatMs: 0,
-    killDeadlineMs: 40,
     timeoutMs: 10_000,
     onUnseenExit: (note) => notes.push(note),
   });
@@ -308,7 +301,7 @@ test("onExit fires when Codex exits, not when the run settles after the drain", 
   assert.ok(settledAt - exitedAt >= 500, `onExit came ${settledAt - exitedAt}ms before the run settled`);
 });
 
-test("a kill deadline that fires settles without inventing an exit code", async () => {
+test("a stop that sees no exit settles without inventing an exit code", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "cdm-killcode-"));
   const resultFile = path.join(dir, "last.txt");
   const edited = path.join(dir, "important.ts");
@@ -338,18 +331,15 @@ test("a kill deadline that fires settles without inventing an exit code", async 
       );
       return childRef;
     },
-    // The kill reaches the pipes but the process never reports close, so the exit
-    // code can only come from the kill deadline. (A tree that also holds the pipes
-    // open is the drain-deadline test.)
-    treeKillImpl: async () => {
+    // The kill reaches the pipes but the process never reports close.
+    stopImpl: async () => {
       childRef.stdout.push(null);
       childRef.stderr.push(null);
+      return false;
     },
-    platform: "linux",
     startupMs: 0,
     heartbeatMs: 0,
     timeoutMs: 40,
-    killDeadlineMs: 30,
   });
 
   assert.equal(result.status, "interrupted");
@@ -363,7 +353,7 @@ test("a kill deadline that fires settles without inventing an exit code", async 
   assert.deepEqual(result.filesReportedByEditTools, [edited]);
   // A higher cap is the user's call, as the delegate description says of every tuning field.
   assert.ok(result.warnings.some((w) => /Hard-cap timeout.*Ask the user before retrying with a higher timeoutMs/.test(w)));
-  assert.ok(result.warnings.some((w) => /a process may still be running/.test(w)));
+  assert.ok(result.warnings.some((w) => /may still be running/.test(w)));
 });
 
 test("a run without timeoutMs is capped at 6h", async (t) => {
@@ -387,13 +377,13 @@ test("a run without timeoutMs is capped at 6h", async (t) => {
       child.signalCode = null;
       return child;
     },
-    treeKillImpl: async () => {
+    stopImpl: async () => {
       killed = true;
       child.stdout.push(null);
       child.stderr.push(null);
       child.emit("close", null);
+      return true;
     },
-    platform: "linux",
     startupMs: 0,
     heartbeatMs: 0,
   });
@@ -442,7 +432,6 @@ test("a background process holding stdout does not hold the delegation", async (
       });
       return childRef;
     },
-    platform: "linux",
     heartbeatMs: 0,
     timeoutMs: 30_000,
     drainMs: 100,
@@ -476,7 +465,6 @@ test("a first event cancels the startup deadline", async () => {
         lines: [JSON.stringify({ type: "thread.started", thread_id: "tid-s" })],
         writeResult: () => writeFile(resultFile, "ok", "utf8"),
       }),
-    platform: "linux",
     startupMs: 10_000,
     heartbeatMs: 0,
     timeoutMs: 5000,
@@ -507,7 +495,6 @@ test("a completed turn keeps its intermediate tool failures out of warnings", as
         ],
         writeResult: () => writeFile(resultFile, "I ran the tests and they pass.", "utf8"),
       }),
-    platform: "linux",
     heartbeatMs: 0,
     timeoutMs: 5000,
   });
@@ -544,7 +531,6 @@ test("a decline the agent recovered from stays out of a completed turn", async (
         ],
         writeResult: () => writeFile(resultFile, "Created the directory.", "utf8"),
       }),
-    platform: "linux",
     heartbeatMs: 0,
     timeoutMs: 5000,
   });
@@ -579,7 +565,6 @@ test("a run that broke still reports the calls that failed on the way down", asy
           JSON.stringify({ type: "turn.failed", error: { message: "capacity" } }),
         ],
       }),
-    platform: "linux",
     heartbeatMs: 0,
     timeoutMs: 5000,
   });
@@ -624,7 +609,6 @@ test("a red suite on a completed turn is not raised as a warning", async () => {
         ],
         writeResult: () => writeFile(resultFile, "5 of 6 tests fail; here is why.", "utf8"),
       }),
-    platform: "linux",
     heartbeatMs: 0,
     timeoutMs: 5000,
   });
@@ -658,7 +642,6 @@ test("an unsuccessful run never promotes streamed narration to result", async ()
         ],
         exitCode: 1,
       }),
-    platform: "linux",
     heartbeatMs: 0,
     timeoutMs: 5000,
   });
@@ -685,7 +668,6 @@ test("the run result carries no internal-only fields", async () => {
         lines: [JSON.stringify({ type: "thread.started", thread_id: "tid-shape" })],
         writeResult: () => writeFile(resultFile, "ok", "utf8"),
       }),
-    platform: "linux",
     heartbeatMs: 0,
     timeoutMs: 5000,
   });
@@ -721,7 +703,6 @@ test("an authoritative final file wins over streamed narration", async () => {
         ],
         writeResult: () => writeFile(resultFile, "FINAL ANSWER", "utf8"),
       }),
-    platform: "linux",
     heartbeatMs: 0,
     timeoutMs: 5000,
   });
@@ -751,7 +732,6 @@ test("a completed process with a missing final file fails with result-unavailabl
           JSON.stringify({ type: "turn.completed", usage: {} }),
         ],
       }),
-    platform: "linux",
     heartbeatMs: 0,
     timeoutMs: 5000,
   });
@@ -782,7 +762,6 @@ test("a present but empty final file is a completed result", async () => {
         ],
         writeResult: () => writeFile(resultFile, "", "utf8"),
       }),
-    platform: "linux",
     heartbeatMs: 0,
     timeoutMs: 5000,
   });
@@ -921,7 +900,6 @@ test("an MCP call is announced once, by server and tool", async () => {
         ],
         writeResult: () => writeFile(resultFile, "ok", "utf8"),
       }),
-    platform: "linux",
     timeoutMs: 5000,
     onProgress: (m) => progress.push(m),
   });
@@ -1009,7 +987,6 @@ test("runCodexProcess surfaces the reason from a turn.failed event", async () =>
         ],
         exitCode: 1,
       }),
-    platform: "linux",
     timeoutMs: 5000,
   });
 
@@ -1038,7 +1015,6 @@ test("a retry notice the run got past stays out of a completed turn", async () =
         ],
         writeResult: () => writeFile(resultFile, "done", "utf8"),
       }),
-    platform: "linux",
     heartbeatMs: 0,
     timeoutMs: 5000,
   });
@@ -1070,7 +1046,6 @@ test("the reason a turn failed outranks the retry notices before it", async () =
         ],
         exitCode: 1,
       }),
-    platform: "linux",
     heartbeatMs: 0,
     timeoutMs: 5000,
   });
@@ -1102,7 +1077,6 @@ test("without a turn verdict, the last error event is the one reported", async (
         ],
         exitCode: 1,
       }),
-    platform: "linux",
     heartbeatMs: 0,
     timeoutMs: 5000,
   });
@@ -1136,7 +1110,6 @@ test("a notice Codex raised reaches warnings once, on a completed turn too", asy
         ],
         writeResult: () => writeFile(resultFile, "done", "utf8"),
       }),
-    platform: "linux",
     heartbeatMs: 0,
     timeoutMs: 5000,
   });
@@ -1165,7 +1138,6 @@ test("runCodexProcess non-zero exit yields failed without final message", async 
         exitCode: 2,
         writeResult: () => writeFile(resultFile, "should be ignored", "utf8"),
       }),
-    platform: "linux",
     timeoutMs: 5000,
   });
 
@@ -1194,7 +1166,6 @@ test("exit 0 while turn still in_progress is not completed", async () => {
         ],
         writeResult: () => writeFile(resultFile, "SHOULD_NOT_COUNT", "utf8"),
       }),
-    platform: "linux",
     heartbeatMs: 0,
     timeoutMs: 5000,
   });
@@ -1221,7 +1192,6 @@ test("turn.completed with non-zero exit refuses final file contents", async () =
         exitCode: 3,
         writeResult: () => writeFile(resultFile, "LOOKS_FINAL_BUT_EXIT_BAD", "utf8"),
       }),
-    platform: "linux",
     heartbeatMs: 0,
     timeoutMs: 5000,
   });
@@ -1249,7 +1219,6 @@ test("malformed JSONL lines are ignored; later valid events still apply", async 
         ],
         writeResult: () => writeFile(resultFile, "ok", "utf8"),
       }),
-    platform: "linux",
     heartbeatMs: 0,
     timeoutMs: 5000,
   });
@@ -1279,7 +1248,6 @@ test("onProgress throwing must not crash the run", async () => {
         ],
         writeResult: () => writeFile(resultFile, "survived", "utf8"),
       }),
-    platform: "linux",
     heartbeatMs: 0,
     timeoutMs: 5000,
   });
@@ -1320,7 +1288,6 @@ test("runCodexProcess turn.failed yields failed status", async () => {
     cwd: dir,
     resultFile,
     spawnImpl,
-    platform: "linux",
     timeoutMs: 5000,
     onProgress: (m) => progress.push(m),
   });
@@ -1358,12 +1325,12 @@ test("runCodexProcess abort signal marks interrupted and cancelled", async () =>
     resultFile,
     signal: controller.signal,
     spawnImpl,
-    treeKillImpl: async () => {
+    stopImpl: async () => {
       childRef.stdout.push(null);
       childRef.exitCode = 1;
       childRef.emit("close", 1);
+      return true;
     },
-    platform: "linux",
     timeoutMs: 30_000,
   });
 
@@ -1469,7 +1436,6 @@ test("runCodexProcess collects file_change paths", async () => {
         ],
         writeResult: () => writeFile(resultFile, "ok", "utf8"),
       }),
-    platform: "linux",
     timeoutMs: 5000,
   });
 
@@ -1497,7 +1463,6 @@ test("a thread id over the former limit is preserved exactly", async () => {
         ],
         writeResult: () => writeFile(resultFile, "ok", "utf8"),
       }),
-    platform: "linux",
     heartbeatMs: 0,
     timeoutMs: 5000,
   });
@@ -1530,7 +1495,6 @@ test("every unique edited path is reported, past the former limit", async () => 
         ],
         writeResult: () => writeFile(resultFile, "ok", "utf8"),
       }),
-    platform: "linux",
     heartbeatMs: 0,
     timeoutMs: 5000,
   });
@@ -1567,7 +1531,6 @@ test("a path announced in both events is still reported exactly once", async () 
         ],
         writeResult: () => writeFile(resultFile, "ok", "utf8"),
       }),
-    platform: "linux",
     heartbeatMs: 0,
   });
 
@@ -1607,7 +1570,6 @@ test("runCodexProcess appends stderr tail on failure", async () => {
     cwd: dir,
     resultFile,
     spawnImpl,
-    platform: "linux",
     timeoutMs: 5000,
   });
 
@@ -1640,7 +1602,6 @@ test("multibyte stderr survives the rolling tail", async () => {
       });
       return child;
     },
-    platform: "linux",
     timeoutMs: 5000,
   });
 
@@ -1674,7 +1635,6 @@ test("a noisy stderr keeps the failure at its end, not the padding at its front"
       });
       return child;
     },
-    platform: "linux",
     heartbeatMs: 0,
     timeoutMs: 5000,
   });
@@ -1720,7 +1680,6 @@ test("runCodexProcess does not time out a silent mid-turn run", async () => {
       }, 120);
       return child;
     },
-    platform: "linux",
     timeoutMs: 30_000,
     startupMs: 5000,
     heartbeatMs: 0,
@@ -1871,7 +1830,6 @@ test("an error on stdout or stderr does not take the server down", async () => {
       });
       return child;
     },
-    treeKillImpl: async () => {},
   });
   assert.equal(out.exitCode, 0);
 });
@@ -1913,7 +1871,7 @@ test("a cancel during the drain does not discard a result the child already wrot
     resultFile,
     signal: controller.signal,
     spawnImpl: () => child,
-    treeKillImpl: async () => {},
+    stopImpl: async () => true,
   });
 
   // The work landed: interrupted would drop the final-message file with the run.
@@ -1922,86 +1880,8 @@ test("a cancel during the drain does not discard a result the child already wrot
   assert.equal(out.result, "DONE");
 });
 
-test("a cancel during the drain does not warn about a kill with nothing left to escape", async () => {
-  // The kill deadline bounds a process that will not die. Once the exit has been
-  // observed there is nothing left for it to bound, and arming one anyway lets it
-  // fire against a process that is already gone — telling the caller a tree
-  // survived the kill on a run that completed and handed back its answer.
-  const dir = await mkdtemp(path.join(tmpdir(), "cdm-late-arm-"));
-  const resultFile = path.join(dir, "last.txt");
-  // The close trails the exit, so the abort below lands inside the drain window.
-  const { child, exited } = exitThenClose({ resultFile, gapMs: 400 });
-  const controller = new AbortController();
-  exited.then(() => controller.abort());
-
-  const out = await runCodexProcess({
-    command: "/bin/codex",
-    args: [],
-    resultFile,
-    signal: controller.signal,
-    spawnImpl: () => child,
-    treeKillImpl: async () => {},
-    // Shorter than the drain above: a deadline armed mid-drain would fire.
-    killDeadlineMs: 50,
-  });
-
-  assert.equal(out.status, "completed");
-  assert.equal(out.result, "DONE");
-  assert.deepEqual(
-    out.warnings.filter((w) => w.includes("did not exit within")),
-    [],
-    "the run had already settled; no kill deadline should have been armed"
-  );
-});
-
-test("teardown still reaches the group once the direct child has exited", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "cdm-orphan-"));
-  const resultFile = path.join(dir, "last.txt");
-  const { child, exited } = exitThenClose({ resultFile });
-  const controller = new AbortController();
-  exited.then(() => controller.abort());
-
-  const kills = [];
-  await runCodexProcess({
-    command: "/bin/codex",
-    args: [],
-    resultFile,
-    signal: controller.signal,
-    spawnImpl: () => child,
-    treeKillImpl: async (pid, opts) => kills.push({ pid, ...opts }),
-  });
-
-  // Codex is gone, but the shell, watcher or test run it started is not, and on
-  // POSIX the group is the only handle left on them.
-  assert.deepEqual(kills, [{ pid: 4242, childAlive: false }]);
-});
-
-test("a hard cap that fires during the drain does not contradict a finished run", async () => {
-  const dir = await mkdtemp(path.join(tmpdir(), "cdm-drain-timer-"));
-  const resultFile = path.join(dir, "last.txt");
-  // A long gap between exit and close, and a cap short enough to land inside it, with room for the
-  // result write before the exit on a loaded machine.
-  const { child } = exitThenClose({ resultFile, gapMs: 1000 });
-
-  const out = await runCodexProcess({
-    command: "/bin/codex",
-    args: [],
-    resultFile,
-    spawnImpl: () => child,
-    treeKillImpl: async () => {},
-    timeoutMs: 500,
-    heartbeatMs: 0,
-  });
-
-  // The run finished before the cap had anything to interrupt, so it must not
-  // report a timeout it did not suffer.
-  assert.equal(out.status, "completed");
-  assert.equal(out.result, "DONE");
-  assert.deepEqual(out.warnings, []);
-});
-
 // The only test here that spawns a real process tree. Everything else injects
-// spawnImpl or treeKillImpl, which records the call and cannot notice that
+// spawnImpl or stopImpl, which records the call and cannot notice that
 // `detached` was dropped from the spawn or that the kill never reached the group.
 test("cancelling a live run kills the tree Codex started, not just Codex", async () => {
   const { spawn } = await import("node:child_process");
@@ -2062,14 +1942,10 @@ test("cancelling a live run kills the tree Codex started, not just Codex", async
   }
 });
 
-// taskkill stands in as a process that exits 1: at once, killing nothing, or after killing Codex,
-// as when it ends Codex and fails on a process Codex started, so Codex's exit is seen first.
-for (const [name, script] of [
-  ["fails", "process.exit(1)"],
-  ["ends Codex but fails on another process", "process.kill(Number(process.argv[1])); setTimeout(() => process.exit(1), 1500)"],
-]) {
+// taskkill stands in as a process that exits 1, killing nothing.
+for (const script of ["process.exit(1)"]) {
   test(
-    `a cancel whose taskkill ${name} ends Codex and warns of the commands it started`,
+    "a cancel whose taskkill fails ends Codex and warns of the commands it started",
     { skip: process.platform === "win32" ? false : "windows taskkill" },
     async () => {
       const { spawn } = await import("node:child_process");
@@ -2096,7 +1972,6 @@ for (const [name, script] of [
         heartbeatMs: 0,
         startupMs: 15_000,
         timeoutMs: 30_000,
-        killDeadlineMs: 8000,
         onUnseenExit: (note) => notes.push(note),
       });
       try {
@@ -2108,7 +1983,7 @@ for (const [name, script] of [
         assert.equal(out.status, "interrupted");
         assert.notEqual(child.exitCode ?? child.signalCode, null, "Codex outlived the cancel");
         assert.ok(
-          out.warnings.some((w) => /taskkill failed or stalled on Codex's process tree/.test(w)),
+          out.warnings.some((w) => /could not confirm that Codex and its processes exited/.test(w)),
           JSON.stringify(out.warnings)
         );
         assert.equal(notes.length, 1, JSON.stringify(notes));
@@ -2123,81 +1998,44 @@ for (const [name, script] of [
   );
 }
 
-test("a tree kill that throws counts as failed: Codex is killed by its handle, with the warning", async () => {
-  const { spawn } = await import("node:child_process");
-  const dir = await mkdtemp(path.join(tmpdir(), "cdm-treekill-throws-"));
+test("a timeout and a cancel share one stop", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "cdm-one-stop-"));
   const controller = new AbortController();
   let child;
+  let stops = 0;
   const run = runCodexProcess({
-    command: process.execPath,
-    args: ["-e", "setInterval(() => {}, 1000)"],
+    command: "codex",
+    args: ["exec"],
     cwd: dir,
     resultFile: path.join(dir, "last.txt"),
     signal: controller.signal,
-    spawnImpl: (...args) => (child = spawn(...args)),
-    treeKillImpl: async () => {
-      throw new Error("tree kill failed");
+    spawnImpl: () => {
+      child = new EventEmitter();
+      child.pid = 777;
+      child.stdout = new Readable({ read() {} });
+      child.stderr = new Readable({ read() {} });
+      child.exitCode = null;
+      child.signalCode = null;
+      return child;
     },
-    heartbeatMs: 0,
-    startupMs: 15_000,
-    timeoutMs: 30_000,
-    killDeadlineMs: 8000,
-  });
-  try {
-    await new Promise((r) => setTimeout(r, 300));
-    const started = Date.now();
-    controller.abort();
-    const out = await run;
-    assert.ok(Date.now() - started < 5000, `the run took ${Date.now() - started} ms to settle`);
-    assert.ok(
-      out.warnings.some((w) => /taskkill failed or stalled on Codex's process tree/.test(w)),
-      JSON.stringify(out.warnings)
-    );
-  } finally {
-    try {
-      child?.kill("SIGKILL");
-    } catch {}
-  }
-});
-
-// The startup deadline trips at 200 ms and the cancel lands at 350 ms, while the first kill still runs.
-test("a timeout and a cancel whose tree kills both fail leave one note", async () => {
-  const { spawn } = await import("node:child_process");
-  const dir = await mkdtemp(path.join(tmpdir(), "cdm-treekill-twice-"));
-  const controller = new AbortController();
-  const notes = [];
-  let child;
-  const run = runCodexProcess({
-    command: process.execPath,
-    args: ["-e", "setInterval(() => {}, 1000)"],
-    cwd: dir,
-    resultFile: path.join(dir, "last.txt"),
-    signal: controller.signal,
-    spawnImpl: (...args) => (child = spawn(...args)),
-    treeKillImpl: async () => {
-      await new Promise((r) => setTimeout(r, 400));
-      return false;
+    // Still running when the cancel lands at 60 ms.
+    stopImpl: async () => {
+      stops++;
+      await new Promise((r) => setTimeout(r, 100));
+      child.exitCode = 1;
+      child.stdout.push(null);
+      child.stderr.push(null);
+      child.emit("close", 1);
+      return true;
     },
+    startupMs: 20,
     heartbeatMs: 0,
-    startupMs: 200,
-    timeoutMs: 30_000,
-    killDeadlineMs: 8000,
-    onUnseenExit: (note) => notes.push(note),
+    timeoutMs: 10_000,
   });
-  const cancel = setTimeout(() => controller.abort(), 350);
-  try {
-    await run;
-    assert.equal(
-      notes.filter((n) => /taskkill failed or stalled/.test(n)).length,
-      1,
-      JSON.stringify(notes)
-    );
-  } finally {
-    clearTimeout(cancel);
-    try {
-      child?.kill("SIGKILL");
-    } catch {}
-  }
+  setTimeout(() => controller.abort(), 60);
+  const out = await run;
+  assert.equal(stops, 1);
+  assert.equal(out.reason, "startup-timeout");
 });
 
 // The startup deadline is the only guard on a launcher that never gets going, and

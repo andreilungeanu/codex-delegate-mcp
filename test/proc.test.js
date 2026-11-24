@@ -8,7 +8,7 @@ import { mkdtemp } from "./fixtures/temp-dir.mjs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { isChildAlive, treeKill } from "../src/proc.js";
+import { KILL_WAIT_MS, isChildAlive, stopChild, treeKill } from "../src/proc.js";
 
 const posixOnly = { skip: process.platform === "win32" ? "POSIX process groups" : false };
 // Above any pid_max, so the descendant walk finds no child of it.
@@ -166,99 +166,6 @@ test("the kill reaches a grandchild in a session of its own, and the command it 
   }
 });
 
-/** Run `fn` with a `ps` on PATH that runs `body` (sh) in place of the real one at `$REAL_PS`. */
-async function withPs(body, fn) {
-  const { writeFileSync, chmodSync } = await import("node:fs");
-  const { execFileSync } = await import("node:child_process");
-  const dir = await mkdtemp(join(tmpdir(), "cdm-ps-"));
-  const realPs = execFileSync("sh", ["-c", "command -v ps"], { encoding: "utf8" }).trim();
-  writeFileSync(join(dir, "ps"), `#!/bin/sh\nREAL_PS=${realPs}\n${body}\n`);
-  chmodSync(join(dir, "ps"), 0o755);
-  const path = process.env.PATH;
-  process.env.PATH = `${dir}:${path}`;
-  try {
-    return await fn();
-  } finally {
-    process.env.PATH = path;
-  }
-}
-
-test("a session a command in its own session starts while the tree is listed is killed too", posixOnly, async () => {
-  const { child, grandchildPid } = await startTree("own-session-trigger");
-  const pidFile = child.spawnargs[2];
-  let latePid;
-  try {
-    await withPs(`out=$("$REAL_PS" "$@")\ntouch "${pidFile}.trigger"\nsleep 0.5\nprintf '%s\\n' "$out"`, () =>
-      treeKill(child.pid, { childAlive: true })
-    );
-    await until(() => existsSync(`${pidFile}.late`), 5_000, "the grandchild never started its session");
-    latePid = Number(readFileSync(`${pidFile}.late`, "utf8").trim());
-    await until(() => !pidAlive(latePid), 5_000, "a session started during the listing survived the kill");
-  } finally {
-    for (const pid of [child.pid, grandchildPid, latePid]) {
-      try {
-        if (pid) process.kill(pid, "SIGKILL");
-      } catch {}
-    }
-  }
-});
-
-test("a command Codex starts while its tree is listed is killed too", posixOnly, async () => {
-  const { child, grandchildPid } = await startTree("spawn-on-trigger");
-  const pidFile = child.spawnargs[2];
-  let latePid;
-  try {
-    // The listing is taken before the trigger, so a command started on it is not in the listing.
-    await withPs(`out=$("$REAL_PS" "$@")\ntouch "${pidFile}.trigger"\nsleep 0.5\nprintf '%s\\n' "$out"`, () =>
-      treeKill(child.pid, { childAlive: true })
-    );
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    if (existsSync(`${pidFile}.late`)) {
-      latePid = Number(readFileSync(`${pidFile}.late`, "utf8").trim());
-      await until(() => !pidAlive(latePid), 5_000, "a command started during the listing survived the kill");
-    }
-  } finally {
-    for (const pid of [grandchildPid, latePid]) {
-      try {
-        if (pid) process.kill(pid, "SIGKILL");
-      } catch {}
-    }
-  }
-});
-
-test("a ps that ignores SIGTERM does not hold the kill past its timeout", posixOnly, async () => {
-  const { child, grandchildPid } = await startTree("lingers");
-  try {
-    const startedAt = Date.now();
-    await withPs("trap '' TERM\nexec sleep 30", () => treeKill(child.pid, { childAlive: true }));
-    assert.ok(Date.now() - startedAt < 10_000, `the kill waited ${Date.now() - startedAt}ms on ps`);
-    await until(() => !isChildAlive(child), 10_000, "leader survived the kill");
-  } finally {
-    try {
-      process.kill(grandchildPid, "SIGKILL");
-    } catch {}
-  }
-});
-
-// procps reads each of these as a request for BSD option parsing, which refuses -A.
-for (const [name, value] of [["PS_PERSONALITY", "bsd"], ["CMD_ENV", "bsd"], ["I_WANT_A_BROKEN_PS", "1"]]) {
-  test(`the descendant walk does not depend on the user's ps personality (${name})`, posixOnly, async () => {
-    const { child, grandchildPid } = await startTree("own-session");
-    const saved = process.env[name];
-    process.env[name] = value;
-    try {
-      await treeKill(child.pid, { childAlive: true });
-      await until(() => !pidAlive(grandchildPid), 10_000, "grandchild survived the kill");
-    } finally {
-      if (saved === undefined) delete process.env[name];
-      else process.env[name] = saved;
-      try {
-        process.kill(grandchildPid, "SIGKILL");
-      } catch {}
-    }
-  });
-}
-
 const win32Only = { skip: process.platform === "win32" ? false : "windows taskkill" };
 
 // POSIX gates the bare-pid kill on childAlive because a reaped pid can be recycled.
@@ -356,15 +263,46 @@ test("treeKill reports a taskkill that failed, and one that found no such proces
   }
 });
 
-test("a taskkill that stalls is stopped at its bound and reported", win32Only, async () => {
+const startChild = () => spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+
+test("stopChild kills a running child once, and every caller gets that stop", async () => {
+  const child = startChild();
+  await new Promise((r) => child.once("spawn", r));
+  const first = stopChild(child);
+  assert.equal(stopChild(child), first);
+  assert.equal(await first, true);
+  assert.equal(isChildAlive(child), false);
+});
+
+// The launcher dies by its handle, but what it started is out of reach, so the stop is unconfirmed.
+test("a taskkill that fails still ends the child, by its own handle, and the stop is unconfirmed", win32Only, async () => {
+  const swap = swapTaskkill("process.exit(1)");
+  const child = startChild();
+  try {
+    assert.equal(await stopChild(child), false, "a failed taskkill was taken for a clean stop");
+    assert.equal(isChildAlive(child), false, "the child outlived the stop");
+  } finally {
+    swap.restore();
+    try {
+      child.kill("SIGKILL");
+    } catch {}
+  }
+});
+
+test("a taskkill that stalls is stopped at its bound, and the child killed by its own handle", win32Only, async () => {
   const swap = swapTaskkill("setInterval(() => {}, 1000)");
+  const child = startChild();
   const started = Date.now();
   try {
-    assert.equal(await treeKill(4242, { childAlive: true }), false);
-    assert.ok(Date.now() - started < 9000, `treeKill took ${Date.now() - started} ms`);
+    assert.equal(await stopChild(child), false, "a stalled taskkill was taken for a clean stop");
+    assert.equal(isChildAlive(child), false, "the child outlived the stop");
+    assert.ok(Date.now() - started < KILL_WAIT_MS + 2000, `the stop took ${Date.now() - started} ms`);
     const [utility] = swap.utilities;
     assert.notEqual(utility.signalCode ?? utility.exitCode, null, "the stalled taskkill is still running");
   } finally {
     swap.restore();
+    try {
+      child.kill("SIGKILL");
+    } catch {}
   }
 });

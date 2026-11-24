@@ -1,135 +1,103 @@
 import process from "node:process";
-import { execFile, execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 
 export function isChildAlive(child) {
   return child && child.exitCode === null && child.signalCode === null;
 }
 
-/**
- * Every process below pid, from one `ps` snapshot (Linux and macOS both take -A -o pid=,ppid=).
- * Synchronous, so a kill is still dispatched before the caller's first await. Empty when ps
- * fails: the group kill still runs.
- */
+// POSIX only: detached makes the child a process group leader, so treeKill reaches its children.
+// On win32 it would open a separate console, and taskkill /T walks the tree.
+export const DETACHED = process.platform !== "win32";
+
+// How long taskkill may run, and then how long a stop waits for the exit.
+export const KILL_WAIT_MS = 5000;
+
+// Every process below pid, from one ps snapshot. Empty when ps fails: the group kill still runs.
 function descendantPids(pid) {
-  // Each switches procps to BSD option parsing, which refuses -A.
-  const { PS_PERSONALITY, CMD_ENV, I_WANT_A_BROKEN_PS, ...env } = process.env;
-  let stdout;
-  try {
-    stdout = execFileSync("ps", ["-A", "-o", "pid=,ppid="], {
-      encoding: "utf8",
-      env,
-      // SIGKILL: a ps wrapper can ignore SIGTERM, and this blocks the loop until it exits.
-      timeout: 3000,
-      killSignal: "SIGKILL",
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-  } catch {
-    return [];
-  }
-  /** @type {Map<number, number[]>} */
-  const byParent = new Map();
-  for (const line of stdout.split("\n")) {
-    const [p, pp] = line.trim().split(/\s+/).map(Number);
-    if (!p || !Number.isFinite(pp)) continue;
-    if (!byParent.has(pp)) byParent.set(pp, []);
-    byParent.get(pp)?.push(p);
-  }
-  const out = [];
-  const queue = [pid];
-  while (queue.length) {
-    for (const c of byParent.get(/** @type {number} */ (queue.shift())) ?? []) {
-      if (!out.includes(c)) {
-        out.push(c);
-        queue.push(c);
+  return /** @type {Promise<number[]>} */ (new Promise((resolve) => {
+    execFile("ps", ["-A", "-o", "pid=,ppid="], { timeout: 3000 }, (err, stdout) => {
+      if (err) return resolve([]);
+      /** @type {Map<number, number[]>} */
+      const byParent = new Map();
+      for (const line of String(stdout).split("\n")) {
+        const [p, pp] = line.trim().split(/\s+/).map(Number);
+        if (!p || !Number.isFinite(pp)) continue;
+        if (!byParent.has(pp)) byParent.set(pp, []);
+        byParent.get(pp)?.push(p);
       }
-    }
-  }
-  return out;
+      const out = [];
+      const queue = [pid];
+      while (queue.length) {
+        for (const c of byParent.get(queue.shift()) ?? []) {
+          if (!out.includes(c)) { out.push(c); queue.push(c); }
+        }
+      }
+      resolve(out);
+    });
+  }));
 }
 
-/** A command in a session of its own can start another session; each walk can find one more level. */
-const MAX_WALKS = 4;
-
-/**
- * Every process below pid, each stopped as it is found and the tree listed again until a listing
- * finds none the last one missed, so no process starts a command between the listing and the kill.
- */
-function stoppedDescendants(pid) {
-  /** @type {number[]} */
-  const found = [];
-  for (let walk = 0; walk < MAX_WALKS; walk++) {
-    const fresh = descendantPids(pid).filter((d) => !found.includes(d));
-    if (fresh.length === 0) break;
-    for (const d of fresh) {
-      found.push(d);
-      try {
-        process.kill(d, "SIGSTOP");
-      } catch {}
-    }
-  }
-  return found;
-}
-
-/**
- * Kill the process tree. On Windows plain kill() only hits a shell wrapper.
- *
- * `childAlive` gates every kill aimed at the bare pid: once reaped it can be
- * recycled, and the signal would land on somebody else's process. On POSIX the
- * group kill still runs either way — a group outlives its leader, so Codex can be
- * gone while the commands it started are still in it, and the group is the only
- * handle left on them.
- *
- * Windows has no such handle. `taskkill /T` walks parent links, which an exited
- * leader no longer has, and what it left behind is either already gone with it or
- * detached and out of reach. So there is nothing for a post-exit kill to reach and
- * a recycled pid for it to hit: the gate is the whole of it.
- *
- * Resolves false when taskkill failed or stalled; its 128 is no such process, a
- * launcher already gone.
- */
+// On win32 a plain kill reaches only the launcher; taskkill /T takes the tree. False when taskkill
+// failed or stalled; its 128 is no such process, a launcher already gone.
 export async function treeKill(pid, { childAlive = true } = {}) {
   if (!pid) return true;
   if (process.platform === "win32") {
+    // An exited leader has no tree left for taskkill to walk, and its pid may be reused.
     if (!childAlive) return true;
-    return /** @type {Promise<boolean>} */ (
-      new Promise((resolve) => {
-        execFile(
-          "taskkill",
-          ["/PID", String(pid), "/T", "/F"],
-          { windowsHide: true, timeout: TASKKILL_MS, killSignal: "SIGKILL" },
-          (err) => resolve(!err || err.code === 128)
-        );
-      })
-    );
+    return /** @type {Promise<boolean>} */ (new Promise((resolve) => {
+      execFile("taskkill", ["/PID", String(pid), "/T", "/F"], { windowsHide: true, timeout: KILL_WAIT_MS, killSignal: "SIGKILL" }, (err) => resolve(!err || err.code === 128));
+    }));
   }
-  // Codex starts each shell command in a session of its own (measured on Linux, CLI 0.170), out
-  // of the group's reach, so the tree is walked while Codex is alive to hold its parent links.
-  // Stopped first, so Codex starts no command the listing would miss.
-  if (childAlive) {
-    try {
-      process.kill(-pid, "SIGSTOP");
-    } catch {}
-  }
-  const descendants = childAlive ? stoppedDescendants(pid) : [];
-  try {
-    process.kill(-pid, "SIGKILL");
-  } catch {
-    if (childAlive) {
-      try {
-        process.kill(pid, "SIGKILL");
-      } catch {}
-    }
-  }
+  // Commands in a session of their own are outside the group: walked while the child is alive to
+  // hold their parent links.
+  const descendants = childAlive ? await descendantPids(pid) : [];
+  // The group, even after the leader exited: members can outlive it.
+  try { process.kill(-pid, "SIGKILL"); } catch {}
   for (const d of descendants) {
-    try {
-      process.kill(-d, "SIGKILL");
-    } catch {}
-    try {
-      process.kill(d, "SIGKILL");
-    } catch {}
+    try { process.kill(-d, "SIGKILL"); } catch {}
+    try { process.kill(d, "SIGKILL"); } catch {}
   }
+  // A child that is not a group leader; skipped once reaped, as its pid may be reused.
+  if (childAlive) { try { process.kill(pid, "SIGKILL"); } catch {} }
   return true;
 }
 
-// Under run-codex's 10 s kill deadline, so a handle kill after a stalled taskkill lands inside it.
-const TASKKILL_MS = 5000;
+/** @type {WeakMap<object, Promise<boolean>>} */
+const stops = new WeakMap();
+
+/**
+ * Kills child's tree, its own handle too when the tree kill fails, and waits for the exit within
+ * KILL_WAIT_MS. True when the exit was seen and the tree kill succeeded. Once per child: every later
+ * call gets the same promise.
+ * @param {any} child
+ * @returns {Promise<boolean>}
+ */
+export function stopChild(child) {
+  let stop = stops.get(child);
+  if (!stop) {
+    stop = killAndWait(child);
+    stops.set(child, stop);
+  }
+  return stop;
+}
+
+async function killAndWait(child) {
+  if (!child.pid) return true;
+  const alive = isChildAlive(child);
+  // Subscribed before the kill, so an immediate exit is not missed.
+  const exited = alive ? new Promise((resolve) => child.once("exit", () => resolve(true))) : Promise.resolve(true);
+  const tidy = await treeKill(child.pid, { childAlive: alive }).catch(() => false);
+  if (!tidy && isChildAlive(child)) { try { child.kill("SIGKILL"); } catch {} }
+  return (await withDeadline(exited, KILL_WAIT_MS, false)) && tidy;
+}
+
+/**
+ * promise's value, or fallback once ms have passed.
+ * @template T @param {Promise<T>} promise @param {number} ms @param {T} fallback @returns {Promise<T>}
+ */
+export function withDeadline(promise, ms, fallback) {
+  /** @type {NodeJS.Timeout | undefined} */
+  let timer;
+  const deadline = new Promise((resolve) => { timer = setTimeout(() => resolve(fallback), ms); });
+  return Promise.race([promise, deadline]).finally(() => clearTimeout(timer));
+}

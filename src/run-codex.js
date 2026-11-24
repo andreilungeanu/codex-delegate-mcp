@@ -2,7 +2,7 @@ import process from "node:process";
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { readFile, unlink } from "node:fs/promises";
-import { isChildAlive, treeKill } from "./proc.js";
+import { DETACHED, stopChild, withDeadline } from "./proc.js";
 import { pathsFromFileChangeItem } from "./edit-tool-files.js";
 
 const DEFAULT_STDERR_BYTES = 64 * 1024;
@@ -11,8 +11,6 @@ const DRAIN_MS = 2000;
 /** Spawn to first JSONL event. Silence here does mean a wedged launcher. */
 export const DEFAULT_STARTUP_MS = 60_000;
 export const DEFAULT_HEARTBEAT_MS = 30_000;
-/** How long to wait for the process to actually die after a kill is requested. */
-export const DEFAULT_KILL_DEADLINE_MS = 10_000;
 export const DEFAULT_HARD_CAP_MS = 21_600_000;
 
 /** The result of a run cancelled before Codex was spawned. */
@@ -48,11 +46,9 @@ export function cancelledBeforeSpawn() {
  *   timeoutMs?: number,
  *   startupMs?: number,
  *   heartbeatMs?: number,
- *   killDeadlineMs?: number,
  *   drainMs?: number,
  *   spawnImpl?: any,
- *   treeKillImpl?: any,
- *   platform?: string,
+ *   stopImpl?: (child: any) => Promise<boolean>,
  * }} [options]
  */
 export async function runCodexProcess({
@@ -70,11 +66,9 @@ export async function runCodexProcess({
   timeoutMs = DEFAULT_HARD_CAP_MS,
   startupMs = DEFAULT_STARTUP_MS,
   heartbeatMs = DEFAULT_HEARTBEAT_MS,
-  killDeadlineMs = DEFAULT_KILL_DEADLINE_MS,
   drainMs = DRAIN_MS,
   spawnImpl = spawn,
-  treeKillImpl = treeKill,
-  platform = process.platform,
+  stopImpl = stopChild,
 } = {}) {
   if (!command) throw new TypeError("command required");
   if (!Array.isArray(args)) throw new TypeError("args required");
@@ -110,12 +104,11 @@ export async function runCodexProcess({
     stdio: [sendsStdin ? "pipe" : "ignore", "pipe", "pipe"],
     windowsHide: true,
     shell: false,
+    detached: DETACHED,
   };
-  if (platform !== "win32") spawnOpts.detached = true;
 
   if (signal?.aborted) return cancelledBeforeSpawn();
   child = spawnImpl(command, args, spawnOpts);
-  const childPid = child.pid;
 
   // Unhandled EPIPE/ERR_STREAM_DESTROYED on stdout, stderr, stdin, or the
   // readline re-emit takes the whole server down.
@@ -144,65 +137,25 @@ export async function runCodexProcess({
   });
   const pipesClosed = new Promise((resolve) => child.on("close", resolve));
 
-  let killTimer;
-  let killEscaped = false;
-  let treeKillFailed = false;
-  /** @type {Promise<void>[]} */
-  const kills = [];
-  // Set the moment the exit arrives. The kill deadline bounds a process that will
-  // not die, so past that point it has nothing left to bound: one armed by a cancel
-  // landing in the drain window would fire against a process that is already gone
-  // and report an escaped tree on a run that completed and returned its answer.
-  let exitObserved = false;
-  /**
-   * treeKill is best effort — taskkill can report success and leave the tree up.
-   * Without this the close we await never arrives and the delegation wedges for
-   * the life of the process.
-   */
-  const armKillDeadline = () => {
-    if (exitObserved || killTimer || killDeadlineMs <= 0) return;
-    killTimer = setTimeout(() => {
-      killEscaped = true;
-      try {
-        onUnseenExit?.(killEscapedWarning(killDeadlineMs));
-      } catch {}
-      settleExit(null);
-    }, killDeadlineMs);
-  };
-
-  const abort = async ({ userCancel = false } = {}) => {
+  // One stop per run, which a timeout and a cancel share. It also runs for an exited Codex: on POSIX
+  // the commands it started stay in its process group.
+  /** @type {Promise<void> | null} */
+  let stopping = null;
+  let stopUnconfirmed = false;
+  const stop = ({ userCancel = false } = {}) => {
     if (userCancel) cancelled = true;
-    armKillDeadline();
-    // Runs for an exited child too. Codex dying does not reap the shell, watcher or
-    // test run it spawned; on POSIX those stay in its process group, and skipping
-    // the kill here is what leaves them behind. Recording the pid at spawn does not
-    // make it unrecyclable — it is the same integer either way. What bounds the risk
-    // is that this only ever runs inside a live run, so the group is at most one
-    // drain old; do not reuse it for a later sweep.
-    let tidy;
-    try {
-      tidy = await treeKillImpl(childPid, { childAlive: isChildAlive(child) });
-    } catch {
-      tidy = false;
-    }
-    if (tidy !== false) return;
-    // Codex's own handle still ends it, and no reused pid, but not the commands it started.
-    if (isChildAlive(child)) {
+    stopping ??= stopImpl(child).catch(() => false).then((confirmed) => {
+      if (confirmed) return;
+      stopUnconfirmed = true;
       try {
-        child.kill("SIGKILL");
+        onUnseenExit?.(unconfirmedStop(child.pid));
       } catch {}
-    }
-    // A timeout and a cancel each run a kill; one note covers both.
-    if (treeKillFailed) return;
-    treeKillFailed = true;
-    try {
-      onUnseenExit?.(TREE_KILL_FAILED);
-    } catch {}
+      // An exit the stop did not see would hold the run for good.
+      settleExit(null);
+    });
   };
 
-  const onAbort = () => {
-    kills.push(abort({ userCancel: true }).catch(() => {}));
-  };
+  const onAbort = () => stop({ userCancel: true });
 
   const hardCapMs = timeoutMs > 0 ? timeoutMs : 0;
   const startedAt = Date.now();
@@ -215,11 +168,9 @@ export async function runCodexProcess({
   const clearTimers = () => {
     clearTimeout(hardCapTimer);
     clearTimeout(startupTimer);
-    clearTimeout(killTimer);
     clearInterval(heartbeatTimer);
     hardCapTimer = undefined;
     startupTimer = undefined;
-    killTimer = undefined;
     heartbeatTimer = undefined;
   };
 
@@ -227,7 +178,7 @@ export async function runCodexProcess({
     if (timedOut || cancelled) return;
     timedOut = true;
     timeoutReason = reason;
-    kills.push(abort({ userCancel: false }).catch(() => {}));
+    stop();
   };
 
   // No mid-turn idle guard: Codex emits nothing for the body of a shell command
@@ -281,11 +232,10 @@ export async function runCodexProcess({
     if (heartbeatMs > 0) heartbeatTimer = setInterval(heartbeat, heartbeatMs);
 
     // Every settle path lands here, and two of them carry no code: a death by
-    // signal, and the kill deadline giving up on a tree that refuses to die.
+    // signal, and a stop that could not see the exit.
     // An unknown code stays unknown — the delegate layer omits it, and the
     // status/reason carry the truthful explanation.
     exitCode = await exited;
-    exitObserved = true;
     try {
       onExit?.();
     } catch {}
@@ -294,18 +244,16 @@ export async function runCodexProcess({
     // answer the child had already finished writing. A cancel that caused this exit
     // set its flag before the exit arrived, so it is still caught.
     interrupted = cancelled || timedOut || Boolean(signal?.aborted);
-    // Disarmed on the same boundary the classification is read from. A hard cap or
-    // kill deadline that fires during the drain below has nothing left to interrupt,
-    // and would only contradict the outcome already decided: a completed run warning
-    // that it timed out, or a killEscaped warning about a process that has exited.
+    // Disarmed on the same boundary the classification is read from: a hard cap firing
+    // during the drain below would contradict the outcome already decided.
     clearTimers();
     // The pipes can still hold queued lines; a dropped turn.failed would read as
     // success. Bounded, and only from the exit onwards: whatever inherited stdout
     // may hold it open for its own lifetime, and waiting on that would wedge this
     // delegation for exactly that long.
-    drainEscaped = !(await withDeadline(Promise.all([pipesClosed, drained]), drainMs));
-    // A taskkill that ended Codex can still be failing on a process it started.
-    await withDeadline(Promise.all(kills), killDeadlineMs);
+    drainEscaped = !(await withDeadline(Promise.all([pipesClosed, drained]).then(() => true), drainMs, false));
+    // A taskkill that ended Codex can still be failing on a process it started. Bounded by the stop.
+    await stopping;
   } finally {
     // Again, because the clear above is inside the try: a spawn that errors rejects
     // `exited` and skips straight to here with every timer still armed.
@@ -357,9 +305,8 @@ export async function runCodexProcess({
     hardCapMs,
     nonSuccessfulItems: events.nonSuccessfulItems,
     notices: events.notices,
-    killEscaped,
-    killDeadlineMs,
-    treeKillFailed,
+    stopUnconfirmed,
+    pid: child.pid,
     drainEscaped,
     drainMs,
     status,
@@ -378,12 +325,9 @@ export async function runCodexProcess({
   };
 }
 
-const TREE_KILL_FAILED =
-  "taskkill failed or stalled on Codex's process tree; a command Codex started may still be running.";
-
-/** @param {number} killDeadlineMs */
-function killEscapedWarning(killDeadlineMs) {
-  return `Codex did not exit within ${killDeadlineMs}ms of being killed; a process may still be running. Check for stray codex processes.`;
+/** @param {number | undefined} pid */
+function unconfirmedStop(pid) {
+  return `the bridge stopped Codex${pid ? ` (pid ${pid})` : ""} but could not confirm that Codex and its processes exited; they may still be running.`;
 }
 
 /**
@@ -572,9 +516,8 @@ function buildRunWarnings({
   hardCapMs,
   nonSuccessfulItems,
   notices = [],
-  killEscaped,
-  killDeadlineMs,
-  treeKillFailed,
+  stopUnconfirmed,
+  pid,
   drainEscaped,
   drainMs,
   status,
@@ -602,35 +545,17 @@ function buildRunWarnings({
   // On every run, unlike the tool failures above: Codex raises these sparingly, and
   // the two that matter most — a reroute, a deprecation — land on runs that completed.
   for (const notice of notices) warnings.push(`Codex notice: ${notice}`);
-  if (killEscaped) {
-    warnings.push(killEscapedWarning(killDeadlineMs));
+  if (stopUnconfirmed) {
+    warnings.push(unconfirmedStop(pid));
   } else if (drainEscaped) {
     warnings.push(
       `Codex exited but something it started still holds its output open after ${drainMs}ms.`
     );
   }
-  if (treeKillFailed) warnings.push(TREE_KILL_FAILED);
   if (status !== "completed" && stderrTail.trim()) {
     warnings.push(`stderr: ${stderrTail.trim()}`);
   }
   return warnings;
-}
-
-/**
- * Resolve true if the promise settled inside the deadline, false if the deadline
- * won. The timer is cleared either way: an unref'd one lets the process fall out
- * from under a still-pending wait, and a live one outlives the answer.
- */
-function withDeadline(promise, ms) {
-  if (!(ms > 0)) return Promise.resolve(false);
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(false), ms);
-    const done = () => {
-      clearTimeout(timer);
-      resolve(true);
-    };
-    promise.then(done, done);
-  });
 }
 
 /** Codex reports cumulative thread totals, including earlier turns on a resume. */
