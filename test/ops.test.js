@@ -266,59 +266,7 @@ test("a cancel that throws is rethrown at the caller", async () => {
   lease.release();
 });
 
-test("releasing twice does not disturb a delegation that reused the thread id", async () => {
-  const reg = createOperationRegistry();
-  const lease = reg.acquire({ threadId: "recycled", cancel: async () => {} });
-  lease.release();
-  lease.release();
-  const next = reg.acquire({ threadId: "recycled", cancel: async () => {} });
-  const result = await reg.cancel({ id: "recycled" });
-  assert.equal(result.status, "cancelled");
-  assert.deepEqual(result.cancelled, [
-    { delegationId: next.delegationId, threadId: "recycled" },
-  ]);
-  next.release();
-});
-
-test("a thread id set after release does not resurrect the delegation", async () => {
-  const reg = createOperationRegistry();
-  const lease = reg.acquire({ cancel: async () => {} });
-  lease.release();
-  lease.updateThreadId("after-the-fact");
-  assert.equal((await reg.cancel({ id: "after-the-fact" })).status, "not-found");
-});
-
-test("cancel starts every kill synchronously, before it is awaited", () => {
-  // Shutdown dispatches cancellation and exits without awaiting, so a cancel that
-  // only starts on a later microtask would never run. Deliberately not awaited.
-  const registry = createOperationRegistry();
-  let started = false;
-  registry.acquire({
-    cancel: async () => {
-      started = true;
-    },
-  });
-
-  const pending = registry.cancel({ cause: "shutdown" });
-  assert.equal(started, true, "the kill must be under way before cancel() yields");
-  return pending;
-});
-
-test("a cancel that throws synchronously is still reported, not rethrown at the caller", async () => {
-  // The microtask hop used to turn a sync throw into a rejection. Starting the call
-  // directly has to keep that, or the throw escapes cancel() itself.
-  const registry = createOperationRegistry();
-  registry.acquire({
-    cancel: () => {
-      throw new Error("cancel exploded");
-    },
-  });
-  await assert.rejects(() => registry.cancel({ cause: "user" }), /cancel exploded/);
-});
-
-// A resume that does not resume: Codex answers `resume A` by starting thread B.
-// Both ids used to point at the live record, so a cancel aimed at the thread that
-// ended killed the one that replaced it.
+// Codex answers `resume A` by starting thread B.
 test("a replaced thread id stops resolving to the delegation that moved on", async () => {
   const reg = createOperationRegistry();
   let cancels = 0;

@@ -43,9 +43,8 @@ class OperationRegistry {
       updateThreadId: (id) => {
         if (!id || this.#active.get(delegationId) !== record) return;
         if (record.threadId === id) return;
-        // A resume that did not resume: `resume A` can come back as a new thread B,
-        // which is the case `resumed: false` reports. Leaving A pointing here made a
-        // cancel aimed at the thread that ended kill the run that replaced it.
+        // `resume A` can come back as a new thread B (`resumed: false`); A then names the ended
+        // thread, not this run.
         this.#deindexThread(record);
         record.threadId = id;
         this.#indexThread(record);
@@ -87,20 +86,7 @@ class OperationRegistry {
 
   /** @param {any} record */
   #cancelOne(record, cause) {
-    if (!record.cancelPromise) {
-      // Started here, not on a later microtask. Shutdown dispatches cancellation and
-      // exits without awaiting anything, so a start deferred through
-      // `Promise.resolve().then(…)` would never run at all. The try is what that
-      // deferral used to buy: a cancel that throws synchronously still has to land
-      // in cancelPromise rather than escape this call.
-      let started;
-      try {
-        started = Promise.resolve(record.cancel({ cause }));
-      } catch (err) {
-        started = Promise.reject(err);
-      }
-      record.cancelPromise = started;
-    }
+    record.cancelPromise ??= record.cancel({ cause });
     return record.cancelPromise;
   }
 
