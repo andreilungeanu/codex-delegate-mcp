@@ -45,7 +45,7 @@ Your agent writes the brief, Codex edits the files, and your agent reads the dif
 ## Features
 
 - 📦 **One result you can review** — a compact JSON block: the final answer, `status`, the files Codex's edit tools reported changing, cumulative thread token counts, and the `threadId` to continue from. Fields that carry no signal are omitted.
-- ⏳ **Runs in the background in Claude Code** — in the main session of the interactive Claude Code CLI, `delegate` runs as an MCP task: you keep working, and the result arrives as a task notification. Calls from subagents wait for the result.
+- ⏳ **Runs in the background, with MCP Tasks** — `delegate` serves the MCP Tasks extension (`io.modelcontextprotocol/tasks`), so a host that speaks it gets a task back once Codex starts its thread and the result when Codex finishes. In the main session of the interactive Claude Code CLI, you keep working and the result arrives as a task notification; calls from subagents wait for the result.
 - 🧑‍🤝‍🧑 **Run several, cancel cleanly** — the same question across models, or independent workers on independent directories. `cancel` waits for the exit and warns when it cannot confirm one.
 - 🔋 **Runs on Codex's own account** — delegated work uses whatever the Codex CLI is signed in with, plan or API key, separate from your host's chat quota.
 - 🤝 **One-command install** — Claude Code, Google Antigravity, GitHub Copilot CLI, Cursor and VS Code take it as a plugin, with a skill that teaches your agent to write the brief and review the result. JetBrains, Devin Desktop (Windsurf), Visual Studio and the rest add the stdio server in settings.
