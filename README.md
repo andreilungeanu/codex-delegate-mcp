@@ -16,7 +16,7 @@ Codex Delegate is the MCP bridge to the **OpenAI Codex CLI**. From Claude Code, 
 
 <br clear="left">
 
-![A terminal recording of Claude Code delegating to Codex: a health check confirms the Codex CLI, auth and model catalog; an ask-mode run diagnoses why the demo repo prints "today 0", naming commitDay() bucketing by UTC while cellDay() labels by local time, with line numbers; one sentence then fans out to two Codex models at once — one editing the repo, one researching in a separate directory — and the fix lands with tests passing and the footer reading today 4, current streak 23, longest streak 23; finally Codex reviews its own diff and reports three findings](assets/demo.gif)
+![A terminal recording of Claude Code asking Codex (GPT-6.2 Sol) why a repo prints "today 0": in ask mode Codex finds that commits are bucketed by UTC while the grid uses local dates; Codex then builds the fix on the same thread with a test that fails on the old code, and Claude checks the diff and the tests before reporting today 4](assets/demo.gif)
 
 ## 🧠 Get a second opinion
 
@@ -58,6 +58,8 @@ Your agent writes the brief, Codex edits the files, and your agent reads the dif
 Each plugin works on its own, and they are built to work together. Install the ones your subscriptions cover, and the agent you already use can bring Gemini 4 Neon, Carbon or Hydrogen, GPT-6.2 Sol or Astra, and Grok 4.7 or Composer 2.5 into the same conversation as peers. One question goes to all of them in parallel, and your agent sets their answers beside its own.
 
 > Ask Gemini Neon, Codex Sol and Grok 4.7 how they would restructure the auth module, then tell me where they agree.
+
+![A terminal recording of Claude Code asking Gemini Neon, Codex Sol and Grok 4.7 why a repo prints "today 0": three delegate calls run as background tasks, the answers come back, and Claude lists where the models agree and where they differ; Codex then builds the chosen fix on the same thread, and Claude confirms the new test fails on the old code and all four tests pass](assets/council.gif)
 
 - **Codex Delegate** (this one) — the OpenAI Codex CLI: GPT-6.2 Sol, GPT-6.2 Astra and the other Codex models
 - [Cursor Delegate](https://github.com/andreilungeanu/cursor-delegate-mcp) — Cursor's CLI agent: Grok 4.7, Composer 2.5
