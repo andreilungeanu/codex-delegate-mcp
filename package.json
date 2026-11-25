@@ -1,6 +1,6 @@
 {
   "name": "codex-delegate-mcp",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "mcpName": "io.github.andreilungeanu/codex-delegate-mcp",
   "type": "module",
   "description": "Ask OpenAI Codex what it thinks, or hand it the work. Second opinions, model comparisons, plans, edits and native code review, inside Claude Code, Cursor or any MCP client.",

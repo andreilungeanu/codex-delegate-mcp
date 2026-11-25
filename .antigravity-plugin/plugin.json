@@ -2,7 +2,7 @@
   "$schema": "https://antigravity.google/schemas/v1/plugin.json",
   "name": "delegate-to-codex",
   "displayName": "Delegate to Codex",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "description": "Ask OpenAI Codex what it thinks, or hand it the work: second opinions, model comparisons, plans, edits and native code review.",
   "logo": "assets/logo-light.png",
   "suggestedPrompts": [

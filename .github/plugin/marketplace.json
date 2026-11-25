@@ -6,13 +6,13 @@
   },
   "metadata": {
     "description": "Plugins for asking the OpenAI Codex CLI for second opinions and handing it coding work through MCP.",
-    "version": "3.1.0"
+    "version": "3.2.0"
   },
   "plugins": [
     {
       "name": "codex-delegate",
       "description": "Ask OpenAI Codex what it thinks, or hand it the work: second opinions, plans, edits and native code review.",
-      "version": "3.1.0",
+      "version": "3.2.0",
       "source": "./"
     }
   ]

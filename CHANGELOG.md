@@ -6,6 +6,29 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-11-25
+
+### Added
+
+- Server info carries a title, a description and the repository URL, and each tool has a title.
+  The server advertises `tools.listChanged: false`.
+
+### Changed
+
+- The delegate skill covers second opinions and model comparisons as well as handoff, and is
+  shorter. It no longer scales delegation by task size. `reference.md`
+  keeps result fields, failure reasons, and resume, review and model rules; input fields are
+  described in the tool schema.
+- The `delegate` description and the server instructions open with asking Codex as well as
+  delegating to it: `mode: "ask"` gives a second opinion, and parallel calls with the same brief
+  compare views.
+- The plugin, marketplace, npm and MCP Registry descriptions name both uses.
+- The MCP SDK is pinned to 2.4.0.
+
+### Fixed
+
+- The skill no longer links to files outside its folder, which an installed plugin may not carry.
+
 ## [3.1.0] - 2026-11-24
 
 ### Changed
