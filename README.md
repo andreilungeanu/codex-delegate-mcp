@@ -1,8 +1,6 @@
 # Codex Delegate
 
-**Stop burning your frontier agent's limits on boilerplate.**
-
-Delegate implementation to the **OpenAI Codex CLI** — your agent writes the brief and reviews the diff.
+**Ask Codex what it thinks. Or hand it the work.**
 
 [![npm version](https://img.shields.io/npm/v/codex-delegate-mcp)](https://www.npmjs.com/package/codex-delegate-mcp)
 [![npm downloads](https://img.shields.io/npm/dt/codex-delegate-mcp)](https://www.npmjs.com/package/codex-delegate-mcp)
@@ -14,40 +12,56 @@ Delegate implementation to the **OpenAI Codex CLI** — your agent writes the br
 
 <img src="assets/logo-light.png" alt="Codex Delegate logo" width="150" align="left" hspace="15">
 
-Use your best coding agent where its judgment matters most: understanding the task, shaping the plan, and reviewing the result.
-
-Codex Delegate is the MCP bridge that lets Claude Code, Cursor, Copilot — or any MCP client — hand implementation to the **OpenAI Codex CLI**, then get a clean, structured result back for review.
+Codex Delegate is the MCP bridge to the **OpenAI Codex CLI**. From Claude Code, Cursor, Copilot or any MCP client, your agent can ask Codex for a second opinion, put one question to several models at once, or hand Codex a plan, a fix or a review, and get a structured result back from each call.
 
 <br clear="left">
 
 ![A terminal recording of Claude Code delegating to Codex: a health check confirms the Codex CLI, auth and model catalog; an ask-mode run diagnoses why the demo repo prints "today 0", naming commitDay() bucketing by UTC while cellDay() labels by local time, with line numbers; one sentence then fans out to two Codex models at once — one editing the repo, one researching in a separate directory — and the fix lands with tests passing and the footer reading today 4, current streak 23, longest streak 23; finally Codex reviews its own diff and reports three findings](assets/demo.gif)
 
-## 🧠 Frontier quality, kept
+## 🧠 Get a second opinion
 
-Your assistant does what frontier models are actually for: understands the task, writes a precise brief, reviews the finished diff. Codex holds its own as the implementer — guided and checked by a smarter orchestrator. The result reads like frontier work, because a frontier model planned it and signed off on it.
+> Ask Codex what it thinks about moving the session store to SQLite.
 
-## ⚡ Done faster
+Codex reads the repo and answers in `ask` mode, and your agent sets that answer beside its own. You see where the two disagree before you choose a direction.
 
-Codex tears through multi-file edits while a frontier chat model would still be streaming the first file. You delegate, keep working with your assistant, and the diff shows up done.
+Ask several at once, and your agent sends each the same brief in parallel, compares the answers, and checks the claims that matter:
 
-## 🔋 Your limits stop being the bottleneck
+> Ask gpt-6.2-sol and gpt-6-luna whether we should split this service, and tell me where they disagree.
 
-Delegated work runs on the **OpenAI Codex CLI** and its own usage — separate from your orchestrator's chat quota, though the Codex side still bills its own way. Your Claude, Cursor, or Copilot subscription spends tokens on the brief and the review; Codex does the grinding. On API? That's the per-token grind moved off your main bill.
+With [Cursor Delegate](https://github.com/andreilungeanu/cursor-delegate-mcp) or [Antigravity Delegate](https://github.com/andreilungeanu/agy-delegate-mcp) installed too, the same prompt reaches Grok, Composer or Gemini.
 
-# 
+## 🛠️ Hand off the work
+
+> Use Codex to migrate src/api from callbacks to async/await and update the tests. Plan it first.
+
+Your agent writes the brief, Codex edits the files, and your agent reads the diff and runs the tests before it reports back.
+
+- 📋 **Plan, approve, build** — `plan` returns schema-validated steps; once you approve, the same thread implements them.
+- 🔎 **Native review** — `review` runs Codex's own reviewer over uncommitted work, a base branch, or a single commit.
+- 🧵 **Resume** — follow up on the same thread with `resumeThreadId`. `resumed: false` tells you the context did not carry over.
 
 ![You and your agent understand the task, write the brief and review the diff; the MCP delegate tool hands that brief to the OpenAI Codex CLI, which implements it and edits your workspace; one compact JSON result comes back with what changed, which files, and the thread id](assets/flow.png)
-
-![A delegate result: one compact JSON block with the final answer, status, thread and delegation ids, workspace, Codex CLI version, cumulative thread token usage, and the files the edit tools reported changing](assets/result-json.png)
 
 ## Features
 
 - 📦 **One result you can review** — a compact JSON block: the final answer, `status`, the files Codex's edit tools reported changing, cumulative thread token counts, and the `threadId` to continue from. Fields that carry no signal are omitted.
-- 📋 **Plan first, then build it on the same thread** — `plan` returns schema-validated steps for you to approve, and `agent` implements them. `ask` answers questions. `review` runs Codex's own reviewer over uncommitted work, a base branch, or a single commit.
-- 🧵 **Resume** — continue a Codex thread with `resumeThreadId`. `resumed: false` tells you the context did not carry over.
+- ⏳ **Runs in the background in Claude Code** — in the main session of the interactive Claude Code CLI, `delegate` runs as an MCP task: you keep working, and the result arrives as a task notification. Calls from subagents wait for the result.
 - 🧑‍🤝‍🧑 **Run several, cancel cleanly** — the same question across models, or independent workers on independent directories. `cancel` waits for the exit and warns when it cannot confirm one.
-- 🤝 **One-command install** — Claude Code, Google Antigravity, GitHub Copilot CLI, Cursor and VS Code take it as a plugin, with a skill that teaches your agent how to delegate well. Cursor and VS Code install the server in one click; JetBrains, Devin Desktop (Windsurf), Visual Studio and the rest add the stdio server in settings.
+- 🔋 **Runs on Codex's own account** — delegated work uses whatever the Codex CLI is signed in with, plan or API key, separate from your host's chat quota.
+- 🤝 **One-command install** — Claude Code, Google Antigravity, GitHub Copilot CLI, Cursor and VS Code take it as a plugin, with a skill that teaches your agent to write the brief and review the result. JetBrains, Devin Desktop (Windsurf), Visual Studio and the rest add the stdio server in settings.
 - 🩺 **`doctor`** — tells you exactly what's missing if setup isn't right.
+
+![A delegate result: one compact JSON block with the final answer, status, thread and delegation ids, workspace, Codex CLI version, cumulative thread token usage, and the files the edit tools reported changing](assets/result-json.png)
+
+## The Delegate family
+
+Each plugin works on its own. Install the ones your subscriptions cover, and your agent can ask them the same question in one turn.
+
+| Plugin | Brings in | Stands out for |
+| --- | --- | --- |
+| **Codex Delegate** (this one) | OpenAI Codex CLI · GPT models | native code review, schema-validated plans |
+| [Cursor Delegate](https://github.com/andreilungeanu/cursor-delegate-mcp) | Cursor CLI · Composer, Grok | plan then build in one session, todo progress, image attachments |
+| [Antigravity Delegate](https://github.com/andreilungeanu/agy-delegate-mcp) | Antigravity CLI · Gemini | steering a running turn, structured questions, plan artifacts |
 
 ## Install
 
