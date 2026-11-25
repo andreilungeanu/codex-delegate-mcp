@@ -10,7 +10,7 @@
     {
       "name": "codex-delegate",
       "source": "./",
-      "description": "Ask OpenAI Codex what it thinks, or hand it the work: second opinions, plans, edits and native code review.",
+      "description": "Turn your agent into a council: ask OpenAI Codex for second opinions, then hand it plans, edits and code review.",
       "license": "MIT",
       "keywords": ["mcp", "codex", "openai", "claude-code", "delegation"]
     }

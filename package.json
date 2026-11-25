@@ -3,7 +3,7 @@
   "version": "3.2.0",
   "mcpName": "io.github.andreilungeanu/codex-delegate-mcp",
   "type": "module",
-  "description": "Ask OpenAI Codex what it thinks, or hand it the work. Second opinions, model comparisons, plans, edits and native code review, inside Claude Code, Cursor or any MCP client.",
+  "description": "Turn your coding agent into a council: bring OpenAI Codex (GPT-6.2 Sol, Astra) into the conversation for second opinions, then hand it plans, edits and code review. MCP server and plugin.",
   "license": "MIT",
   "author": "Andrei Lungeanu <andrei@lungeanu.ro>",
   "repository": {

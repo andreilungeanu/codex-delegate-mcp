@@ -3,7 +3,7 @@
   "name": "delegate-to-codex",
   "displayName": "Delegate to Codex",
   "version": "3.2.0",
-  "description": "Ask OpenAI Codex what it thinks, or hand it the work: second opinions, model comparisons, plans, edits and native code review.",
+  "description": "Turn your coding agent into a council: ask OpenAI Codex (GPT-6.2 Sol, Astra) for second opinions, then hand it plans, edits and native code review.",
   "logo": "assets/logo-light.png",
   "suggestedPrompts": [
     "Delegate this implementation to Codex and review the diff.",

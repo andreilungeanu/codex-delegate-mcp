@@ -33,7 +33,7 @@ const SERVER_ICONS = [
 const SERVER_INFO = {
   name: "codex-delegate-mcp",
   title: "Codex Delegate",
-  description: "Ask OpenAI Codex for a second opinion, or hand it plans, edits and code reviews.",
+  description: "Bring OpenAI Codex into your agent's council for second opinions, plans, edits and code review.",
   version: VERSION,
   websiteUrl: "https://github.com/andreilungeanu/codex-delegate-mcp",
   icons: SERVER_ICONS,

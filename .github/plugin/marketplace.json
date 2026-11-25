@@ -5,13 +5,13 @@
     "email": "andrei@lungeanu.ro"
   },
   "metadata": {
-    "description": "Plugins for asking the OpenAI Codex CLI for second opinions and handing it coding work through MCP.",
+    "description": "Plugins that bring the OpenAI Codex CLI into your coding agent's council through MCP.",
     "version": "3.2.0"
   },
   "plugins": [
     {
       "name": "codex-delegate",
-      "description": "Ask OpenAI Codex what it thinks, or hand it the work: second opinions, plans, edits and native code review.",
+      "description": "Turn your agent into a council: ask OpenAI Codex for second opinions, then hand it plans, edits and code review.",
       "version": "3.2.0",
       "source": "./"
     }
