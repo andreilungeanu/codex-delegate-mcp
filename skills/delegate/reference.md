@@ -24,9 +24,6 @@ advertise `ultra`, it enables the CLI's own task delegation, with the underlying
 chosen from the catalog. Work those subagents do is absent from `usage` and
 `filesReportedByEditTools`.
 
-Environment variables and Codex binary resolution are documented in
-[CONFIGURATION.md](../../CONFIGURATION.md).
-
 ## Return value
 
 Every tool returns one compact JSON text block; a `delegate` run as an MCP task returns it as the
