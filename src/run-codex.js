@@ -334,7 +334,7 @@ function unconfirmedStop(pid) {
  * Everything it accumulates is read once, after the run settles — `lastCommand` is
  * the exception, and the heartbeat reads it while the run is still going.
  */
-function createEventReducer({ emit, onThreadId }) {
+export function createEventReducer({ emit, onThreadId }) {
   const state = {
     threadId: null,
     turnStatus: "running",

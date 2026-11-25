@@ -9,6 +9,7 @@
 [![node](https://img.shields.io/node/v/codex-delegate-mcp)](https://nodejs.org)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![tests](https://github.com/andreilungeanu/codex-delegate-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/andreilungeanu/codex-delegate-mcp/actions/workflows/test.yml)
+[![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://app.codspeed.io/andreilungeanu/codex-delegate-mcp?utm_source=badge)
 
 <img src="assets/logo-light.png" alt="Codex Delegate logo" width="150" align="left" hspace="15">
 

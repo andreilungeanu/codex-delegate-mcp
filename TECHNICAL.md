@@ -58,6 +58,14 @@ npm run test:pack
 
 `test:pack` creates a tarball, installs it into a temporary project, verifies the package contents, starts the installed MCP server through a symlinked package location, and confirms that it lists `delegate`, `cancel`, and `doctor`.
 
+Run the benchmarks with:
+
+```sh
+npm run bench
+```
+
+The benchmarks live in `benchmarks/` and use `vitest bench` (vitest is used for nothing else). They cover the JSONL event reducer, `runCodexProcess` over a streamed transcript, argv construction for each mode, a whole `executeDelegate` call, and the MCP handshake, `tools/list` and a `delegate` call through `serveStdio`. Codex is replaced by a fake child that replays a transcript, so no CLI or login is needed. [`.github/workflows/codspeed.yml`](.github/workflows/codspeed.yml) runs them on [CodSpeed](https://app.codspeed.io/andreilungeanu/codex-delegate-mcp) in CPU simulation mode on every push to `main` and every pull request, and reports regressions on the pull request. Locally, `npm run bench` prints plain vitest timings; `codspeed run -m simulation -- npm run bench` measures the way CI does.
+
 CI is [`.github/workflows/test.yml`](.github/workflows/test.yml): matrix `npm test` / `test:pack`, plus Ubuntu Node 22 typecheck, coverage floors, audit, and a min-deps job against `@modelcontextprotocol/server@2.4.0`.
 
 Tag releases call that same workflow before publishing to npm. GitHub release creation waits
