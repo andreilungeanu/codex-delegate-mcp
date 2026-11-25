@@ -2,7 +2,7 @@
   "$schema": "https://antigravity.google/schemas/v1/plugin.json",
   "name": "delegate-to-codex",
   "displayName": "Delegate to Codex",
-  "version": "3.2.0",
+  "version": "3.3.0",
   "description": "Turn your coding agent into a council: ask OpenAI Codex (GPT-6.2 Sol, Astra) for second opinions, then hand it plans, edits and native code review.",
   "logo": "assets/logo-light.png",
   "suggestedPrompts": [

@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [3.3.0] - 2026-11-25
+
 ### Added
 
 - `doctor deep` reports the account's plan and its 5-hour and weekly usage (used percent and
@@ -23,6 +25,8 @@ All notable changes to this project are documented here. The format follows
 - `doctor` leaves out what rarely changes a diagnosis: the client's capabilities, the runtime
   section, an inactive recursion guard, unset environment knobs, and the resolver's notes once
   the CLI resolved.
+- The package, plugin and server descriptions present the plugin as bringing OpenAI Codex into a
+  council: second opinions first, then handoff.
 
 ## [3.2.0] - 2026-11-25
 

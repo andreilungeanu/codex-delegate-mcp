@@ -1,6 +1,6 @@
 {
   "name": "codex-delegate-mcp",
-  "version": "3.2.0",
+  "version": "3.3.0",
   "mcpName": "io.github.andreilungeanu/codex-delegate-mcp",
   "type": "module",
   "description": "Turn your coding agent into a council: bring OpenAI Codex (GPT-6.2 Sol, Astra) into the conversation for second opinions, then hand it plans, edits and code review. MCP server and plugin.",

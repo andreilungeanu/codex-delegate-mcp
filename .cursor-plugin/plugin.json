@@ -1,7 +1,7 @@
 {
   "name": "codex-delegate",
   "displayName": "Codex Delegate",
-  "version": "3.2.0",
+  "version": "3.3.0",
   "description": "Turn your agent into a council: ask OpenAI Codex for second opinions, then hand it plans, edits and code review.",
   "author": {
     "name": "Andrei Lungeanu",
@@ -16,7 +16,7 @@
   "mcpServers": {
     "codex-delegate": {
       "command": "npx",
-      "args": ["-y", "npm:codex-delegate-mcp@3.2.0"]
+      "args": ["-y", "npm:codex-delegate-mcp@3.3.0"]
     }
   }
 }

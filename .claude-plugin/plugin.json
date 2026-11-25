@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "codex-delegate",
   "displayName": "Codex Delegate",
-  "version": "3.2.0",
+  "version": "3.3.0",
   "description": "Turn your agent into a council: ask OpenAI Codex for second opinions, then hand it plans, edits and code review.",
   "author": {
     "name": "Andrei Lungeanu",

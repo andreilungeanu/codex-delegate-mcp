@@ -3,17 +3,17 @@
   "name": "io.github.andreilungeanu/codex-delegate-mcp",
   "title": "Codex Delegate",
   "description": "Bring OpenAI Codex into your agent's council for second opinions, plans, edits and code review.",
-  "version": "3.2.0",
+  "version": "3.3.0",
   "websiteUrl": "https://github.com/andreilungeanu/codex-delegate-mcp",
   "icons": [
     {
-      "src": "https://raw.githubusercontent.com/andreilungeanu/codex-delegate-mcp/v3.2.0/assets/logo-light.png",
+      "src": "https://raw.githubusercontent.com/andreilungeanu/codex-delegate-mcp/v3.3.0/assets/logo-light.png",
       "mimeType": "image/png",
       "sizes": ["1024x1024"],
       "theme": "light"
     },
     {
-      "src": "https://raw.githubusercontent.com/andreilungeanu/codex-delegate-mcp/v3.2.0/assets/logo-dark.png",
+      "src": "https://raw.githubusercontent.com/andreilungeanu/codex-delegate-mcp/v3.3.0/assets/logo-dark.png",
       "mimeType": "image/png",
       "sizes": ["1024x1024"],
       "theme": "dark"
@@ -27,7 +27,7 @@
     {
       "registryType": "npm",
       "identifier": "codex-delegate-mcp",
-      "version": "3.2.0",
+      "version": "3.3.0",
       "transport": {
         "type": "stdio"
       }
