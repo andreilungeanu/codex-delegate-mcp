@@ -6,6 +6,24 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `doctor deep` reports the account's plan and its 5-hour and weekly usage (used percent and
+  reset time), read from `codex app-server` without a model call, and warns at 80% of a window
+  or once a limit is reached.
+
+### Changed
+
+- `doctor` output follows the shape shared with `cursor-delegate-mcp` and `agy-delegate-mcp`:
+  `codex` is now `agent`, `login` is now `auth` (`status` is `ok`, `logged-out` or `unknown`,
+  with `method` and, under `deep`, `plan`), and `deep` results move to top-level `models`
+  (`default`, `defaultAvailable`, `available` ids, `efforts` common to most models,
+  `effortsByModel` for the models that differ, `retiring` dates) and `usage`.
+  A logged-out CLI, a missing CLI and a failed help surface are reported in `warnings`.
+- `doctor` leaves out what rarely changes a diagnosis: the client's capabilities, the runtime
+  section, an inactive recursion guard, unset environment knobs, and the resolver's notes once
+  the CLI resolved.
+
 ## [3.2.0] - 2026-11-25
 
 ### Added

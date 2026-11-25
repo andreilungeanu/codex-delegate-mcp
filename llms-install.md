@@ -34,6 +34,6 @@ No API keys and no environment variables are required. Auth is the Codex CLI's o
 
 ## Verify
 
-Call the `doctor` tool. It reports the Node version, how the Codex CLI was resolved, whether the
-CLI session is logged in, and whether the workspace is a git repository, naming whatever is
-missing. A clean `doctor` means `delegate` is ready.
+Call the `doctor` tool. It reports how the Codex CLI was resolved, whether the CLI session is
+logged in, and whether the workspace is a git repository, and lists whatever needs action in
+`warnings`. An empty `warnings` means `delegate` is ready.

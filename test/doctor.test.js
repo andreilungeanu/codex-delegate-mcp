@@ -19,27 +19,25 @@ function options(overrides = {}) {
     workspace: process.cwd(),
     env: {},
     resolve: () => resolved,
-    execFileImpl: async () => ({ stdout: "Logged in", stderr: "" }),
+    execFileImpl: async () => ({ stdout: "Logged in using ChatGPT", stderr: "" }),
+    readUsage: async () => null,
     ...overrides,
   };
 }
 
-test("doctor reports a resolved CLI, login and runtime", async () => {
+test("doctor reports a resolved CLI, login and workspace, and no section it has nothing for", async () => {
   const out = await runDoctor(options());
 
-  assert.equal(out.plugin.version, VERSION);
-  assert.equal(out.plugin.name, "codex-delegate-mcp");
-  assert.equal(out.codex.found, true);
-  assert.equal(out.codex.command, "/bin/codex");
-  assert.equal(out.codex.version, "0.145.0");
-  assert.equal(out.login.status, "ok");
-  assert.equal(out.login.detail, "Logged in");
+  assert.deepEqual(out.plugin, { name: "codex-delegate-mcp", version: VERSION });
+  assert.equal(out.agent.found, true);
+  assert.equal(out.agent.command, "/bin/codex");
+  assert.equal(out.agent.version, "0.145.0");
+  assert.deepEqual(out.auth, { status: "ok", method: "chatgpt" });
   assert.equal(out.workspace.path, process.cwd());
   assert.equal(out.workspace.exists, true);
   assert.equal(out.workspace.isGitRepo, true);
-  assert.equal(out.runtime.transport, "stdio");
   assert.deepEqual(out.warnings, []);
-  assert.equal(out.deep, undefined);
+  assert.deepEqual(Object.keys(out), ["plugin", "client", "agent", "auth", "workspace", "warnings"]);
 });
 
 test("doctor flags a workspace that is not there", async () => {
@@ -61,11 +59,11 @@ test("doctor surfaces a resolution failure instead of throwing", async () => {
     })
   );
 
-  assert.equal(out.codex.found, false);
-  assert.equal(out.codex.code, "not_found");
-  assert.match(out.codex.error, /not found/);
-  assert.equal(out.login.status, "skipped");
-  assert.equal(out.login.reason, "codex_not_found");
+  assert.equal(out.agent.found, false);
+  assert.equal(out.agent.code, "not_found");
+  assert.match(out.agent.error, /not found/);
+  assert.deepEqual(out.auth, { status: "unknown" });
+  assert.match(out.warnings.join("\n"), /Codex CLI not found/);
 });
 
 test("doctor keeps the resolver's notes even when resolution failed", async () => {
@@ -83,13 +81,13 @@ test("doctor keeps the resolver's notes even when resolution failed", async () =
     })
   );
 
-  assert.equal(out.codex.found, false);
-  assert.deepEqual(out.codex.notes, [
+  assert.equal(out.agent.found, false);
+  assert.deepEqual(out.agent.notes, [
     "Codex on PATH is a .cmd shim that cannot be spawned directly.",
   ]);
 });
 
-test("doctor reports a failed login probe without failing the call", async () => {
+test("a non-zero exit from login status reads as logged out, with what to run", async () => {
   const out = await runDoctor(
     options({
       execFileImpl: async () => {
@@ -102,25 +100,47 @@ test("doctor reports a failed login probe without failing the call", async () =>
     })
   );
 
-  assert.equal(out.login.status, "failed");
-  assert.equal(out.login.exitCode, 1);
-  assert.equal(out.login.detail, "Not logged in");
+  assert.deepEqual(out.auth, { status: "logged-out", detail: "Not logged in" });
+  assert.ok(out.warnings.includes("Codex is not logged in. Run `codex login`."));
 });
 
-test("doctor files resolver notes away from warnings, and reports the recursion guard", async () => {
+test("a login probe that never answers is unknown, not logged out", async () => {
   const out = await runDoctor(
     options({
-      resolve: () => ({ ...resolved, warnings: ["Preferring the standalone Codex binary on Windows."] }),
-      env: { CODEX_DELEGATE_DEPTH: "1" },
+      execFileImpl: async () => {
+        const err = new Error("spawn codex ETIMEDOUT");
+        err.code = "ETIMEDOUT";
+        throw err;
+      },
     })
   );
 
-  // The note describes the resolver doing its job, and fires on an ordinary
-  // Windows setup; `warnings` has to stay empty when nothing is wrong.
-  assert.deepEqual(out.codex.notes, ["Preferring the standalone Codex binary on Windows."]);
+  assert.equal(out.auth.status, "unknown");
   assert.deepEqual(out.warnings, []);
-  assert.equal(out.recursionGuard.active, true);
-  assert.equal(out.recursionGuard.depth, "1");
+});
+
+test("an API-key login is named as one", async () => {
+  const out = await runDoctor(options({ execFileImpl: async () => ({ stdout: "Logged in using an API key - sk-proj-***", stderr: "" }) }));
+  assert.deepEqual(out.auth, { status: "ok", method: "api-key" });
+});
+
+test("doctor leaves out a resolved CLI's notes, and reports the recursion guard and env knobs only when set", async () => {
+  const out = await runDoctor(
+    options({
+      resolve: () => ({ ...resolved, warnings: ["Preferring the standalone Codex binary on Windows."] }),
+      env: { CODEX_DELEGATE_DEPTH: "1", CODEX_DELEGATE_STARTUP_MS: "90000", UNRELATED: "x" },
+    })
+  );
+
+  // The note fires on every ordinary Windows setup.
+  assert.equal("notes" in out.agent, false);
+  assert.deepEqual(out.warnings, []);
+  assert.deepEqual(out.recursionGuard, { depth: "1" });
+  assert.deepEqual(out.env, { CODEX_DELEGATE_STARTUP_MS: "90000" });
+
+  const quiet = await runDoctor(options());
+  assert.equal("recursionGuard" in quiet, false);
+  assert.equal("env" in quiet, false);
 });
 
 test("doctor deep probes the exec surfaces it depends on", async () => {
@@ -135,15 +155,31 @@ test("doctor deep probes the exec surfaces it depends on", async () => {
     })
   );
 
-  assert.equal(out.deep.ran, true);
-  assert.deepEqual(Object.keys(out.deep.surfaces), ["exec", "exec review", "exec resume"]);
-  for (const surface of Object.values(out.deep.surfaces)) {
-    assert.equal(surface.ok, true);
-    assert.equal(surface.hasJson, true);
-    assert.equal(surface.hasOutputLastMessage, true);
-  }
   assert.deepEqual(out.warnings, [], "a CLI matching the assumptions warns about nothing");
-  assert.ok(seen.includes("exec review --help"));
+  for (const surface of ["exec", "exec review", "exec resume"]) assert.ok(seen.includes(`${surface} --help`));
+});
+
+test("a help surface that fails or drops a flag delegation passes is a warning", async () => {
+  const out = await runDoctor(
+    options({
+      deep: true,
+      execFileImpl: async (_cmd, args) => {
+        const call = args.join(" ");
+        if (call === "exec review --help") {
+          const err = new Error("exited");
+          err.code = 2;
+          throw err;
+        }
+        if (call === "exec resume --help") return { stdout: "--json", stderr: "" };
+        return { stdout: HELP, stderr: "" };
+      },
+    })
+  );
+
+  assert.deepEqual(out.warnings, [
+    "`codex exec review --help` failed (exit 2); delegation runs through it.",
+    "`codex exec resume --help` does not list --output-last-message, which delegation passes.",
+  ]);
 });
 
 test("doctor runs login, help and catalog probes through a resolved launcher script", async () => {
@@ -157,7 +193,7 @@ test("doctor runs login, help and catalog probes through a resolved launcher scr
       script,
       [
         "const call = process.argv.slice(2).join(' ');",
-        "if (call === 'login status') console.log('Logged in');",
+        "if (call === 'login status') console.log('Logged in using ChatGPT');",
         "else if (call.endsWith('--help')) console.log(call === 'exec --help' ? '--json --output-last-message -C, --cd <DIR>' : '--json --output-last-message');",
         `else if (call === 'debug models') console.log(JSON.stringify({ models: [{ slug: ${JSON.stringify(DEFAULT_MODEL)}, visibility: 'list', supported_reasoning_levels: [{ effort: ${JSON.stringify(DEFAULT_REASONING_EFFORT)} }] }] }));`,
         "else process.exit(9);",
@@ -168,19 +204,19 @@ test("doctor runs login, help and catalog probes through a resolved launcher scr
       workspace: process.cwd(),
       env: {},
       deep: true,
+      readUsage: async () => null,
       resolve: () => ({ command: process.execPath, commandArgs: [script], source: "path", version: "0.171.0", warnings: [] }),
     });
-    assert.deepEqual(out.codex.commandArgs, [script]);
-    assert.equal(out.login.status, "ok", JSON.stringify(out.login));
-    assert.equal(out.login.detail, "Logged in");
-    for (const surface of Object.values(out.deep.surfaces)) assert.equal(surface.ok, true);
-    assert.equal(out.deep.models.ran, true, JSON.stringify(out.deep.models));
+    assert.deepEqual(out.agent.commandArgs, [script]);
+    assert.deepEqual(out.auth, { status: "ok", method: "chatgpt" });
+    assert.deepEqual(out.warnings, []);
+    assert.equal(out.models.defaultAvailable, true, JSON.stringify(out.models));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
 
-test("doctor deep is skipped when the CLI did not resolve", async () => {
+test("doctor deep probes nothing when the CLI did not resolve", async () => {
   const out = await runDoctor(
     options({
       deep: true,
@@ -190,8 +226,8 @@ test("doctor deep is skipped when the CLI did not resolve", async () => {
     })
   );
 
-  assert.equal(out.deep.ran, false);
-  assert.equal(out.deep.reason, "codex_not_found");
+  assert.equal("models" in out, false);
+  assert.equal("usage" in out, false);
 });
 
 test("doctor tolerates a client that cannot report itself", async () => {
@@ -203,8 +239,7 @@ test("doctor tolerates a client that cannot report itself", async () => {
     })
   );
 
-  assert.equal(out.client.name, null);
-  assert.deepEqual(out.client.capabilities, {});
+  assert.deepEqual(out.client, { name: null, version: null });
 });
 
 test("doctor reports the host's protocol revision, and leaves it out when the host named none", async () => {
@@ -252,18 +287,32 @@ test("doctor deep reports the catalog and the levels each model takes", async ()
     })
   );
 
-  assert.equal(out.deep.models.ran, true);
-  assert.deepEqual(
-    out.deep.models.models.map((model) => model.slug),
-    [...MODELS],
-    "a model the CLI hides is not one a caller can ask for"
-  );
-  assert.deepEqual(out.deep.models.defaultModel, { slug: DEFAULT_MODEL, inCatalog: true });
-  assert.deepEqual(
-    out.deep.models.models.find((model) => model.slug === DEFAULT_MODEL).reasoningEfforts,
-    ["low", "high", "xhigh", "max", "ultra"]
-  );
+  assert.deepEqual(out.models, {
+    default: DEFAULT_MODEL,
+    defaultAvailable: true,
+    // a model the CLI hides is not one a caller can ask for
+    available: [...MODELS],
+    efforts: ["low", "high", "xhigh", "max", "ultra"],
+  });
   assert.deepEqual(out.warnings, []);
+});
+
+test("doctor deep states the common level list once and names only the models that differ", async () => {
+  const out = await runDoctor(
+    options({
+      deep: true,
+      execFileImpl: deepExec({
+        catalog: catalogJson([
+          { slug: "gpt-6-sol", efforts: ["low", "high", "ultra"] },
+          { slug: DEFAULT_MODEL, efforts: ["low", "high"] },
+          { slug: "gpt-6-astra", efforts: ["low", "high", "ultra"] },
+        ]),
+      }),
+    })
+  );
+
+  assert.deepEqual(out.models.efforts, ["low", "high", "ultra"]);
+  assert.deepEqual(out.models.effortsByModel, { [DEFAULT_MODEL]: ["low", "high"] });
 });
 
 test("a level the catalog adds is not drift: the field is described from the same catalog", async () => {
@@ -326,8 +375,7 @@ test("doctor treats malformed default reasoning lists as unknown", async () => {
         catalog: JSON.stringify({ models: [{ slug: DEFAULT_MODEL, visibility: "list", supported_reasoning_levels: levels }] }),
       }),
     }));
-    assert.equal(out.deep.models.ran, true);
-    assert.deepEqual(out.deep.models.models[0].reasoningEfforts, []);
+    assert.deepEqual(out.models.efforts, []);
     assert.deepEqual(out.warnings, []);
   }
 });
@@ -347,7 +395,7 @@ test("doctor deep warns when the default model is gone from the catalog", async 
     })
   );
 
-  assert.equal(out.deep.models.defaultModel.inCatalog, false);
+  assert.equal(out.models.defaultAvailable, false);
   assert.ok(
     out.warnings.join(" ").includes(`The default model ${DEFAULT_MODEL} is not in the catalog`),
     "a default nothing answers to fails every delegation that omits model"
@@ -370,8 +418,7 @@ test("a catalog probe that fails leaves the rest of doctor standing", async () =
 
   // One shape for a probe that died and one that printed nonsense: neither is readable,
   // and no warning is worth raising off a catalog nobody got.
-  assert.deepEqual(out.deep.models, { ran: false, reason: "unreadable" });
-  assert.equal(out.deep.surfaces.exec.ok, true, "the help probes still ran");
+  assert.deepEqual(out.models, { ran: false, reason: "unreadable" });
   assert.deepEqual(out.warnings, [], "a surface this cannot read reports nothing, it does not guess");
 });
 
@@ -396,15 +443,8 @@ test("models the catalog adds, drops or dates for retirement are not drift", asy
   // The model field is described from this same catalog at startup, so there is no
   // second list for it to disagree with. The date is still reported, just not warned on.
   assert.deepEqual(out.warnings, []);
-  assert.deepEqual(
-    out.deep.models.models.map((model) => model.slug),
-    [DEFAULT_MODEL, "gpt-7-unannounced", "gpt-5.5"]
-  );
-  assert.equal(
-    out.deep.models.models.find((model) => model.slug === "gpt-5.5").retiresAt,
-    "2026-10-14T19:00:00Z"
-  );
-  assert.equal("retiresAt" in out.deep.models.models.find((model) => model.slug === DEFAULT_MODEL), false);
+  assert.deepEqual(out.models.available, [DEFAULT_MODEL, "gpt-7-unannounced", "gpt-5.5"]);
+  assert.deepEqual(out.models.retiring, { "gpt-5.5": "2026-10-14T19:00:00Z" });
 });
 
 test("a retiring default is named as the default", async () => {

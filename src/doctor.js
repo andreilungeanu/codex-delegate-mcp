@@ -5,10 +5,16 @@ import { promisify } from "node:util";
 import { resolveCodex } from "./resolve-codex.js";
 import { DEFAULT_MODEL, DEFAULT_REASONING_EFFORT } from "./command.js";
 import { readModelCatalog, modelEfforts } from "./model-catalog.js";
+import { readRateLimits, describeUsage } from "./account.js";
 import { isGitRepo } from "./git-preflight.js";
 import { VERSION } from "./version.js";
 
 const execFileAsync = promisify(execFile);
+
+/** Reported when set: each changes how a delegation runs. CODEX_DELEGATE_DEPTH is recursionGuard. */
+const ENV_KNOBS = ["CODEX_DELEGATE_COMMAND", "CODEX_DELEGATE_STARTUP_MS", "CODEX_DELEGATE_HARD_CAP_MS"];
+
+const PROBE_TIMEOUT_MS = 8000;
 
 /**
  * @param {{
@@ -18,7 +24,7 @@ const execFileAsync = promisify(execFile);
  *   env?: NodeJS.ProcessEnv,
  *   getClientInfo?: any,
  *   execFileImpl?: any,
- *   platform?: string,
+ *   readUsage?: typeof readRateLimits,
  * }} [options]
  */
 export async function runDoctor({
@@ -28,13 +34,15 @@ export async function runDoctor({
   env = process.env,
   getClientInfo,
   execFileImpl = execFileAsync,
-  platform = process.platform,
+  readUsage = readRateLimits,
 } = {}) {
+  /** @type {string[]} */
   const warnings = [];
-  let codex = { found: false };
+  /** @type {any} */
+  let agent = { found: false };
   try {
     const resolved = resolve({ env });
-    codex = {
+    agent = {
       found: true,
       command: resolved.command,
       ...(resolved.commandArgs?.length ? { commandArgs: [...resolved.commandArgs] } : {}),
@@ -42,71 +50,69 @@ export async function runDoctor({
       ...(resolved.shim ? { shim: resolved.shim } : {}),
       version: resolved.version,
     };
-    // Resolution notes describe the resolver working. On Windows the loudest fires
-    // on every correct machine, so they live on `codex.notes`, not `warnings`.
-    if (resolved.warnings?.length) codex.notes = [...resolved.warnings];
+    // Resolver notes are left out once it resolved: on Windows the loudest fires on every correct machine.
   } catch (err) {
-    codex = {
-      found: false,
-      error: err?.message || String(err),
-      code: err?.code,
-    };
-    // A failed resolution is where the resolver's notes matter most: they name
-    // what this machine actually tried and why each path was refused.
+    agent = { found: false, error: err?.message || String(err), code: err?.code };
+    // On a failed resolution the notes name what this machine tried and why each path was refused.
     if (Array.isArray(err?.details?.warnings) && err.details.warnings.length) {
-      codex.notes = [...err.details.warnings];
+      agent.notes = [...err.details.warnings];
     }
+    warnings.push(`Codex CLI not found: ${agent.error}`);
   }
 
-  const client = (() => {
-    try {
-      const info = getClientInfo?.() || {};
-      return {
-        name: info.version?.name ?? null,
-        version: info.version?.version ?? null,
-        capabilities: info.capabilities || {},
-        // The MCP revision the host speaks: 2026-07-28 or a 2025-era one.
-        ...(typeof info.protocolVersion === "string" ? { protocolVersion: info.protocolVersion } : {}),
-      };
-    } catch {
-      return { name: null, version: null, capabilities: {} };
-    }
-  })();
+  const auth = await probeLogin(agent, execFileImpl);
+  if (auth.status === "logged-out") warnings.push("Codex is not logged in. Run `codex login`.");
 
-  const login = await probeLogin(codex.found ? codex.command : null, execFileImpl, codex.commandArgs);
-  const recursion = {
-    depth: env.CODEX_DELEGATE_DEPTH ?? null,
-    active: Boolean(env.CODEX_DELEGATE_DEPTH && String(env.CODEX_DELEGATE_DEPTH).trim()),
-  };
-
+  /** @type {Record<string, any>} */
   const out = {
-    plugin: { version: VERSION, name: "codex-delegate-mcp" },
-    client,
-    codex,
-    login,
-    recursionGuard: recursion,
+    plugin: { name: "codex-delegate-mcp", version: VERSION },
+    client: describeClient(getClientInfo),
+    agent,
+    auth,
     workspace: await describeWorkspace(workspace, warnings, execFileImpl),
-    runtime: {
-      node: process.versions.node,
-      platform,
-      arch: process.arch,
-      cwd: process.cwd(),
-      transport: "stdio",
-    },
-    warnings,
   };
 
-  if (deep) {
-    out.deep = await runDeepSmoke({ codex, execFileImpl, warnings });
+  const depth = env.CODEX_DELEGATE_DEPTH;
+  if (depth && String(depth).trim()) out.recursionGuard = { depth };
+  const set = ENV_KNOBS.filter((name) => env[name] !== undefined);
+  if (set.length) out.env = Object.fromEntries(set.map((name) => [name, env[name]]));
+  out.warnings = warnings;
+
+  if (deep && agent.found) {
+    const [, models, rawUsage] = await Promise.all([
+      checkHelpSurfaces(agent, execFileImpl, warnings),
+      probeModelCatalog(agent, execFileImpl, warnings),
+      readUsage({ command: agent.command, commandArgs: agent.commandArgs }),
+    ]);
+    out.models = models;
+    const usage = describeUsage(rawUsage, warnings);
+    if (usage) {
+      const { plan, ...rest } = usage;
+      if (plan) auth.plan = plan;
+      out.usage = rest;
+    } else {
+      out.usage = { ran: false, reason: "unreadable" };
+    }
   }
 
   return out;
 }
 
-/**
- * Inspects the workspace path and, for a directory, whether git sees a repo
- * (review needs one). A typo used to echo back as healthy.
- */
+function describeClient(getClientInfo) {
+  try {
+    const info = getClientInfo?.() || {};
+    return {
+      name: info.version?.name ?? null,
+      version: info.version?.version ?? null,
+      // The MCP revision the host speaks: 2026-07-28 or a 2025-era one.
+      ...(typeof info.protocolVersion === "string" ? { protocolVersion: info.protocolVersion } : {}),
+    };
+  } catch {
+    return { name: null, version: null };
+  }
+}
+
+/** The workspace path and, for a directory, whether git sees a repo (review needs one). */
 async function describeWorkspace(workspace, warnings, execFileImpl) {
   const out = { path: workspace };
   let stat = null;
@@ -120,82 +126,59 @@ async function describeWorkspace(workspace, warnings, execFileImpl) {
   } else if (!out.isDirectory) {
     warnings.push(`workspace is not a directory: ${workspace}`);
   } else {
-    // Asking git rather than looking for a .git entry: the answer has to match the
-    // review preflight's, and the workspace the skill tells callers to pass is the
-    // smallest directory that fits the task — usually a subdirectory, where a
-    // .git lookup says "not a repository" about a perfectly reviewable path.
+    // Asked of git, not a .git lookup: the skill passes the smallest fitting directory, usually a
+    // subdirectory, and the answer has to match the review preflight's.
     const repo = await isGitRepo(workspace, execFileImpl);
     if (repo !== null) out.isGitRepo = repo;
   }
   return out;
 }
 
-async function probeLogin(command, execFileImpl = execFileAsync, commandArgs = []) {
-  if (!command) return { status: "skipped", reason: "codex_not_found" };
+function runCodex(agent, args, execFileImpl) {
+  return execFileImpl(agent.command, [...(agent.commandArgs ?? []), ...args], {
+    encoding: "utf8",
+    timeout: PROBE_TIMEOUT_MS,
+    // SIGKILL: SIGTERM is catchable and would outlive the timeout.
+    killSignal: "SIGKILL",
+    windowsHide: true,
+    shell: false,
+  });
+}
+
+/** `codex login status` exits 0 when logged in and non-zero when not. */
+async function probeLogin(agent, execFileImpl) {
+  if (!agent.found) return { status: "unknown" };
   try {
-    const { stdout, stderr } = await execFileImpl(command, [...commandArgs, "login", "status"], {
-      encoding: "utf8",
-      timeout: 8000,
-      // SIGKILL: SIGTERM is catchable and would outlive the timeout.
-      killSignal: "SIGKILL",
-      windowsHide: true,
-      shell: false,
-    });
+    const { stdout, stderr } = await runCodex(agent, ["login", "status"], execFileImpl);
     const text = `${stdout || ""}${stderr || ""}`.trim();
-    return {
-      status: "ok",
-      exitCode: 0,
-      detail: text.slice(0, 400) || null,
-    };
+    const method = /chatgpt/i.test(text) ? "chatgpt" : /api key/i.test(text) ? "api-key" : null;
+    return method ? { status: "ok", method } : { status: "ok", detail: text.slice(0, 400) || null };
   } catch (err) {
     const text = `${err.stdout || ""}${err.stderr || ""}`.trim();
     return {
-      status: "failed",
-      exitCode: typeof err?.code === "number" ? err.code : null,
+      // A number is the CLI's own exit; anything else (timeout, spawn failure) says nothing about login.
+      status: typeof err?.code === "number" ? "logged-out" : "unknown",
       detail: text.slice(0, 400) || err?.message || null,
     };
   }
 }
 
-/** Lightweight deep check: help surfaces and the model catalog. No model quota. */
-async function runDeepSmoke({ codex, execFileImpl = execFileAsync, warnings = [] }) {
-  if (!codex.found) {
-    return { ran: false, reason: "codex_not_found" };
-  }
-  const surfaces = ["exec", "exec review", "exec resume"];
-  const results = {};
-  for (const surface of surfaces) {
-    const args = surface.split(" ").concat(["--help"]);
-    let stdout = "";
-    let stderr = "";
-    let exitCode = 0;
+/** The help of each exec surface delegation runs, checked for the flags it passes. Warns only. */
+async function checkHelpSurfaces(agent, execFileImpl, warnings) {
+  for (const surface of ["exec", "exec review", "exec resume"]) {
+    let help = "";
     try {
-      ({ stdout, stderr } = await execFileImpl(codex.command, [...(codex.commandArgs ?? []), ...args], {
-        encoding: "utf8",
-        timeout: 8000,
-        killSignal: "SIGKILL",
-        windowsHide: true,
-        shell: false,
-      }));
+      const { stdout, stderr } = await runCodex(agent, [...surface.split(" "), "--help"], execFileImpl);
+      help = `${stdout || ""}${stderr || ""}`;
     } catch (err) {
-      stdout = err.stdout || "";
-      stderr = err.stderr || "";
-      exitCode = typeof err?.code === "number" ? err.code : null;
+      const why = typeof err?.code === "number" ? `exit ${err.code}` : err?.message;
+      warnings.push(`\`codex ${surface} --help\` failed (${why}); delegation runs through it.`);
+      continue;
     }
-    const help = `${stdout}${stderr}`;
-    results[surface] = {
-      ok: exitCode === 0,
-      exitCode,
-      hasJson: /--json/.test(help),
-      hasOutputLastMessage: /--output-last-message/.test(help),
-    };
+    for (const flag of ["--json", "--output-last-message"]) {
+      if (!help.includes(flag)) warnings.push(`\`codex ${surface} --help\` does not list ${flag}, which delegation passes.`);
+    }
   }
-  return {
-    ran: true,
-    surfaces: results,
-    models: await probeModelCatalog({ codex, execFileImpl, warnings }),
-    note: "Help and catalog only; no model calls.",
-  };
 }
 
 /**
@@ -203,35 +186,30 @@ async function runDeepSmoke({ codex, execFileImpl = execFileAsync, warnings = []
  * reasoningEffort fields are described from it at startup, so the only names left to check
  * against it are the two defaults this bridge pins itself.
  */
-async function probeModelCatalog({ codex, execFileImpl = execFileAsync, warnings = [] }) {
-  // Diagnostics can wait longer than a delegation: this is the only place the catalog is
-  // read for its own sake, so a slow CLI is worth reporting rather than skipping.
-  const all = await readModelCatalog({ command: codex.command, commandArgs: codex.commandArgs, execFileImpl, timeoutMs: 8000 });
+async function probeModelCatalog(agent, execFileImpl, warnings) {
+  const all = await readModelCatalog({ command: agent.command, commandArgs: agent.commandArgs, execFileImpl, timeoutMs: PROBE_TIMEOUT_MS });
   if (!all) return { ran: false, reason: "unreadable" };
-  const models = all
-    .filter((model) => model?.visibility === "list")
-    .map((model) => ({
-      slug: model.slug,
-      reasoningEfforts: modelEfforts([model], model.slug) || [],
-      // Only while a retirement is scheduled: a field present on every entry stops
-      // being read.
-      ...(model.upgrade?.retirement_at ? { retiresAt: model.upgrade.retirement_at } : {}),
-    }));
+  const listed = all.filter((model) => model?.visibility === "list");
+  const available = listed.map((model) => model.slug);
+  const effortsOf = new Map(listed.map((model) => [model.slug, modelEfforts([model], model.slug) || []]));
+  // The most common level list is stated once; only models that differ from it are named.
+  const counts = new Map();
+  for (const levels of effortsOf.values()) counts.set(levels.join(","), (counts.get(levels.join(",")) || 0) + 1);
+  const common = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
+  const efforts = common ? common.split(",") : [];
+  const effortsByModel = Object.fromEntries([...effortsOf].filter(([, levels]) => levels.join(",") !== common));
+  const retiring = Object.fromEntries(
+    listed.filter((model) => model.upgrade?.retirement_at).map((model) => [model.slug, model.upgrade.retirement_at])
+  );
 
-  // No check on the other models: the model field is described from this same catalog
-  // when the server starts, so a model it adds or drops is not drift. The default is the
-  // one model this bridge names itself.
   const defaultEntry = all.find((model) => model?.slug === DEFAULT_MODEL);
-  const inCatalog = Boolean(defaultEntry);
-  if (!inCatalog) {
+  if (!defaultEntry) {
     warnings.push(
       `The default model ${DEFAULT_MODEL} is not in the catalog this CLI prints. Every delegation that does not name its own model asks for it, so all of them would fail at the API. DEFAULT_MODEL in src/command.js is where it goes.`
     );
   }
 
-  // The catalog dates a retirement before it lands, in `upgrade.retirement_at`, with the
-  // replacement it names. Said while the default can still change, rather than once the
-  // entry is gone and every delegation that names no model is already failing.
+  // Said while the default can still change, not once every delegation naming no model fails.
   const retiresAt = defaultEntry?.upgrade?.retirement_at;
   if (retiresAt) {
     const replacement = defaultEntry.upgrade.model
@@ -242,10 +220,8 @@ async function probeModelCatalog({ codex, execFileImpl = execFileAsync, warnings
     );
   }
 
-  // The default effort rides on every delegation that names no level, whatever model it
-  // names. The default model is the one it is checked against: a catalog that stops listing
-  // it there is about to turn every plain delegation into a warning. An entry with no list
-  // says nothing either way.
+  // The default effort rides on every delegation that names no level. An entry with no list says
+  // nothing either way.
   const defaultEfforts = modelEfforts(all, DEFAULT_MODEL);
   if (defaultEfforts && !defaultEfforts.includes(DEFAULT_REASONING_EFFORT)) {
     warnings.push(
@@ -253,5 +229,12 @@ async function probeModelCatalog({ codex, execFileImpl = execFileAsync, warnings
     );
   }
 
-  return { ran: true, models, defaultModel: { slug: DEFAULT_MODEL, inCatalog } };
+  return {
+    default: DEFAULT_MODEL,
+    defaultAvailable: Boolean(defaultEntry),
+    available,
+    efforts,
+    ...(Object.keys(effortsByModel).length ? { effortsByModel } : {}),
+    ...(Object.keys(retiring).length ? { retiring } : {}),
+  };
 }

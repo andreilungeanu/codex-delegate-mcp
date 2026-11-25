@@ -375,7 +375,7 @@ export function buildServer({
     "doctor",
     {
       description:
-        "Diagnose plugin/CLI/login, recursion, and workspace (default: server cwd). deep adds no-quota help and model-catalog checks.",
+        "Diagnose CLI, login, workspace (default: server cwd) and recursion; warnings lists what needs action. deep adds the model catalog, the plan and 5h/weekly usage, and CLI help checks. No model calls.",
       inputSchema: z
         .object({
           deep: z.boolean().default(false),

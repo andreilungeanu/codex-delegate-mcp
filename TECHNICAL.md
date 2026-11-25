@@ -15,7 +15,8 @@ This package is an MCP stdio server that delegates coding work to `codex exec`. 
 | `src/tasks.js` | Keeps the MCP tasks a `delegate` call is answered with, answers `tasks/get`, `tasks/update` and `tasks/cancel`, and keeps a finished task for an hour. |
 | `src/ops.js` | Tracks active delegations, assigns delegation IDs, associates running delegations with Codex thread IDs, and implements cancellation. |
 | `src/resolve-codex.js` | Resolves and probes the Codex CLI on every delegation and diagnostic call. See [CONFIGURATION.md](CONFIGURATION.md) for resolution behavior. |
-| `src/doctor.js` | Produces setup diagnostics for the plugin, MCP client, Codex CLI, login state, workspace, runtime, and optional CLI help-surface and model-catalog checks. |
+| `src/doctor.js` | Produces setup diagnostics for the plugin, MCP client, Codex CLI, login, workspace, recursion guard and set environment knobs, collecting what needs action in `warnings`; `deep` adds the model catalog, the account's usage, and CLI help-surface checks. |
+| `src/account.js` | Reads the account's plan and usage windows from `codex app-server` (`account/rateLimits/read`) for `doctor deep`, and warns at 80% of a window or a reached limit. |
 | `src/model-catalog.js` | Reads the Codex model catalog (`codex debug models`) for the model field's description at startup, the model preflight, and the doctor drift checks. |
 | `src/git-preflight.js` | Checks that a review workspace is a Git repository and validates applicable review targets before Codex is spawned. |
 | `src/errors.js` | Builds the errors a caller tells apart by `code`. |
@@ -32,7 +33,7 @@ No tool declares an MCP `outputSchema`, and no tool returns `structuredContent`.
 
 Input fields are described in the tool schemas. Result fields, failure reasons, and resume, review and model rules live in [skills/delegate/reference.md](skills/delegate/reference.md). Environment knobs, timeouts, and Codex resolution live in [CONFIGURATION.md](CONFIGURATION.md).
 
-`doctor` reports diagnostics without a model turn (`deep` adds help-surface and catalog checks). Its payload is the tool result itself.
+`doctor` reports diagnostics without a model turn. Sections with nothing to report (an inactive recursion guard, unset environment knobs) are left out. `deep` adds `models` (listed ids, the level list most models share with the models that differ named, the default model check, retirement dates), `usage` (each window's used percent and reset time; the plan goes to `auth.plan`) and help-surface checks, which report only through `warnings`. Its payload is the tool result itself.
 
 ## Local development
 

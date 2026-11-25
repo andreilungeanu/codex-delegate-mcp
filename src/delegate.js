@@ -115,7 +115,7 @@ export async function executeDelegate(rawArgs, options = {}) {
     const cancelled = () => controller.signal.aborted;
     if (request.mode === "review") await preflight({ workspace: request.workspace, reviewTarget: request.reviewTarget });
     if (cancelled()) return cancelledBeforeSpawn();
-    // Resolver notes describe the setup, not this run — doctor reports them.
+    // Resolver notes describe the setup, not this run — doctor reports them when resolution fails.
     codex = resolve({ env });
     const commandArgs = codex.commandArgs ?? [];
     const trusted = await assertKnownModel(request.model, { command: codex.command, commandArgs, readCatalog, catalog });
