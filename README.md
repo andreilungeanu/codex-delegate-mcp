@@ -1,6 +1,6 @@
 # Codex Delegate
 
-**Ask Codex what it thinks. Or hand it the work.**
+**Turn your coding agent into a council. Bring GPT-6.2 Sol and Astra into the conversation, then hand them the work.**
 
 [![npm version](https://img.shields.io/npm/v/codex-delegate-mcp)](https://www.npmjs.com/package/codex-delegate-mcp)
 [![npm downloads](https://img.shields.io/npm/dt/codex-delegate-mcp)](https://www.npmjs.com/package/codex-delegate-mcp)
