@@ -1,85 +1,57 @@
-# delegate tool reference
+# delegate reference
 
-Read this when you need the full meaning of a result field, the rules for a mode, or how
-concurrency and timeouts behave. [SKILL.md](SKILL.md) carries the workflow itself.
+What a result field or failure `reason` means and what to do next.
 
-## Input
+## Result
 
-| Field | Default | Description |
-| --- | --- | --- |
-| `spec` | — | The task brief: goal, scope, decisions already made (quote the user's exact values verbatim), acceptance criteria. Point at files to read or mimic rather than pasting code. |
-| `mode` | `agent` | `agent` edits, `plan` returns a structured plan, `ask` answers questions, `review` runs Codex's native review. An instruction to Codex, not a limit the bridge enforces — every mode can write. |
-| `model` | `gpt-6-luna` | Codex model id. The field lists the models the installed CLI offers, read when the server starts; pass one only when the user asks. Any other id is checked against the CLI before the run starts, and an unknown one is refused with the ids it does take. |
-| `reasoningEffort` | `xhigh` | The field lists the installed CLI's advertised levels at startup and each model's lower top level; `doctor deep` lists each model's levels. An unadvertised value is forwarded with a warning naming the advertised levels; Codex may normalize or reject it. |
-| `fast` | `false` | Codex Fast mode (`service_tier=fast`). Higher credit use — only when the user asks. |
-| `webSearch` | `true` | Web search. `false` disables it and nothing else — the worker's shell reaches the network either way. |
-| `workspace` | required | Working directory for Codex. Smallest directory holding the task's files; with no such directory the project root is the floor. Must already exist; never create one for the call. |
-| `resumeThreadId` | — | Resume an existing Codex thread. IDs beginning with `-` are rejected as CLI options. Pass the workspace the thread started in: `codex exec resume` has no `--cd`, so the turn runs wherever the child is spawned. When `delegate` ran as an MCP task, its server-side task id works too, while this server process runs. |
-| `timeoutMs` | `21600000` | Hard cap for the whole run. |
-| `reviewTarget` | — | Required in `review` mode, rejected elsewhere. Exactly one of the three forms below. |
-
-The catalog omits some accepted values: on CLI 0.156.1, `none` was accepted by luna and sol
-and refused by `gpt-6-astra`. On luna models, `ultra` lowers to plain `max`. On models that
-advertise `ultra`, it enables the CLI's own task delegation, with the underlying effort
-chosen from the catalog. Work those subagents do is absent from `usage` and
-`filesReportedByEditTools`.
-
-## Return value
-
-Every tool returns one compact JSON text block; a `delegate` run as an MCP task returns it as the
-task's result. Fields that carry no signal are omitted, so anything present is worth reading.
+One compact JSON text block; a `delegate` run as an MCP task returns it as the task's result.
+Fields that carry no signal are omitted, so anything present is worth reading.
 
 | Field | When present | Meaning |
 | --- | --- | --- |
-| `result` | always | The authoritative final message on `status: "completed"` — empty or partial answers are never substituted. Empty on every other status; the thread and warnings carry what happened instead. **Check `status` before trusting it** — a run that spawns and then fails returns normally rather than raising, so a caller that only catches errors reads a failure as an empty success. |
-| `status` | always | `completed`, `failed` or `interrupted`. |
-| `reason` | not `completed` | `cancelled`, `startup-timeout`, `hard-cap`, `agent-error`, `died-mid-turn`, `exit-nonzero`, `result-unavailable`. The last means the run finished but its final message was missing, unreadable, or (in plan mode) not a valid plan — resume the thread for a concise final answer. |
-| `warnings` | non-empty only | Real diagnostics; read them first. Absence is **not** a clean bill of health: the bridge sees failures Codex reports as failed or declined tool calls, not ones it narrates in prose. Such a warning reports what Codex reported, not a verdict; it carries its own reading of that status. Codex's own notices — a rerouted model, a deprecated setting — come through on every status. |
-| `filesReportedByEditTools` | non-empty only | Only what Codex's edit tool reported. Files written by a shell command it ran are **not** listed. Paths inside the workspace are relative to it; anything the edit tool touched outside it is listed as an absolute path. Read the git diff; it is the better record, not a complete one. |
-| `resumed` | resume requested | `false` means Codex minted a fresh thread and prior context did not carry over. |
-| `usage` | when reported | Cumulative token counts for the Codex thread, explicitly labeled `scope: "thread"`. A resumed result includes earlier turns; do not sum usage across results for the same thread or treat it as the cost of this call. Absent in `review`, which reports all zeros. |
-| `exitCode` | not `completed` | Process exit code. |
-| `delegationId` | always | This run's cancel handle. Also announced in progress before the run spawns, which makes it the only handle for a run that wedges during startup. When `delegate` runs as an MCP task, it is the task id. |
-| `threadId` | when Codex reported one | Pass as `resumeThreadId` to continue this thread. |
-| `workspace`, `cliVersion`, `plan` | as applicable | |
+| `status` | always | `completed`, `failed` or `interrupted`. A run that spawns and then fails returns normally rather than raising. |
+| `result` | always | Codex's final message on `completed`; empty on every other status, where the thread and `warnings` say what happened. Partial answers are never substituted. |
+| `reason` | not `completed` | See the table below. |
+| `warnings` | non-empty | Read first. Codex's own notices (a rerouted model, a deprecated setting) appear on every status. Tool calls Codex reported as failed or declined appear only when the run did not complete, and failures it only narrates in prose never do, so absence is not a clean bill of health. |
+| `filesReportedByEditTools` | non-empty | Files Codex's edit tool reported. Files written by a shell command are not listed. Paths inside the workspace are relative; others are absolute. The git diff is the better record. |
+| `resumed` | resume requested | `false`: Codex started a fresh thread and the prior context did not carry over. |
+| `usage` | when reported | Cumulative token counts for the thread (`scope: "thread"`), earlier turns included; do not sum across results for one thread. Absent in `review`. |
+| `delegationId` | always | This run's `cancel` handle; also announced in progress before spawn. For an MCP task, the task id. |
+| `threadId` | when Codex reported one | Pass as `resumeThreadId` to continue. |
+| `plan` | `plan` mode, valid plan | The structured plan. |
+| `exitCode` | not `completed`, code observed | Process exit code; absent after a signal. |
+| `workspace` | always | |
+| `cliVersion` | version known | |
 
-## Modes
+| `reason` | Next step |
+| --- | --- |
+| `cancelled` | Stopped by `cancel` or the host. Resume the thread if the work should continue. |
+| `startup-timeout` | No JSONL event from Codex before the startup deadline (60s by default). Run `doctor`. |
+| `hard-cap` | The whole-run cap elapsed. Resume the thread; a longer `timeoutMs` is the user's call. |
+| `agent-error` | Codex reported the turn failed; `warnings` carries its error. Act on that error before resuming. |
+| `died-mid-turn`, `exit-nonzero` | The process ended without finishing the turn. Check the diff for partial work, then resume the thread. |
+| `result-unavailable` | The run finished but its final message was missing, unreadable or (in `plan`) not a valid plan. Resume the thread and ask for a concise final answer. |
 
-### plan
+## Resume
 
-Workflow in [SKILL.md](SKILL.md#plan-mode).
+Pass the `workspace` the thread started in: `codex exec resume` has no `--cd`, so the turn runs
+wherever the child is spawned. A `review`, or a run that failed before Codex published a thread,
+cannot be resumed; rerun it instead. For a `delegate` run as an MCP task, the task id works as
+`resumeThreadId` while this server process runs. IDs beginning with `-` are rejected.
 
-### review
+## Review
 
-Pass exactly one `reviewTarget`:
+`reviewTarget` is exactly one of `{ "kind": "uncommitted" }`, `{ "kind": "base", "branch": "main" }`
+or `{ "kind": "commit", "sha": "..." }`. A review whose repository or target does not resolve is
+refused before anything spawns.
 
-- `{ "kind": "uncommitted" }`
-- `{ "kind": "base", "branch": "main" }`
-- `{ "kind": "commit", "sha": "..." }`
+## Models and effort
 
-Review cannot be resumed. Put focus instructions in `spec`.
-A review whose repo or target does not resolve is refused before anything spawns.
-
-### ask
-
-Q&A, not read-only: `mode` is an instruction to Codex, not a limit the bridge enforces. Every
-command is auto-approved, and a run can write outside the workspace, so review the git diff
-after an `ask` run too.
-
-## Running several at once
-
-Delegations run concurrently, each cancellable by its own `delegationId`. When that is worth doing is in [SKILL.md](SKILL.md#running-several-at-once).
-
-To cancel: `delegationId` cancels one run, `threadId` cancels every delegation on that thread,
-and passing neither cancels all of them. `cancel` waits for the processes to end rather than
-returning on the kill request, with a status of `cancelled`, `nothing-active` or `not-found`.
-`not-found` means no active run has this ID — the run already finished, or the id never
-belonged to one; either way there is nothing to cancel. A stop that cannot confirm Codex and its
-processes exited returns anyway and says so in `warnings`.
-
-## Timeouts
-
-A quiet run is not a stuck run. Codex emits nothing while a shell command runs or the model
-reasons, so long silent stretches are normal and are not timed out. The only guards are a 60s
-spawn-to-first-output deadline and the 6h hard cap (`timeoutMs`). Work that legitimately runs
-longer needs a higher `timeoutMs`, which is the user's call.
+The `model` and `reasoningEffort` fields list what the installed CLI advertised at server start;
+`doctor deep` lists each model's levels. When the catalog is readable, an unknown model is
+refused before the run, naming the ids the CLI takes; otherwise the id is forwarded and Codex
+decides. An unadvertised effort is forwarded with a warning; Codex may normalize or
+reject it. The catalog omits some accepted values: on CLI 0.156.1, `none` was accepted by luna
+and sol and refused by `gpt-6-astra`. On luna models, `ultra` lowers to plain `max`. On models
+that advertise `ultra`, it turns on the CLI's own task delegation; work those subagents do is
+absent from `usage` and `filesReportedByEditTools`.

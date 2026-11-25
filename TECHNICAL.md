@@ -30,7 +30,7 @@ No tool declares an MCP `outputSchema`, and no tool returns `structuredContent`.
 
 `test/output-shapes.js` holds `delegateOutputShape`, the contract for a successful delegate result. `test/server.test.js` parses results against a strict copy of it, so a field added in `src/delegate.js` must also be added to the contract.
 
-Caller-facing input, result, cancel, and mode semantics live in [skills/delegate/reference.md](skills/delegate/reference.md). Environment knobs, timeouts, and Codex resolution live in [CONFIGURATION.md](CONFIGURATION.md).
+Input fields are described in the tool schemas. Result fields, failure reasons, and resume, review and model rules live in [skills/delegate/reference.md](skills/delegate/reference.md). Environment knobs, timeouts, and Codex resolution live in [CONFIGURATION.md](CONFIGURATION.md).
 
 `doctor` reports diagnostics without a model turn (`deep` adds help-surface and catalog checks). Its payload is the tool result itself.
 
