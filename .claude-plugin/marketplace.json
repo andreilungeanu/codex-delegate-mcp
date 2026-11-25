@@ -10,7 +10,7 @@
     {
       "name": "codex-delegate",
       "source": "./",
-      "description": "MCP server bridging AI coding hosts to the OpenAI Codex CLI.",
+      "description": "Ask OpenAI Codex what it thinks, or hand it the work: second opinions, plans, edits and native code review.",
       "license": "MIT",
       "keywords": ["mcp", "codex", "openai", "claude-code", "delegation"]
     }

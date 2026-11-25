@@ -3,11 +3,11 @@
   "name": "delegate-to-codex",
   "displayName": "Delegate to Codex",
   "version": "3.1.0",
-  "description": "Delegate coding tasks to the OpenAI Codex CLI with structured results. Runs agent, plan, ask and review modes, with cancel and resume support.",
+  "description": "Ask OpenAI Codex what it thinks, or hand it the work: second opinions, model comparisons, plans, edits and native code review.",
   "logo": "assets/logo-light.png",
   "suggestedPrompts": [
     "Delegate this implementation to Codex and review the diff.",
-    "Ask Codex to draft a plan for this change.",
+    "Ask Codex what it thinks about this approach.",
     "Have Codex review my uncommitted changes, then check the git diff — every mode is auto-approved."
   ],
   "author": {

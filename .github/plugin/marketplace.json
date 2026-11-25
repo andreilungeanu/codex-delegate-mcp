@@ -5,13 +5,13 @@
     "email": "andrei@lungeanu.ro"
   },
   "metadata": {
-    "description": "Plugins for delegating coding work to the OpenAI Codex CLI through MCP.",
+    "description": "Plugins for asking the OpenAI Codex CLI for second opinions and handing it coding work through MCP.",
     "version": "3.1.0"
   },
   "plugins": [
     {
       "name": "codex-delegate",
-      "description": "Delegate local coding work to the OpenAI Codex CLI through MCP.",
+      "description": "Ask OpenAI Codex what it thinks, or hand it the work: second opinions, plans, edits and native code review.",
       "version": "3.1.0",
       "source": "./"
     }

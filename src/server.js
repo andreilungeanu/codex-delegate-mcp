@@ -33,7 +33,7 @@ const SERVER_ICONS = [
 const SERVER_INFO = {
   name: "codex-delegate-mcp",
   title: "Codex Delegate",
-  description: "Bridge AI coding hosts to the OpenAI Codex CLI for delegated implementation.",
+  description: "Ask OpenAI Codex for a second opinion, or hand it plans, edits and code reviews.",
   version: VERSION,
   websiteUrl: "https://github.com/andreilungeanu/codex-delegate-mcp",
   icons: SERVER_ICONS,
