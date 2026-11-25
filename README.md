@@ -10,7 +10,7 @@
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![tests](https://github.com/andreilungeanu/codex-delegate-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/andreilungeanu/codex-delegate-mcp/actions/workflows/test.yml)
 
-<img src="assets/logo-light.png" alt="Codex Delegate logo" width="150" align="left" hspace="15">
+<img src="assets/logo-light.png" alt="Codex Delegate logo" width="105" align="left" hspace="15">
 
 Codex Delegate is the MCP bridge to the **OpenAI Codex CLI**. From Claude Code, Cursor, Copilot or any MCP client, your agent can ask Codex for a second opinion, put one question to several models at once, or hand Codex a plan, a fix or a review, and get a structured result back from each call.
 
