@@ -1,0 +1,31 @@
+name: codspeed
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Lets CodSpeed trigger a run on the default branch, e.g. to backfill a baseline.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # CodSpeed authenticates with OIDC, so the repository needs no token secret.
+  id-token: write
+
+jobs:
+  benchmarks:
+    name: Run benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Run benchmarks
+        uses: CodSpeedHQ/action@b1f28b5eccf7cb5bfe6a2a89cb3053eb67f1150c # v5.8.0
+        with:
+          mode: simulation
+          run: npm run bench

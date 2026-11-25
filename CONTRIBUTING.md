@@ -11,7 +11,9 @@ the supported distribution surface.
 1. Keep the package, lockfile, Claude/Cursor/Copilot/Antigravity manifests, marketplaces, `server.json`, and
    npm pins synchronized — `test/version-sync.test.js` fails if any drifts.
 2. Run `claude plugin validate .claude-plugin/plugin.json` and `claude plugin validate .`.
-3. Run `npm test`, `npm run typecheck`, and `npm run test:pack`.
+3. Run `npm test`, `npm run typecheck`, and `npm run test:pack`. For changes on the run path
+   (`run-codex.js`, `command.js`, `delegate.js`, `server.js`), `npm run bench` runs the
+   benchmarks that CodSpeed tracks on every pull request.
 4. Update [CHANGELOG.md](CHANGELOG.md) for user-visible changes.
 
 ## Commit conventions
