@@ -48,7 +48,7 @@ if (nodeMajor < 20) {
 // Shared by every server the factory builds, so a task outlives the request that started it.
 const taskStore = createTaskStore();
 
-export const SERVER_INSTRUCTIONS = `Hand coding work to Codex via the delegate tool; never shell out to codex. Auto-approved in every mode: agent/plan/ask/review reach any file the user account can, and the network. mode instructs, it does not limit. Review the git diff after every run.`;
+export const SERVER_INSTRUCTIONS = `Ask Codex or hand it coding work via the delegate tool; never shell out to codex. Auto-approved in every mode: agent/plan/ask/review reach any file the user account can, and the network. mode instructs, it does not limit. Review the git diff after every run.`;
 
 const reviewTargetSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("uncommitted") }).strict(),
@@ -272,7 +272,7 @@ export function buildServer({
     "delegate",
     {
       description:
-        "Delegate a coding task to OpenAI Codex. Never run codex from the shell — use this tool. Check status before trusting result — a run that spawns then fails returns normally. Set spec, workspace and mode, plus resumeThreadId to resume and reviewTarget in review; leave every other field at its default unless the user asks. See the delegate skill.",
+        "Ask OpenAI Codex a question or delegate coding work to it. Never run codex from the shell — use this tool. mode ask gives a second opinion; parallel calls with the same brief compare views. Check status before trusting result — a run that spawns then fails returns normally. Set spec, workspace and mode, plus resumeThreadId to resume and reviewTarget in review; leave every other field at its default unless the user asks. If the delegate skill is installed, load it before handing off implementation.",
       // Strict: an unknown key is almost always a typo, and a silently dropped
       // `resumeThreadId` loses the thread with nothing to show for it.
       inputSchema: z.object({
